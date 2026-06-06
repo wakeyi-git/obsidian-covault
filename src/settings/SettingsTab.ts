@@ -268,12 +268,17 @@ export class CoVaultSettingTab extends PluginSettingTab {
 			t("settings.edit_shared_folder_documents_character_by"),
 		);
 		rt.addSetting((set) =>
-			set.setName(t("settings.enable_realtime_editing")).addToggle((tg) =>
-				tg.setValue(s.realtimeEnabled).onChange(async (v) => {
-					s.realtimeEnabled = v;
-					await this.host.saveSettings();
-				}),
-			),
+			set
+				.setName(t("settings.enable_realtime_editing"))
+				.setDesc(t("settings.enable_realtime_editing_desc"))
+				.addToggle((tg) =>
+					tg.setValue(s.realtimeEnabled).onChange(async (v) => {
+						s.realtimeEnabled = v;
+						await this.host.saveSettings();
+						// 전역 토글이 모든 개인 폴더·공동 공간에 적용 — 토큰 재발급 + 전파.
+						await this.host.redeployRealtime();
+					}),
+				),
 		);
 		this.textSetting(rt, t("settings.yjs_server_url"), "yjsServerUrl", "wss://yjs.example.com");
 		rt.addSetting((set) =>
@@ -337,58 +342,6 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				}),
 		);
 
-		this.renderRealtimeTargets(rt, s);
-	}
-
-	/** 실시간 대상 선택: 학생 개인 폴더(전체+개별), 공유 공간(개별). 토글 즉시 토큰 재발급 + 전파. */
-	private renderRealtimeTargets(rt: SettingGroup, s: CoVaultSettings): void {
-		// --- 학생 개인 폴더 1:1 실시간(교사↔해당 학생) ---
-		const members = s.members.filter((st) => st.memberId && st.provisioned);
-		rt.addSetting((set) => set.setName(t("settings.realtime_per_member")).setDesc(t("settings.realtime_per_member_desc")).setHeading());
-		if (members.length === 0) {
-			rt.addSetting((set) => set.setDesc(t("settings.realtime_invite_members_first")));
-		} else {
-			const allOn = members.every((st) => st.realtime);
-			rt.addSetting((set) =>
-				set.setName(t("settings.realtime_all_members")).addToggle((tg) =>
-					tg.setValue(allOn).onChange(async (v) => {
-						members.forEach((st) => (st.realtime = v));
-						await this.host.saveSettings();
-						await this.host.redeployRealtime();
-						this.display();
-					}),
-				),
-			);
-			for (const st of members) {
-				rt.addSetting((set) =>
-					set.setName(st.memberName || st.memberId).addToggle((tg) =>
-						tg.setValue(!!st.realtime).onChange(async (v) => {
-							st.realtime = v;
-							await this.host.saveSettings();
-							await this.host.redeployRealtime();
-							this.display();
-						}),
-					),
-				);
-			}
-		}
-
-		// --- 공유 공간 실시간(공간별) ---
-		if (s.sharedSpaces.length > 0) {
-			rt.addSetting((set) => set.setName(t("settings.realtime_shared")).setDesc(t("settings.realtime_shared_desc")).setHeading());
-			for (const sp of s.sharedSpaces) {
-				rt.addSetting((set) =>
-					set.setName(sp.name || sp.id).addToggle((tg) =>
-						tg.setValue(sp.realtime !== false).onChange(async (v) => {
-							sp.realtime = v;
-							await this.host.saveSettings();
-							await this.host.redeployRealtime();
-							this.display();
-						}),
-					),
-				);
-			}
-		}
 	}
 
 	private renderSharedCard(group: SettingGroup, sp: SharedSpace, index: number): void {

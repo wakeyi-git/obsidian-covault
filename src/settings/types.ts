@@ -17,9 +17,7 @@ export interface SharedSpace {
 	provisioned?: boolean;
 	/** 공간 종류. "homeroom"=학급 운영 대시보드(알림장·시간표·루틴 등)를 담는 전원 공유 공간. 미설정=일반 모둠 공유. */
 	kind?: "homeroom";
-	/** 이 공간에서 실시간 공동 편집을 쓸지(미설정/true=사용, false=끔). 끄면 토큰을 발급하지 않는다. 기술문서 §19. */
-	realtime?: boolean;
-	/** 이 공간의 실시간 서명 토큰(HMAC 모드). 배포 시 발급되어 shares 문서로 학생에 전달된다. */
+	/** 이 공간의 실시간 서명 토큰(HMAC 모드). 실시간 사용 시 배포에서 발급되어 shares 문서로 학생에 전달된다. */
 	token?: string;
 	/** 마지막 배포 시각(epoch ms). */
 	lastDeployedAt?: number;
@@ -36,9 +34,7 @@ export interface MemberConfig {
 	username: string; // 학생 CouchDB 계정명. 기본 memberId
 	password?: string; // 프로비저닝 시 생성 (교사 기기 한정 비밀)
 	provisioned?: boolean; // CouchDB 계정/DB/권한 생성 완료 여부
-	/** 개인 mirror 폴더에서 교사↔이 학생 1:1 실시간 공동 편집 허용(기본 off). 기술문서 §19. */
-	realtime?: boolean;
-	/** mirror 실시간 서명 토큰(HMAC). 배포 시 발급되어 학생 shares 문서로 전달된다(교사 기기 한정). */
+	/** 개인 mirror 1:1 실시간 서명 토큰(HMAC). 전역 실시간 사용 시 배포에서 발급되어 학생 shares로 전달(교사 기기 한정). */
 	realtimeToken?: string;
 }
 

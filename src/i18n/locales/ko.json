@@ -285,6 +285,7 @@
 		"realtime_co_editing_yjs": "실시간 공동 편집 (Yjs)",
 		"edit_shared_folder_documents_character_by": "별도 Yjs WebSocket 서버로 공동 폴더 문서를 글자 단위 동시 편집하며, ‘배포’ 시 구성원에게 전파됩니다.",
 		"enable_realtime_editing": "실시간 편집 사용",
+		"enable_realtime_editing_desc": "켜면 모든 구성원 개인 폴더와 모든 공동 공간에서 실시간 공동 편집이 적용됩니다.",
 		"yjs_server_url": "Yjs 서버 URL",
 		"yjs_token": "Yjs 토큰",
 		"shared_secret_token": "공유 비밀 토큰",

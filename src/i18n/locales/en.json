@@ -285,6 +285,7 @@
 		"realtime_co_editing_yjs": "Realtime co-editing (Yjs)",
 		"edit_shared_folder_documents_character_by": "Edit shared-folder documents character by character in real time via a separate Yjs WebSocket server; propagated to members on ‘Deploy’.",
 		"enable_realtime_editing": "Enable realtime editing",
+		"enable_realtime_editing_desc": "When on, realtime co-editing applies to every member's personal folder and all shared spaces.",
 		"yjs_server_url": "Yjs server URL",
 		"yjs_token": "Yjs token",
 		"shared_secret_token": "Shared secret token",

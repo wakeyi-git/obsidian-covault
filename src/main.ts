@@ -864,35 +864,33 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	/**
-	 * 모든 실시간 서명 토큰을 재발급/회수(교사). 공유 공간은 realtime!==false일 때만, 개인 mirror는
-	 * member.realtime일 때만 발급한다. 시크릿이 없으면(legacy/제거 중) 모두 비워 stale 재배포를 막는다.
+	 * 모든 실시간 서명 토큰을 재발급/회수(교사). 전역 실시간(realtimeEnabled) + 시크릿이 있으면 모든 공유 공간과
+	 * 모든 구성원 개인 mirror에 발급하고, 꺼져 있거나 시크릿이 없으면 모두 비운다(stale 재배포 방지).
 	 * (유출 시 해당 공간 room만 접근 가능 — 학급 전체 아님.) 시크릿은 Secret Storage에서 읽는다.
 	 */
 	private async mintRealtimeTokens(): Promise<void> {
 		const s = this.settings;
 		const yjsSecret = getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
+		const on = s.realtimeEnabled && !!yjsSecret;
 		const ttl =
 			s.yjsTokenTtlDays && s.yjsTokenTtlDays > 0
 				? Math.floor(Date.now() / 1000) + s.yjsTokenTtlDays * 86400
 				: undefined;
 		for (const sp of s.sharedSpaces) {
-			if (yjsSecret && sp.realtime !== false) {
-				sp.token = await mintSpaceToken(yjsSecret, { workspaceId: s.workspaceId, spaceId: sp.id, exp: ttl });
-			} else {
-				delete sp.token;
-			}
+			if (on) sp.token = await mintSpaceToken(yjsSecret, { workspaceId: s.workspaceId, spaceId: sp.id, exp: ttl });
+			else delete sp.token;
 		}
 		for (const st of s.members) await this.mintMirrorToken(st);
 	}
 
 	/**
-	 * 개인 mirror 실시간 토큰 발급/회수(교사). realtime 허용 + yjsSecret 있을 때만 발급, 아니면 비운다.
+	 * 개인 mirror 실시간 토큰 발급/회수(교사). 전역 실시간(realtimeEnabled) + yjsSecret 있을 때 발급, 아니면 비운다.
 	 * spaceId=mirror-<memberId>이라 서버의 share 룸 prefix(<workspaceId>/share/<spaceId>/) 검증을 그대로 통과한다.
 	 */
 	private async mintMirrorToken(member: MemberConfig): Promise<void> {
 		const s = this.settings;
 		const yjsSecret = getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
-		if (member.realtime && yjsSecret) {
+		if (s.realtimeEnabled && yjsSecret && member.memberId) {
 			const ttl =
 				s.yjsTokenTtlDays && s.yjsTokenTtlDays > 0
 					? Math.floor(Date.now() / 1000) + s.yjsTokenTtlDays * 86400
@@ -919,10 +917,10 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				folder: sp.folder,
 				token: sp.token,
 				kind: sp.kind === "homeroom" ? ("homeroom" as const) : ("share" as const),
-				realtime: sp.realtime !== false,
+				realtime: s.realtimeEnabled, // 전역 실시간 설정을 모든 공유 공간에 적용
 			}));
 		// 개인 mirror 1:1 실시간(folder=""=학생 vault 전체). 동기화 링크는 안 만들고 room/token 용도로만.
-		if (st.realtime && st.realtimeToken) {
+		if (s.realtimeEnabled && st.realtimeToken) {
 			spaces.push({ id: `mirror-${st.memberId}`, name: st.memberName, remoteDb: st.remoteDb, folder: "", token: st.realtimeToken, kind: "mirror", realtime: true });
 		}
 		const r = await admin.putDoc(st.remoteDb, { _id: SHARES_DOC_ID, type: "shares", spaces });
@@ -967,7 +965,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			this.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
 			return;
 		}
-		const wantsRealtime = s.members.some((st) => st.realtime) || s.sharedSpaces.some((sp) => sp.realtime !== false && sp.members.length > 0);
+		const wantsRealtime = s.members.length > 0 || s.sharedSpaces.length > 0;
 		if (s.realtimeEnabled && wantsRealtime && !getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret)) {
 			this.logger.warn(t("command.realtime_needs_yjs_secret"), true);
 		}
