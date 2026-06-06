@@ -1080,3 +1080,47 @@
 	width: 64px;
 	flex: none;
 }
+
+.covault-dash-weekdays {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 4px 0 8px;
+}
+.covault-dash-weekday {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	font-size: 12px;
+}
+.covault-dash-check {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 0;
+}
+
+.covault-gradebook-wrap {
+	overflow-x: auto;
+}
+.covault-gradebook {
+	border-collapse: collapse;
+	font-size: 12px;
+}
+.covault-gradebook th,
+.covault-gradebook td {
+	border: 1px solid var(--background-modifier-border);
+	padding: 3px 6px;
+	text-align: center;
+	white-space: nowrap;
+}
+.covault-gradebook-name {
+	text-align: left;
+	position: sticky;
+	left: 0;
+	background: var(--background-secondary);
+}
+.covault-gradebook td.is-graded {
+	font-weight: 600;
+	color: var(--text-accent);
+}

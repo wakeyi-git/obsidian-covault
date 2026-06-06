@@ -7,7 +7,7 @@ import { LinkStatus } from "../../core/sync/MirrorContext";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "../../core/sync/RestoreManager";
 import { PurgeSnapshot } from "../../core/sync/recentPurge";
 import { DeleteModifyItem } from "../../core/sync/deleteModifyQueue";
-import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion } from "../../core/model/types";
+import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion, RoutineDoc, RoutineStateDoc } from "../../core/model/types";
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
@@ -57,6 +57,13 @@ export interface PanelHost {
 	unsubmitAssignment(state: AssignmentStateDoc): Promise<boolean>;
 	returnAssignment(uid: string, memberId: string, grade: AssignmentGrade): Promise<boolean>;
 	openVaultPath(path: string): Promise<void>;
+	// 루틴(체크리스트)
+	listRoutines(): Promise<RoutineDoc[]>;
+	createRoutine(input: { title: string; items: string[]; recurrence: "daily" | "weekly"; weekdays?: number[] }): Promise<boolean>;
+	deleteRoutine(uid: string): Promise<void>;
+	myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null>;
+	toggleRoutineItem(uid: string, day: string, itemId: string, checked: boolean): Promise<boolean>;
+	listRoutineStates(uid: string, day: string): Promise<RoutineStateDoc[]>;
 	getDashboardRows(): Promise<DashboardRow[]>;
 	openConflictModal(): void;
 	fullSync(dir: "both" | "up" | "down"): Promise<void>;

@@ -2,6 +2,7 @@ import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade, assignmentId, assignmentStateId, ASSIGNMENT_STATE_ID_PREFIX } from "./core/model/types";
+import { RoutineDoc, RoutineStateDoc, routineId, routinePrefix, routineStateId } from "./core/model/types";
 import { ensureParentFolders } from "./core/vault/folders";
 import { noticeFilePath } from "./core/classroom/notices";
 import { assignmentWorkDir, substituteTemplate, slugify } from "./core/classroom/assignments";
@@ -35,7 +36,7 @@ import {
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
-import { ensureHomeroomSpace, findHomeroom, HOMEROOM_FOLDER } from "./core/classroom/homeroom";
+import { ensureHomeroomSpace, HOMEROOM_FOLDER, HOMEROOM_DB } from "./core/classroom/homeroom";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
@@ -426,11 +427,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		await this.restartMode();
 	}
 
-	/** 학급 공유 공간의 pouch(미프로비저닝/미수신이면 undefined). 현재 모드의 동기화 링크에서 해석. */
+	/**
+	 * 학급 공유 공간의 pouch(미프로비저닝/미수신이면 undefined). 고정 DB명(HOMEROOM_DB)으로 현재 모드의
+	 * 동기화 링크에서 해석한다 — 교사(설정의 sharedSpaces)·학생(수신한 shares) 양쪽 모두 동작.
+	 */
 	private homeroomPouch(): PouchService | undefined {
-		const home = findHomeroom(this.settings.sharedSpaces);
-		if (!home?.remoteDb) return undefined;
-		return (this.mode?.getSyncs() ?? []).find((s) => s.ctx.remoteDb === home.remoteDb)?.ctx.pouch;
+		return (this.mode?.getSyncs() ?? []).find((s) => s.ctx.remoteDb === HOMEROOM_DB)?.ctx.pouch;
 	}
 
 	/** PanelHost: 학급 공유 공간이 준비됐는지(배포 + 동기화 링크 존재). */
@@ -680,6 +682,93 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		this.requestApply();
 		this.logger.ok(t("dashboard.assignment_returned", { name: member.memberName || memberId }), true);
 		return true;
+	}
+
+	// --- 루틴(체크리스트) ---
+
+	/** PanelHost: 루틴 정의 목록(학급 공유). */
+	async listRoutines(): Promise<RoutineDoc[]> {
+		const docs = await this.classroom.listByPrefix<RoutineDoc>(routinePrefix());
+		return docs.filter((d) => !d.deleted).sort((a, b) => a.createdAtMs - b.createdAtMs);
+	}
+
+	/** PanelHost: 루틴 생성(교사, 학급 공유에 기록). */
+	async createRoutine(input: { title: string; items: string[]; recurrence: "daily" | "weekly"; weekdays?: number[] }): Promise<boolean> {
+		const s = this.settings;
+		if (s.role !== "manager") {
+			this.logger.warn(t("command.available_in_manager_mode_only"), true);
+			return false;
+		}
+		if (!this.homeroomReady()) {
+			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
+			return false;
+		}
+		const uid = `${Date.now().toString(36)}`;
+		const doc: RoutineDoc = {
+			_id: routineId(uid),
+			type: "routine",
+			schemaVersion: 1,
+			workspaceId: s.workspaceId,
+			uid,
+			title: input.title,
+			items: input.items.map((label, i) => ({ id: `i${i}`, label })),
+			recurrence: input.recurrence,
+			weekdays: input.recurrence === "weekly" ? input.weekdays : undefined,
+			createdBy: s.userId,
+			createdAtMs: Date.now(),
+		};
+		return this.classroom.put(doc);
+	}
+
+	/** PanelHost: 루틴 삭제(교사, soft delete). */
+	async deleteRoutine(uid: string): Promise<void> {
+		const doc = await this.classroom.get<RoutineDoc>(routineId(uid));
+		if (doc) await this.classroom.softDelete(doc);
+	}
+
+	/** PanelHost: 학생 본인의 해당 날짜 루틴 상태. */
+	async myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null> {
+		const sync = this.studentMirrorSync();
+		if (!sync) return null;
+		return sync.ctx.pouch.get<RoutineStateDoc>(routineStateId(uid, this.settings.userId, day));
+	}
+
+	/** PanelHost: 학생 루틴 항목 체크 토글(개인 미러에 기록). */
+	async toggleRoutineItem(uid: string, day: string, itemId: string, checked: boolean): Promise<boolean> {
+		const sync = this.studentMirrorSync();
+		if (!sync) return false;
+		const id = routineStateId(uid, this.settings.userId, day);
+		const cur = await sync.ctx.pouch.get<RoutineStateDoc>(id);
+		const set = new Set(cur?.checked ?? []);
+		if (checked) set.add(itemId);
+		else set.delete(itemId);
+		const doc: RoutineStateDoc = {
+			_id: id,
+			_rev: cur?._rev,
+			type: "routine-state",
+			schemaVersion: 1,
+			workspaceId: this.settings.workspaceId,
+			routineUid: uid,
+			memberId: this.settings.userId,
+			day,
+			checked: [...set],
+			updatedAtMs: Date.now(),
+		};
+		await sync.ctx.pouch.put(doc);
+		return true;
+	}
+
+	/** PanelHost: 한 루틴의 학생별 상태(교사, 각 학생 미러에서 수집). */
+	async listRoutineStates(uid: string, day: string): Promise<RoutineStateDoc[]> {
+		const out: RoutineStateDoc[] = [];
+		for (const m of this.settings.members) {
+			if (!m.memberId) continue;
+			const sync = this.memberSyncByRemoteDb(m.remoteDb);
+			if (!sync) continue;
+			const doc = await sync.ctx.pouch.get<RoutineStateDoc>(routineStateId(uid, m.memberId, day));
+			if (doc) out.push(doc);
+		}
+		return out;
 	}
 
 	/**
