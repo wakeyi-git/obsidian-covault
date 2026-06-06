@@ -27,25 +27,25 @@ export function resolveMarkdownView(app: App, preferredPath?: string | null): Ma
 export function promptAddFeedback(app: App, store: FeedbackStore, preferredPath?: string | null): void {
 	const view = resolveMarkdownView(app, preferredPath);
 	if (!view || !view.file) {
-		new Notice(t("feedback.class_sync_open_a_note_to"));
+		new Notice(t("feedback.covault_open_a_note_to"));
 		return;
 	}
 	const path = view.file.path;
 	if (!store.canAnnotate(path)) {
-		new Notice(t("feedback.class_sync_this_note_is_not"));
+		new Notice(t("feedback.covault_this_note_is_not"));
 		return;
 	}
 	const editor = view.editor;
 	const sel = editor.getSelection();
 	if (!sel) {
-		new Notice(t("feedback.class_sync_select_the_text_to"));
+		new Notice(t("feedback.covault_select_the_text_to"));
 		return;
 	}
 	const start = editor.posToOffset(editor.getCursor("from"));
 	const end = start + sel.length;
 	new FeedbackInputModal(app, sel, async (content) => {
 		const ok = await store.add(path, { textQuote: sel, start, end }, content);
-		if (ok) new Notice(t("feedback.class_sync_feedback_added"));
+		if (ok) new Notice(t("feedback.covault_feedback_added"));
 	}).open();
 }
 
@@ -76,7 +76,7 @@ class FeedbackInputModal extends Modal {
 					.onClick(async () => {
 						const v = this.value.trim();
 						if (!v) {
-							new Notice(t("feedback.class_sync_enter_some_content"));
+							new Notice(t("feedback.covault_enter_some_content"));
 							return;
 						}
 						this.close();

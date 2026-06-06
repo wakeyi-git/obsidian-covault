@@ -30,7 +30,7 @@ export class ExportModal extends Modal {
 						await navigator.clipboard.writeText(this.json).catch(() => {
 							ta.select();
 						});
-						new Notice(t("backup.class_sync_settings_copied"));
+						new Notice(t("backup.covault_settings_copied"));
 					}),
 			)
 			.addButton((b) => b.setButtonText(t("common.close")).onClick(() => this.close()));
@@ -53,7 +53,7 @@ export class ImportModal extends Modal {
 		contentEl.createEl("h3", { text: t("backup.import_settings") });
 		contentEl.createEl("p", {
 			cls: "setting-item-description",
-			text: t("backup.paste_the_exported_json_students_shared",
+			text: t("backup.paste_the_exported_json_members_shared",
 			),
 		});
 
@@ -72,7 +72,7 @@ export class ImportModal extends Modal {
 					.onClick(async () => {
 						const v = this.value.trim();
 						if (!v) {
-							new Notice(t("backup.class_sync_paste_the_content"));
+							new Notice(t("backup.covault_paste_the_content"));
 							return;
 						}
 						this.close();

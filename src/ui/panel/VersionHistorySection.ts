@@ -91,7 +91,7 @@ export class VersionHistorySection implements PanelSection {
 		head.createSpan({ cls: "covault-version-time", text: formatDate(v.createdAtMs) });
 		head.createSpan({ cls: "covault-version-badge", text: kindLabel(v.kind) });
 
-		const who = v.role === "manager" ? t("common.teacher") : t("common.student");
+		const who = v.role === "manager" ? t("common.manager") : t("common.member");
 		card.createDiv({
 			cls: "covault-version-meta",
 			text: t("version.msg_2", { who, by: v.createdBy, device: v.deviceId.slice(0, 6) }),

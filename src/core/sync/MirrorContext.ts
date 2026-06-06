@@ -149,8 +149,8 @@ export class MirrorContext {
 
 	/** 충돌 원격본의 상대방 라벨: 교사 입장=학생 이름, 학생 입장=교사. */
 	conflictPeerLabel(): string {
-		if (this.settings.role === "manager") return this.memberName || this.memberId || t("common.student");
-		return t("common.teacher");
+		if (this.settings.role === "manager") return this.memberName || this.memberId || t("common.member");
+		return t("common.manager");
 	}
 
 	/** 내 편집 백업 경로: 상대가 충돌을 해소해 내 편집이 덮일 때 보존. _충돌/<base>.내편집.md */

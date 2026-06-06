@@ -62,7 +62,7 @@ export class ConflictModal extends Modal {
 			new Setting(card)
 				.setName(`${isAsset ? "📎 " : ""}${row.info.dbPath}`)
 				.setDesc(
-					t("conflict.student_remote_edit", {
+					t("conflict.member_remote_edit", {
 						memberId: row.info.memberId,
 						by: row.info.remoteMeta.by,
 						role: row.info.remoteMeta.role,

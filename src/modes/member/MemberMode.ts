@@ -26,7 +26,7 @@ export class MemberMode implements CoVaultMode {
 	async stop(): Promise<void> {
 		for (const sync of this.syncs) await sync.stop();
 		this.syncs = [];
-		this.core.logger.info(t("mode.student_mode_stopped"));
+		this.core.logger.info(t("mode.member_mode_stopped"));
 	}
 
 	async fullSync(direction: SyncDirection): Promise<void> {
@@ -94,7 +94,7 @@ export class MemberMode implements CoVaultMode {
 			}
 
 			for (const sync of this.syncs) await sync.start();
-			this.core.logger.ok(t("mode.student_mode_started_personal_shared", { count: linkSpaces.length }), true);
+			this.core.logger.ok(t("mode.member_mode_started_personal_shared", { count: linkSpaces.length }), true);
 		} catch (e) {
 			this.core.logger.error(
 				t("mode.failed_to_reconcile_shared_spaces", { error: e instanceof Error ? e.message : String(e) }),

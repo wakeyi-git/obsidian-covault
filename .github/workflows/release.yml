@@ -38,5 +38,5 @@ jobs:
           gh release create "$TAG" \
             --title="$TAG" \
             --prerelease \
-            --notes="Class Sync $TAG (beta). BRAT으로 설치해 테스트하세요. 자세한 내용은 README 참고." \
+            --notes="CoVault $TAG (beta). BRAT으로 설치해 테스트하세요. 자세한 내용은 README 참고." \
             main.js manifest.json styles.css

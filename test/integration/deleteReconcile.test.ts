@@ -10,9 +10,9 @@ describe("삭제 정합 (delete reconcile)", () => {
 
 	it("시나리오1: 신규/빈 vault 전체 동기화는 원격 문서를 tombstone하지 않는다(기준선 없음)", async () => {
 		cluster = new Cluster();
-		const teacher = cluster.device({ deviceId: "t", role: "teacher", remoteDb: "mirror_s1" });
-		const fresh = cluster.device({ deviceId: "fresh", role: "student", remoteDb: "mirror_s1" });
-		const observer = cluster.device({ deviceId: "obs", role: "student", remoteDb: "mirror_s1" });
+		const teacher = cluster.device({ deviceId: "t", role: "manager", remoteDb: "mirror_s1" });
+		const fresh = cluster.device({ deviceId: "fresh", role: "member", remoteDb: "mirror_s1" });
+		const observer = cluster.device({ deviceId: "obs", role: "member", remoteDb: "mirror_s1" });
 
 		for (const p of ["a.md", "b.md", "c.md"]) teacher.vault.seed(p, `content-${p}`);
 		await teacher.sync("up");
@@ -32,7 +32,7 @@ describe("삭제 정합 (delete reconcile)", () => {
 
 	it("시나리오1b: 기준선이 있어도 대량 소실(폴더 오설정 추정)이면 tombstone 중단·경고", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 
 		const paths = Array.from({ length: 12 }, (_, i) => `n${i}.md`);
 		for (const p of paths) dev.vault.seed(p, `c-${p}`);
@@ -53,7 +53,7 @@ describe("삭제 정합 (delete reconcile)", () => {
 
 	it("시나리오2: 오프라인 단일 삭제는 다음 동기화에서 정확히 그 문서만 tombstone", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 
 		for (const p of ["keep1.md", "keep2.md", "gone.md"]) dev.vault.seed(p, `c-${p}`);
 		await dev.sync("both"); // 기준선 기록 + 업로드
@@ -70,8 +70,8 @@ describe("삭제 정합 (delete reconcile)", () => {
 
 	it("시나리오2b: 기준선 이후 다른 기기가 바꾼 파일은 로컬에서 사라져도 tombstone하지 않음(보존)", async () => {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "a", role: "teacher", remoteDb: "mirror_s1" });
-		const b = cluster.device({ deviceId: "b", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
 
 		a.vault.seed("x.md", "v1");
 		await a.sync("both"); // a의 기준선: x.md rev=R1, hash(v1)
@@ -96,8 +96,8 @@ describe("삭제 정합 (delete reconcile)", () => {
 
 	it("시작 정합(runStartup)은 pull 후 정합 — 다른 기기 수정분을 stale tombstone하지 않음", async () => {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "a", role: "teacher", remoteDb: "mirror_s1" });
-		const b = cluster.device({ deviceId: "b", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
 
 		a.vault.seed("x.md", "v1");
 		await a.sync("both"); // a 기준선(R1)

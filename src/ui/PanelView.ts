@@ -34,7 +34,7 @@ function tabLabel(tab: PanelTab): string {
 }
 
 /**
- * Class Sync 통합 사이드 패널. 탭(피드백·배포·동기화 상태·관리·로그)으로 기존 3개 뷰 + 명령 기능을 모은다.
+ * CoVault 통합 사이드 패널. 탭(피드백·배포·동기화 상태·관리·로그)으로 기존 3개 뷰 + 명령 기능을 모은다.
  * 배포 탭은 교사 전용. 탭 전환 시 이전 섹션을 dispose하고 새 섹션을 render한다.
  */
 export class CoVaultPanelView extends ItemView {
@@ -51,7 +51,7 @@ export class CoVaultPanelView extends ItemView {
 		return PANEL_VIEW_TYPE;
 	}
 	getDisplayText(): string {
-		return t("panel.class_sync");
+		return t("panel.covault");
 	}
 	getIcon(): string {
 		return "graduation-cap";

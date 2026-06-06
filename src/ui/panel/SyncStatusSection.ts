@@ -96,7 +96,7 @@ export class SyncStatusSection implements PanelSection {
 				cls: "covault-feedback-empty",
 				text:
 					this.host.settings.role === "manager"
-						? t("panel.no_students_to_sync_yet_add")
+						? t("panel.no_members_to_sync_yet_add")
 						: t("panel.not_connected_yet_apply_the_qr"),
 			});
 			return;
@@ -158,7 +158,7 @@ export class SyncStatusSection implements PanelSection {
 		const parts =
 			this.host.settings.role === "manager"
 				? [
-						t("panel.students", { invited: s.invited, total: s.members }),
+						t("panel.member_progress", { invited: s.invited, total: s.members }),
 						t("panel.shared", { n: s.shared }),
 						t("panel.conflicts_2", { n: s.conflicts }),
 					]
@@ -172,7 +172,7 @@ export class SyncStatusSection implements PanelSection {
 		if (s.notInvited > 0)
 			cards.push({
 				text: t("panel.need_inviting", { n: s.notInvited }),
-				cta: t("panel.open_student_settings"),
+				cta: t("panel.open_member_settings"),
 				run: () => this.host.openSettings(),
 				warn: true,
 			});

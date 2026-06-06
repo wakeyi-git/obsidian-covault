@@ -43,7 +43,7 @@ import { ResetModal } from "./ui/ResetModal";
 import { initI18n, t } from "./i18n";
 
 /**
- * Class Sync for Obsidian — 플러그인 진입점.
+ * CoVault for Obsidian — 플러그인 진입점.
  *
  * 역할은 최초 1회 선택 후 잠긴다(기술문서 §5.4 보강). 실행 시 저장된 last_seq부터 증분 재개하고,
  * 전체 동기화는 최초 1회와 수동 명령에서만 수행한다.
@@ -100,7 +100,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 		this.registerView(PANEL_VIEW_TYPE, (leaf: WorkspaceLeaf) => new CoVaultPanelView(leaf, this));
 		this.addSettingTab(new CoVaultSettingTab(this.app, this));
-		this.addRibbonIcon("graduation-cap", t("command.open_class_sync_panel"), () => this.activatePanel());
+		this.addRibbonIcon("graduation-cap", t("command.open_covault_panel"), () => this.activatePanel());
 		this.registerCommands();
 
 		// 학생 초대 딥링크: 폰 카메라로 QR 스캔 → obsidian://covault-invite?d=... → 자동 설정
@@ -115,7 +115,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			else void this.startMode();
 		});
 
-		this.logger.info(t("command.class_sync_loaded_role_setup", { role: this.settings.role, setup: String(this.settings.setupComplete) }));
+		this.logger.info(t("command.covault_loaded_role_setup", { role: this.settings.role, setup: String(this.settings.setupComplete) }));
 	}
 
 	async onunload(): Promise<void> {
@@ -202,13 +202,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				this.settings.setupComplete = true;
 				if (role === "manager") {
 					this.settings.userId = "manager";
-					if (this.settings.displayName === t("common.student_a")) this.settings.displayName = t("common.teacher");
+					if (this.settings.displayName === t("common.member_a")) this.settings.displayName = t("common.manager");
 				}
 				await this.saveSettings();
 				this.logger.ok(
 					role === "manager"
-						? t("panel.teacher_mode_set_up_follow_the")
-						: t("command.student_mode_setup_complete_connect_using"),
+						? t("panel.manager_mode_set_up_follow_the")
+						: t("command.member_mode_setup_complete_connect_using"),
 					true,
 				);
 				await this.startMode();
@@ -280,7 +280,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			return false;
 		}
 		if (!student.memberId) {
-			this.logger.warn(t("command.enter_a_student_id"), true);
+			this.logger.warn(t("command.enter_a_member_id"), true);
 			return false;
 		}
 		// 기본값 보정
@@ -296,7 +296,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		let studentPw = getMemberPassword(this.app, student.memberId, student.password);
 		if (!studentPw) studentPw = genPassword();
 
-		this.logger.info(t("command.provisioning_student", { id: student.memberId, db: student.remoteDb }));
+		this.logger.info(t("command.provisioning_member", { id: student.memberId, db: student.remoteDb }));
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
 		const res = await admin.provisionMember({
 			username: student.username,
@@ -341,7 +341,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	async rotateMemberPassword(student: MemberConfig): Promise<void> {
 		if (this.settings.role !== "manager") return;
 		if (!student.memberId) {
-			this.logger.warn(t("command.enter_a_student_id"), true);
+			this.logger.warn(t("command.enter_a_member_id"), true);
 			return;
 		}
 		const prev = getMemberPassword(this.app, student.memberId, student.password);
@@ -363,7 +363,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		await this.activatePanel("log");
 		const s = this.settings;
 		if (s.role !== "manager") {
-			this.logger.warn(t("command.available_in_teacher_mode_only"), true);
+			this.logger.warn(t("command.available_in_manager_mode_only"), true);
 			return;
 		}
 		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
@@ -501,7 +501,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	async ingestInvite(input: string): Promise<void> {
 		const payload = parseInvite(input);
 		if (!payload) {
-			new Notice(t("command.class_sync_could_not_parse_the"));
+			new Notice(t("command.covault_could_not_parse_the"));
 			this.logger.error(t("command.failed_to_parse_invite_code"));
 			return;
 		}
@@ -537,8 +537,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			try {
 				const info = await probe.rawInfo();
 				if (info.status === 401) {
-					new Notice(t("panel.class_sync_invite_auth_failed_your"));
-					this.logger.error(t("panel.invite_auth_failed_401_your_teacher"), true);
+					new Notice(t("panel.covault_invite_auth_failed_your"));
+					this.logger.error(t("panel.invite_auth_failed_401_your_manager"), true);
 				} else if (info.status === 403) {
 					this.logger.warn(t("panel.invite_permission_error_403_check_this"), true);
 				}
@@ -560,7 +560,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				? this.settings.members.map((s) => s.remoteDb).filter((d) => d)
 				: [this.settings.remoteDb];
 		if (dbs.length === 0) {
-			this.logger.warn(t("command.no_mirror_db_to_test_teacher"), true);
+			this.logger.warn(t("command.no_mirror_db_to_test_manager"), true);
 			return;
 		}
 		for (const db of dbs) await testConnection(this.core, db);
@@ -629,7 +629,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		await this.activatePanel("log");
 		const s = this.settings;
 		if (s.role !== "manager") {
-			this.logger.warn(t("command.available_in_teacher_mode_only"), true);
+			this.logger.warn(t("command.available_in_manager_mode_only"), true);
 			return;
 		}
 		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
@@ -655,7 +655,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			...s.members.map((st) => st.remoteDb).filter((d) => d),
 			...s.sharedSpaces.map((sp) => sp.remoteDb).filter((d) => d),
 		];
-		this.logger.info(t("command.starting_server_data_reset_db_s", { count: dbs.length, accounts: deleteAccounts ? t("command.student_accounts") : "" }), true);
+		this.logger.info(t("command.starting_server_data_reset_db_s", { count: dbs.length, accounts: deleteAccounts ? t("command.member_accounts") : "" }), true);
 
 		for (const db of dbs) {
 			const r = await admin.deleteDatabase(db);
@@ -701,7 +701,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		this.logger.ok(
 			deleteAccounts
 				? t("command.server_data_and_accounts_reset_the")
-				: t("command.server_data_reset_complete_invite_students"),
+				: t("command.server_data_reset_complete_invite_members"),
 			true,
 		);
 	}
@@ -730,7 +730,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	/** 설정 탭에서 초기화 모달 실행(교사 전용). */
 	openResetModal(): void {
 		if (this.settings.role !== "manager") {
-			new Notice(t("command.class_sync_available_in_teacher_mode"));
+			new Notice(t("command.covault_available_in_manager_mode"));
 			return;
 		}
 		const dbCount =
@@ -799,7 +799,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		});
 		this.addCommand({
 			id: "covault-deploy",
-			name: t("deploy.copy_to_students_open_deploy_tab"),
+			name: t("deploy.copy_to_members_open_deploy_tab"),
 			callback: () => this.activatePanel("deploy"),
 		});
 		this.addCommand({
@@ -908,12 +908,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		opts: CopyOptions,
 		studentIds: string[],
 	): { src: TFile | TFolder; targets: MemberConfig[]; bulk: BulkCopy; opts: CopyOptions } | { error: string } {
-		if (this.settings.role !== "manager") return { error: t("command.available_in_teacher_mode_only") };
+		if (this.settings.role !== "manager") return { error: t("command.available_in_manager_mode_only") };
 		const src = this.app.vault.getAbstractFileByPath(sourcePath);
 		if (!(src instanceof TFile) && !(src instanceof TFolder))
 			return { error: t("deploy.path_not_found", { path: sourcePath }) };
 		const targets = this.settings.members.filter((st) => studentIds.includes(st.memberId));
-		if (targets.length === 0) return { error: t("deploy.no_target_students") };
+		if (targets.length === 0) return { error: t("deploy.no_target_members") };
 		// 파일: 대상 경로가 비어 있으면 원본 파일명으로.
 		const finalOpts = src instanceof TFile && !opts.destPath ? { ...opts, destPath: src.name } : opts;
 		return { src, targets, bulk: new BulkCopy(this.app, this.settings), opts: finalOpts };

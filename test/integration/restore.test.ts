@@ -9,7 +9,7 @@ describe("삭제 파일 복구 (RestoreManager)", () => {
 
 	it("노트: tombstone을 content 보존으로 복구(deleted=false, vault 재생성)", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 		const restorer = new RestoreManager(dev.ctx, dev.uploader);
 
 		dev.vault.seed("notes/a.md", "hello world");
@@ -36,7 +36,7 @@ describe("삭제 파일 복구 (RestoreManager)", () => {
 
 	it("노트: 원래 위치에 파일이 있으면 keep-both로 '(복구본)' 생성", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 		const restorer = new RestoreManager(dev.ctx, dev.uploader);
 
 		dev.vault.seed("a.md", "v1");
@@ -54,7 +54,7 @@ describe("삭제 파일 복구 (RestoreManager)", () => {
 
 	it("첨부: archive 사본이 없으면 복구 불가, 있으면 복구", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 		const restorer = new RestoreManager(dev.ctx, dev.uploader);
 
 		const data = new TextEncoder().encode("PNGDATA").buffer;
@@ -80,7 +80,7 @@ describe("삭제 파일 복구 (RestoreManager)", () => {
 
 	it("첨부: 같은 이름 존재 시 (복구본)으로 복구하고 원래 tombstone 정리", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 		const restorer = new RestoreManager(dev.ctx, dev.uploader);
 
 		const data = new TextEncoder().encode("ORIG").buffer;

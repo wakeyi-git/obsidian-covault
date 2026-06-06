@@ -18,7 +18,7 @@ export class MemberBulkImportModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		contentEl.createEl("h3", { text: t("settings.bulk_add_students") });
+		contentEl.createEl("h3", { text: t("settings.bulk_add_members") });
 		contentEl.createEl("p", {
 			cls: "setting-item-description",
 			text: t("settings.one_per_line_name_id_or"),
@@ -51,12 +51,12 @@ export class MemberBulkImportModal extends Modal {
 		el.empty();
 		const list = this.entries();
 		const valid = list.filter((e) => !e.emptyName);
-		el.createDiv({ cls: "covault-panel-hint", text: t("settings.preview_students_to_add", { n: valid.length }) });
+		el.createDiv({ cls: "covault-panel-hint", text: t("settings.preview_members_to_add", { n: valid.length }) });
 		if (list.length === 0) return;
 
 		const table = el.createEl("table", { cls: "covault-dash-table" });
 		const tr = table.createEl("thead").createEl("tr");
-		for (const h of [t("settings.name"), t("settings.student_id"), t("panel.mirror_db"), t("settings.note")]) tr.createEl("th", { text: h });
+		for (const h of [t("settings.name"), t("settings.member_id"), t("panel.mirror_db"), t("settings.note")]) tr.createEl("th", { text: h });
 		const tb = table.createEl("tbody");
 		for (const e of list) {
 			const row = tb.createEl("tr");
@@ -74,7 +74,7 @@ export class MemberBulkImportModal extends Modal {
 			.filter((e) => !e.emptyName)
 			.map((e) => ({ memberId: e.id, memberName: e.name, remoteDb: e.remoteDb, localRoot: "", username: "" }));
 		if (members.length === 0) {
-			new Notice(t("settings.class_sync_no_students_to_add"));
+			new Notice(t("settings.covault_no_members_to_add"));
 			return;
 		}
 		this.close();

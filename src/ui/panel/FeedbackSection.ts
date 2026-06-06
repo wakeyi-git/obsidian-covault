@@ -118,7 +118,7 @@ export class FeedbackSection implements PanelSection {
 		const card = this.listEl.createDiv({ cls: `covault-feedback-card${doc.resolved ? " is-resolved" : ""}` });
 
 		const head = card.createDiv({ cls: "covault-feedback-head" });
-		const who = doc.createdByRole === "manager" ? t("common.teacher") : t("common.student");
+		const who = doc.createdByRole === "manager" ? t("common.manager") : t("common.member");
 		head.createSpan({ cls: "covault-feedback-author", text: t("panel.msg_2", { who, by: doc.createdBy }) });
 		head.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(doc.createdAt)) });
 		if (doc.resolved) head.createSpan({ cls: "covault-feedback-badge", text: t("panel.resolved") });
@@ -146,7 +146,7 @@ export class FeedbackSection implements PanelSection {
 	private async jumpTo(doc: FeedbackDoc, localPath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(localPath);
 		if (!(file instanceof TFile)) {
-			new Notice(t("panel.class_sync_note_not_found", { path: localPath }));
+			new Notice(t("panel.covault_note_not_found", { path: localPath }));
 			return;
 		}
 		const leaf = this.app.workspace.getLeaf(false);

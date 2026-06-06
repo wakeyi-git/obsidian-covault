@@ -23,10 +23,10 @@ export class InviteModal extends Modal {
 		const code = encodeInvite(this.payload);
 
 		contentEl.createEl("h2", {
-			text: t("invite.invite_student", { name: this.payload.memberName || this.payload.memberId }),
+			text: t("invite.invite_member", { name: this.payload.memberName || this.payload.memberId }),
 		});
 		contentEl.createEl("p", {
-			text: t("invite.when_the_student_scans_the_qr",
+			text: t("invite.when_the_member_scans_the_qr",
 			),
 		});
 
@@ -52,7 +52,7 @@ export class InviteModal extends Modal {
 		// 복사 코드
 		new Setting(contentEl)
 			.setName(t("settings.invite_code"))
-			.setDesc(t("invite.send_to_student_paste_into_student"))
+			.setDesc(t("invite.send_to_member_paste_into_member"))
 			.addButton((b) =>
 				b
 					.setButtonText(t("invite.copy_code"))
@@ -70,11 +70,11 @@ export class InviteModal extends Modal {
 
 		contentEl.createEl("p", {
 			cls: "covault-invite-warn",
-			text: t("invite.this_invite_contains_the_student_s"),
+			text: t("invite.this_invite_contains_the_member_s"),
 		});
 		contentEl.createEl("p", {
 			cls: "setting-item-description",
-			text: t("panel.already_set_up_students_must_re"),
+			text: t("panel.already_set_up_members_must_re"),
 		});
 	}
 

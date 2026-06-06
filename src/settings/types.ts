@@ -39,7 +39,7 @@ export interface MemberConfig {
 }
 
 /**
- * Class Sync 설정. 기술문서 §5.1 / §11.1 / §12.1.
+ * CoVault 설정. 기술문서 §5.1 / §11.1 / §12.1.
  * 학생 모드는 localRoot 1건(개인 vault), 교사 모드는 members[] 다중 링크 + sharedSpaces[]로 동작한다.
  */
 export interface CoVaultSettings {

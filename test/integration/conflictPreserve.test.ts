@@ -9,8 +9,8 @@ describe("충돌 보존 (preserve-local)", () => {
 
 	it("업로드 대기(pending) 중 다른 기기의 원격 변경을 받으면 로컬 유지 + 원격본을 _충돌/에 보존", async () => {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "a", role: "teacher", remoteDb: "mirror_s1" });
-		const b = cluster.device({ deviceId: "b", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
 
 		// a가 원격에 "remote edit"을 올린다.
 		a.vault.seed("doc.md", "remote edit");
@@ -36,8 +36,8 @@ describe("충돌 보존 (preserve-local)", () => {
 
 	it("양쪽 분기 편집(_conflicts)이면 로컬 유지하고 원격본을 _충돌/에 꺼내며 'conflict' 반환", async () => {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "a", role: "teacher", remoteDb: "mirror_s1" });
-		const b = cluster.device({ deviceId: "b", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
 
 		// 공통 조상
 		a.vault.seed("c.md", "base");

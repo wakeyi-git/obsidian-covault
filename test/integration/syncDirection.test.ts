@@ -8,9 +8,9 @@ describe("동기화 방향성 (up/down)", () => {
 
 	it("'업로드만'은 로컬을 원격에 올리되 원격 변경을 vault로 끌어오지 않는다", async () => {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "a", role: "teacher", remoteDb: "mirror_s1" });
-		const b = cluster.device({ deviceId: "b", role: "student", remoteDb: "mirror_s1" });
-		const observer = cluster.device({ deviceId: "obs", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
+		const observer = cluster.device({ deviceId: "obs", role: "member", remoteDb: "mirror_s1" });
 
 		// 원격에는 b가 올린 파일이 이미 있다.
 		b.vault.seed("fromB.md", "b-content");
@@ -32,9 +32,9 @@ describe("동기화 방향성 (up/down)", () => {
 
 	it("'다운로드만'은 원격을 vault로 받되 로컬 전용 변경을 원격에 밀지 않는다", async () => {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "a", role: "teacher", remoteDb: "mirror_s1" });
-		const b = cluster.device({ deviceId: "b", role: "student", remoteDb: "mirror_s1" });
-		const observer = cluster.device({ deviceId: "obs", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
+		const observer = cluster.device({ deviceId: "obs", role: "member", remoteDb: "mirror_s1" });
 
 		// 원격에 b의 파일.
 		b.vault.seed("fromB.md", "b-content");

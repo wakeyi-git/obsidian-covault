@@ -122,7 +122,7 @@ export class DeletedRecoverySection implements PanelSection {
 			text: it.kind === "asset" ? t("recovery.attachment") : t("recovery.note"),
 		});
 
-		const who = it.deletedByRole === "manager" ? t("common.teacher") : t("common.student");
+		const who = it.deletedByRole === "manager" ? t("common.manager") : t("common.member");
 		const when = it.deletedAt ? formatDate(new Date(it.deletedAt)) : t("recovery.time_unknown");
 		card.createDiv({
 			cls: "covault-recovery-meta",

@@ -25,7 +25,7 @@ export class ManageSection implements PanelSection {
 		item(t("panel.reset_local_cache"), t("panel.clears_the_local_pouchdb_and_re"), () => this.host.resetLocalCache());
 
 		if (this.host.settings.role === "manager") {
-			item(t("panel.reset_server_data"), t("panel.deletes_the_student_shared_dbs_on"), () => this.host.openResetModal(), { warning: true });
+			item(t("panel.reset_server_data"), t("panel.deletes_the_member_shared_dbs_on"), () => this.host.openResetModal(), { warning: true });
 		} else {
 			item(t("panel.refresh_shared_spaces"), t("panel.re_fetches_the_shared_spaces_deployed"), () => this.host.refreshShares());
 		}

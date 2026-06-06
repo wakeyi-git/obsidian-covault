@@ -6,7 +6,7 @@ import { MirrorApplier } from "../../src/core/sync/MirrorApplier";
 import { ConflictManager } from "../../src/core/sync/ConflictManager";
 import { Uploader } from "../../src/core/sync/Uploader";
 import { FullSync } from "../../src/core/sync/FullSync";
-import { DEFAULT_SETTINGS, ClassSyncSettings, Role } from "../../src/settings/types";
+import { DEFAULT_SETTINGS, CoVaultSettings, Role } from "../../src/settings/types";
 import { noteId, assetId, NoteDoc, AssetDoc } from "../../src/core/model/types";
 import { makeApp, InMemoryVault } from "./vault";
 
@@ -35,14 +35,14 @@ export interface DeviceOpts {
 	role?: Role;
 	userId?: string;
 	remoteDb?: string;
-	studentId?: string;
+	memberId?: string;
 	localRoot?: string;
 	childRoots?: string[];
-	settings?: Partial<ClassSyncSettings>;
+	settings?: Partial<CoVaultSettings>;
 }
 
 export class Device {
-	readonly settings: ClassSyncSettings;
+	readonly settings: CoVaultSettings;
 	readonly vault: InMemoryVault;
 	readonly core: CoreServices;
 	readonly ctx: MirrorContext;
@@ -57,8 +57,8 @@ export class Device {
 		const localRoot = opts.localRoot ?? "";
 		this.settings = {
 			...DEFAULT_SETTINGS,
-			role: opts.role ?? "teacher",
-			classId: "class_test",
+			role: opts.role ?? "manager",
+			workspaceId: "class_test",
 			userId: opts.userId ?? opts.deviceId,
 			deviceId: opts.deviceId,
 			couchdbUrl: `mem://${ns}`,
@@ -74,7 +74,7 @@ export class Device {
 		const pouch = this.core.createPouch(remoteDb);
 		this.ctx = new MirrorContext(
 			this.core,
-			opts.studentId ?? "student_a",
+			opts.memberId ?? "member_a",
 			"학생A",
 			localRoot,
 			remoteDb,
@@ -126,13 +126,13 @@ export class Device {
 export function createCore(
 	ns: string,
 	deviceId: string,
-	settingsOverride: Partial<ClassSyncSettings> = {},
+	settingsOverride: Partial<CoVaultSettings> = {},
 ): { core: CoreServices; vault: InMemoryVault; log: LogEntry[] } {
 	const log: LogEntry[] = [];
-	const settings: ClassSyncSettings = {
+	const settings: CoVaultSettings = {
 		...DEFAULT_SETTINGS,
-		role: "teacher",
-		classId: "class_test",
+		role: "manager",
+		workspaceId: "class_test",
 		userId: deviceId,
 		deviceId,
 		couchdbUrl: `mem://${ns}`,
@@ -157,12 +157,12 @@ export interface Link {
 /** 주어진 core(=vault) 위에 하나의 동기화 링크를 구성한다. */
 export function buildLink(
 	core: CoreServices,
-	opts: { studentId?: string; localRoot: string; remoteDb: string; childRoots?: string[] },
+	opts: { memberId?: string; localRoot: string; remoteDb: string; childRoots?: string[] },
 ): Link {
 	const pouch = core.createPouch(opts.remoteDb);
 	const ctx = new MirrorContext(
 		core,
-		opts.studentId ?? "student_a",
+		opts.memberId ?? "member_a",
 		"학생A",
 		opts.localRoot,
 		opts.remoteDb,

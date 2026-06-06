@@ -8,7 +8,7 @@ describe("버전 히스토리", () => {
 
 	it("편집마다 스냅샷이 쌓이고 과거 버전으로 복원된다", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 
 		for (const v of ["v1", "v2", "v3"]) {
 			dev.vault.seed("a.md", v);
@@ -32,7 +32,7 @@ describe("버전 히스토리", () => {
 
 	it("삭제 직전 내용이 스냅샷으로 보존된다", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 		dev.vault.seed("b.md", "keep-me");
 		await dev.uploader.uploadPath("b.md");
 		await dev.uploader.tombstonePath("b.md");
@@ -45,7 +45,7 @@ describe("버전 히스토리", () => {
 		cluster = new Cluster();
 		const dev = cluster.device({
 			deviceId: "d",
-			role: "teacher",
+			role: "manager",
 			remoteDb: "mirror_s1",
 			settings: { versionMaxCount: 2, versionMaxAgeDays: 0 },
 		});
@@ -60,7 +60,7 @@ describe("버전 히스토리", () => {
 
 	it("P2-b: 실시간 스냅샷(uploadContent)도 버전을 남기고 동일 내용은 dedupe", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 
 		await dev.uploader.uploadContent("rt.md", "v1");
 		expect(await dev.ctx.versions.list("rt.md")).toHaveLength(1);
@@ -75,7 +75,7 @@ describe("버전 히스토리", () => {
 		cluster = new Cluster();
 		const dev = cluster.device({
 			deviceId: "d",
-			role: "teacher",
+			role: "manager",
 			remoteDb: "mirror_s1",
 			settings: { versionHistory: false },
 		});

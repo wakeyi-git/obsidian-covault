@@ -31,7 +31,7 @@ export class Logger {
 		if (level === "error") console.error(tag, message);
 		else if (level === "warn") console.warn(tag, message);
 
-		if (notice) new Notice(`Class Sync: ${message}`);
+		if (notice) new Notice(`CoVault: ${message}`);
 
 		for (const listener of this.listeners) listener(entry);
 	}

@@ -20,26 +20,26 @@ export class RoleSetupModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl("h2", { text: t("role.choose_class_sync_role") });
+		contentEl.createEl("h2", { text: t("role.choose_covault_role") });
 		contentEl.createEl("p", {
 			text: t("role.choose_the_role_to_use_in",
 			),
 		});
 
 		new Setting(contentEl)
-			.setName(t("role.student_mode"))
-			.setDesc(t("role.syncs_the_teacher_s_student_folder"))
-			.addButton((b) => b.setButtonText(t("role.choose_student")).setCta().onClick(() => this.choose("member")));
+			.setName(t("role.member_mode"))
+			.setDesc(t("role.syncs_the_manager_s_member_folder"))
+			.addButton((b) => b.setButtonText(t("role.choose_member")).setCta().onClick(() => this.choose("member")));
 
 		new Setting(contentEl)
-			.setName(t("role.teacher_mode"))
-			.setDesc(t("role.syncs_this_vault_s_student_folders"))
-			.addButton((b) => b.setButtonText(t("role.choose_teacher")).onClick(() => this.choose("manager")));
+			.setName(t("role.manager_mode"))
+			.setDesc(t("role.syncs_this_vault_s_member_folders"))
+			.addButton((b) => b.setButtonText(t("role.choose_manager")).onClick(() => this.choose("manager")));
 
-		contentEl.createEl("h3", { text: t("role.student_set_up_directly_with_an") });
+		contentEl.createEl("h3", { text: t("role.member_set_up_directly_with_an") });
 		contentEl.createEl("p", {
 			cls: "setting-item-description",
-			text: t("role.scanning_the_qr_from_your_teacher"),
+			text: t("role.scanning_the_qr_from_your_manager"),
 		});
 		let code = "";
 		new Setting(contentEl)

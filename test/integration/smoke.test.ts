@@ -7,8 +7,8 @@ describe("harness smoke", () => {
 
 	it("uploads a note, replicates to an observer device", async () => {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "devA", role: "teacher", remoteDb: "mirror_s1" });
-		const observer = cluster.device({ deviceId: "devB", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "devA", role: "manager", remoteDb: "mirror_s1" });
+		const observer = cluster.device({ deviceId: "devB", role: "member", remoteDb: "mirror_s1" });
 
 		a.vault.seed("notes/hello.md", "hello world");
 		const res = await a.uploader.uploadPath("notes/hello.md");

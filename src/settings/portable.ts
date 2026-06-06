@@ -78,7 +78,7 @@ export function importSettings(
 		return { ok: false, error: t("backup.not_valid_json") };
 	}
 	if (!payload || payload._meta?.app !== "covault" || typeof payload.settings !== "object") {
-		return { ok: false, error: t("backup.not_a_class_sync_settings_backup") };
+		return { ok: false, error: t("backup.not_a_covault_settings_backup") };
 	}
 
 	const merged: CoVaultSettings = { ...current };

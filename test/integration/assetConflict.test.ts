@@ -16,8 +16,8 @@ describe("첨부 충돌 (asset conflict)", () => {
 
 	async function makeConflict() {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "a", role: "teacher", remoteDb: "mirror_s1" });
-		const b = cluster.device({ deviceId: "b", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
 
 		a.vault.seedBinary("img/p.png", buf("BASE"));
 		await a.uploader.uploadPath("img/p.png");
@@ -73,8 +73,8 @@ describe("첨부 충돌 (asset conflict)", () => {
 	// 로컬 branch가 winner가 되는 경우: _충돌/에 보존되는 '원격본'이 실제 원격 바이너리여야 한다(보고서 P1).
 	async function makeLocalWinsConflict() {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "a", role: "teacher", remoteDb: "mirror_s1" });
-		const b = cluster.device({ deviceId: "b", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
 
 		a.vault.seedBinary("img/p.png", buf("BASE"));
 		await a.uploader.uploadPath("img/p.png");

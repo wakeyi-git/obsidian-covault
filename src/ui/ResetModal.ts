@@ -20,7 +20,7 @@ export class ResetModal extends Modal {
 		contentEl.createEl("h3", { text: t("reset.reset_server_data") });
 		contentEl.createEl("p", {
 			cls: "covault-reset-warn",
-			text: t("reset.this_permanently_deletes_all_student_and", {
+			text: t("reset.this_permanently_deletes_all_member_and", {
 				count: this.dbCount,
 			}),
 		});
@@ -31,7 +31,7 @@ export class ResetModal extends Modal {
 		});
 
 		new Setting(contentEl)
-			.setName(t("reset.also_delete_student_accounts_users_and"))
+			.setName(t("reset.also_delete_member_accounts_users_and"))
 			.setDesc(
 				t("reset.off_delete_dbs_only_accounts_and",
 				),
@@ -65,7 +65,7 @@ export class ResetModal extends Modal {
 					.setDisabled(true)
 					.onClick(async () => {
 						if (this.confirmValue !== word) {
-							new Notice(t("reset.class_sync_type_to_confirm", { word }));
+							new Notice(t("reset.covault_type_to_confirm", { word }));
 							return;
 						}
 						this.close();

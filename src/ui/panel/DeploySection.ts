@@ -36,11 +36,11 @@ export class DeploySection implements PanelSection {
 	// --- 학생에게 복사 ---
 
 	private renderCopy(container: HTMLElement): void {
-		container.createDiv({ cls: "covault-panel-label", text: t("deploy.copy_to_students") });
+		container.createDiv({ cls: "covault-panel-label", text: t("deploy.copy_to_members") });
 
 		const members = this.host.settings.members.filter((st) => st.memberId);
 		if (members.length === 0) {
-			container.createDiv({ cls: "covault-feedback-empty", text: t("deploy.add_students_in_settings_first") });
+			container.createDiv({ cls: "covault-feedback-empty", text: t("deploy.add_members_in_settings_first") });
 			return;
 		}
 
@@ -67,7 +67,7 @@ export class DeploySection implements PanelSection {
 		const srcFile = this.host.app.vault.getAbstractFileByPath(this.sourcePath);
 		new Setting(container)
 			.setName(t("deploy.target_path_empty_source_name"))
-			.setDesc(t("deploy.path_inside_each_student_s_folder"))
+			.setDesc(t("deploy.path_inside_each_member_s_folder"))
 			.addText((txt) =>
 				txt
 					.setPlaceholder(srcFile instanceof TFile ? srcFile.name : t("deploy.today_md"))
@@ -86,10 +86,10 @@ export class DeploySection implements PanelSection {
 
 		new Setting(container)
 			.setName(t("deploy.template_variable_substitution"))
-			.setDesc(t("deploy.substitute_per_student"))
+			.setDesc(t("deploy.substitute_per_member"))
 			.addToggle((tg) => tg.setValue(this.substitute).onChange((v) => (this.substitute = v)));
 
-		const head = new Setting(container).setName(t("deploy.target_students", { count: members.length }));
+		const head = new Setting(container).setName(t("deploy.target_members", { count: members.length }));
 		head.addButton((b) => b.setButtonText(t("deploy.select_all")).onClick(() => this.setAll(true)));
 		head.addButton((b) => b.setButtonText(t("deploy.none")).onClick(() => this.setAll(false)));
 		for (const st of members) {
@@ -106,7 +106,7 @@ export class DeploySection implements PanelSection {
 
 		const runRow = container.createDiv({ cls: "covault-panel-actions" });
 		panelButton(runRow, t("deploy.preview"), () => this.runPreview());
-		panelButton(runRow, t("deploy.copy_to_students"), () => this.runCopy(), { cta: true });
+		panelButton(runRow, t("deploy.copy_to_members"), () => this.runCopy(), { cta: true });
 
 		this.renderResult(container);
 	}
@@ -118,7 +118,7 @@ export class DeploySection implements PanelSection {
 			container.createDiv({ cls: "covault-panel-label", text: t("deploy.preview") });
 			const table = container.createEl("table", { cls: "covault-dash-table" });
 			const tr = table.createEl("thead").createEl("tr");
-			for (const h of [t("common.student"), t("deploy.create"), t("deploy.overwrite"), t("deploy.skip"), t("deploy.rename")]) tr.createEl("th", { text: h });
+			for (const h of [t("common.member"), t("deploy.create"), t("deploy.overwrite"), t("deploy.skip"), t("deploy.rename")]) tr.createEl("th", { text: h });
 			const tb = table.createEl("tbody");
 			for (const sp of plan.members) {
 				const c = { create: 0, overwrite: 0, skip: 0, rename: 0 };
@@ -131,7 +131,7 @@ export class DeploySection implements PanelSection {
 				row.createEl("td", { text: String(c.rename) });
 			}
 			if (plan.sampleAfter !== undefined) {
-				container.createDiv({ cls: "covault-panel-hint", text: t("deploy.substitution_preview_first_student") });
+				container.createDiv({ cls: "covault-panel-hint", text: t("deploy.substitution_preview_first_member") });
 				container.createEl("pre", { cls: "covault-deploy-sample", text: plan.sampleAfter });
 			}
 		}
@@ -141,7 +141,7 @@ export class DeploySection implements PanelSection {
 			container.createDiv({ cls: "covault-panel-label", text: t("deploy.copy_result") });
 			const table = container.createEl("table", { cls: "covault-dash-table" });
 			const tr = table.createEl("thead").createEl("tr");
-			for (const h of [t("common.student"), t("deploy.written"), t("deploy.skip"), t("deploy.result")]) tr.createEl("th", { text: h });
+			for (const h of [t("common.member"), t("deploy.written"), t("deploy.skip"), t("deploy.result")]) tr.createEl("th", { text: h });
 			const tb = table.createEl("tbody");
 			for (const d of res.details) {
 				const row = tb.createEl("tr");
@@ -165,7 +165,7 @@ export class DeploySection implements PanelSection {
 	private fillCurrent(kind: "file" | "folder"): void {
 		const f = this.host.app.workspace.getActiveFile();
 		if (!f) {
-			new Notice(t("deploy.class_sync_no_file_is_open"));
+			new Notice(t("deploy.covault_no_file_is_open"));
 			return;
 		}
 		// 원본만 채운다. 대상 경로는 비워두면 복사 시 원본 이름으로 자동 적용되므로,
@@ -200,12 +200,12 @@ export class DeploySection implements PanelSection {
 	/** 선택/원본 검증 후 대상 학생 ID 반환(없으면 null + Notice). */
 	private targetIds(override?: string[]): string[] | null {
 		if (!this.sourcePath) {
-			new Notice(t("deploy.class_sync_enter_a_source_path"));
+			new Notice(t("deploy.covault_enter_a_source_path"));
 			return null;
 		}
 		const ids = override ?? [...this.selected];
 		if (ids.length === 0) {
-			new Notice(t("deploy.class_sync_select_target_students"));
+			new Notice(t("deploy.covault_select_target_members"));
 			return null;
 		}
 		return ids;

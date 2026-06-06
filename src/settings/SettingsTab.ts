@@ -23,13 +23,13 @@ declare module "obsidian" {
 function issueMessage(i: SettingsIssue): string {
 	switch (i.code) {
 		case "dup-memberId":
-			return t("panel.duplicate_student_id", { value: String(i.params?.value) });
+			return t("panel.duplicate_member_id", { value: String(i.params?.value) });
 		case "dup-username":
 			return t("panel.duplicate_account_username", { value: String(i.params?.value) });
 		case "dup-remoteDb":
 			return t("panel.duplicate_mirror_db_name", { value: String(i.params?.value) });
 		case "bad-memberId":
-			return t("panel.invalid_student_id", { value: String(i.params?.value) });
+			return t("panel.invalid_member_id", { value: String(i.params?.value) });
 		case "bad-username":
 			return t("panel.invalid_username", { value: String(i.params?.value) });
 		case "bad-remoteDb":
@@ -127,7 +127,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 	// --- 역할 (상단 일반 설정, 헤딩 없음) ---
 	private renderRole(s: CoVaultSettings): void {
-		const roleLabel = s.role === "manager" ? t("settings.teacher_mode_teacher") : t("settings.student_mode_student");
+		const roleLabel = s.role === "manager" ? t("settings.manager_mode_manager") : t("settings.member_mode_member");
 		new Setting(this.containerEl)
 			.setName(t("settings.role"))
 			.setDesc(
@@ -140,11 +140,11 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 	// --- Manager Mode ---
 	private renderManager(s: CoVaultSettings): void {
-		const klass = this.group(t("settings.class"));
-		this.textSetting(klass, t("settings.class_id"), "workspaceId", "ws_2026_1");
-		this.textSetting(klass, t("settings.display_name"), "displayName", t("common.teacher"));
+		const klass = this.group(t("settings.workspace"));
+		this.textSetting(klass, t("settings.workspace_id"), "workspaceId", "ws_2026_1");
+		this.textSetting(klass, t("settings.display_name"), "displayName", t("common.manager"));
 
-		const admin = this.group(t("settings.admin_account"), t("settings.credentials_for_creating_student_accounts_dbs"));
+		const admin = this.group(t("settings.admin_account"), t("settings.credentials_for_creating_member_accounts_dbs"));
 		this.textSetting(admin, "CouchDB URL", "couchdbUrl", "https://nas.example.com", { applyOnBlur: true });
 		this.textSetting(admin, t("settings.admin_username"), "username", "admin", { applyOnBlur: true });
 		this.passwordSetting(admin);
@@ -159,8 +159,8 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 		// 학생 목록 (카드)
 		const members = this.group(
-			t("settings.students"),
-			s.members.length === 0 ? t("settings.add_your_first_student_with_add") : undefined,
+			t("settings.individual_spaces"),
+			s.members.length === 0 ? t("settings.add_your_first_member_with_add") : undefined,
 		);
 		s.members.forEach((st, i) => this.renderMemberCard(members, st, i));
 		members.addSetting((set) =>
@@ -168,7 +168,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.setClass("covault-add-row")
 				.addButton((b) =>
 					b
-						.setButtonText(t("settings.add_student"))
+						.setButtonText(t("settings.add_member"))
 						.setCta()
 						.onClick(async () => {
 							s.members.push({ memberId: "", memberName: "", remoteDb: "", localRoot: "", username: "" });
@@ -193,7 +193,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		);
 
 		// 공유 공간 (모둠/학급)
-		const shared = this.group(t("settings.shared_spaces_group_class"), t("settings.pick_members_and_deploy_to_create"));
+		const shared = this.group(t("settings.shared_spaces_group_workspace"), t("settings.pick_members_and_deploy_to_create"));
 		s.sharedSpaces.forEach((sp, i) => this.renderSharedCard(shared, sp, i));
 		shared.addSetting((set) =>
 			set.setClass("covault-add-row").addButton((b) =>
@@ -291,13 +291,13 @@ export class CoVaultSettingTab extends PluginSettingTab {
 	private renderRealtimeTargets(rt: SettingGroup, s: CoVaultSettings): void {
 		// --- 학생 개인 폴더 1:1 실시간(교사↔해당 학생) ---
 		const members = s.members.filter((st) => st.memberId && st.provisioned);
-		rt.addSetting((set) => set.setName(t("settings.realtime_per_student")).setDesc(t("settings.realtime_per_student_desc")).setHeading());
+		rt.addSetting((set) => set.setName(t("settings.realtime_per_member")).setDesc(t("settings.realtime_per_member_desc")).setHeading());
 		if (members.length === 0) {
-			rt.addSetting((set) => set.setDesc(t("settings.realtime_invite_students_first")));
+			rt.addSetting((set) => set.setDesc(t("settings.realtime_invite_members_first")));
 		} else {
 			const allOn = members.every((st) => st.realtime);
 			rt.addSetting((set) =>
-				set.setName(t("settings.realtime_all_students")).addToggle((tg) =>
+				set.setName(t("settings.realtime_all_members")).addToggle((tg) =>
 					tg.setValue(allOn).onChange(async (v) => {
 						members.forEach((st) => (st.realtime = v));
 						await this.host.saveSettings();
@@ -436,7 +436,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		const card = group.listEl.createDiv({ cls: "covault-student-card" });
 
 		const head = new Setting(card)
-			.setName(st.memberName || st.memberId || t("settings.student", { n: index + 1 }))
+			.setName(st.memberName || st.memberId || t("settings.member", { n: index + 1 }))
 			.setHeading()
 			.addButton((b) =>
 				b
@@ -459,8 +459,8 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					.setWarning()
 					.onClick(() =>
 						new ConfirmModal(this.host.app, {
-							title: t("panel.delete_student", { name: st.memberName || st.memberId || t("common.student") }),
-							message: t("panel.removes_this_student_from_the_list",
+							title: t("panel.delete_member", { name: st.memberName || st.memberId || t("common.member") }),
+							message: t("panel.removes_this_member_from_the_list",
 							),
 							warning: true,
 							onConfirm: async () => {
@@ -473,11 +473,11 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					),
 			);
 
-		this.memberField(card, t("settings.name"), st, "memberName", t("common.student_a"));
-		this.memberField(card, t("settings.student_id"), st, "memberId", "student_a");
+		this.memberField(card, t("settings.name"), st, "memberName", t("common.member_a"));
+		this.memberField(card, t("settings.member_id"), st, "memberId", "student_a");
 		// 비우면 초대 시점에 학생 ID로 자동 채움 (계정=ID, DB=mirror_<ID>, 폴더=이름/ID)
-		this.memberField(card, t("settings.mirror_db_auto_if_empty"), st, "remoteDb", t("settings.mirror_studentid"));
-		this.memberField(card, t("settings.folder_auto_if_empty"), st, "localRoot", t("settings.name_or_studentid"));
+		this.memberField(card, t("settings.mirror_db_auto_if_empty"), st, "remoteDb", t("settings.mirror_memberid"));
+		this.memberField(card, t("settings.folder_auto_if_empty"), st, "localRoot", t("settings.name_or_memberid"));
 
 		card.createEl("div", {
 			cls: "covault-student-status",
@@ -487,7 +487,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 	// --- Member Mode ---
 	private renderMember(s: CoVaultSettings): void {
-		const invite = this.group(t("settings.connect_via_invite"), t("settings.scan_the_qr_from_your_teacher"));
+		const invite = this.group(t("settings.connect_via_invite"), t("settings.scan_the_qr_from_your_manager"));
 		let codeValue = "";
 		invite.addSetting((set) =>
 			set
@@ -507,7 +507,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		// 친화적 요약(내부 용어 최소화). 자세한 실시간 상태는 패널 ‘동기화 상태’ 탭에서.
 		const info = this.group(t("panel.my_connection"), t("panel.see_detailed_sync_status_in_the"));
 		this.readonlySetting(info, t("settings.name"), s.displayName || t("settings.not_set"));
-		this.readonlySetting(info, t("settings.class_id"), s.workspaceId || t("settings.not_set"));
+		this.readonlySetting(info, t("settings.workspace_id"), s.workspaceId || t("settings.not_set"));
 		info.addSetting((set) =>
 			set
 				.setName(t("panel.check_connection"))
@@ -726,7 +726,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		g.addSetting((set) =>
 			set
 				.setName(t("settings.export_import_settings"))
-				.setDesc(t("settings.back_up_students_shared_spaces_and"))
+				.setDesc(t("settings.back_up_members_shared_spaces_and"))
 				.addButton((b) =>
 					b.setButtonText(t("common.export")).onClick(() => new ExportModal(this.app, this.host.exportSettingsJson()).open()),
 				)
@@ -749,7 +749,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 			g.addSetting((set) =>
 				set
 					.setName(t("settings.reset_server_data"))
-					.setDesc(t("settings.deletes_all_student_and_shared_databases"))
+					.setDesc(t("settings.deletes_all_member_and_shared_databases"))
 					.addButton((b) => b.setButtonText(t("settings.reset")).setWarning().onClick(() => this.host.openResetModal())),
 			);
 		}
@@ -759,7 +759,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 			g.addSetting((set) =>
 				set
 					.setName(t("settings.reset_role_local_reset"))
-					.setDesc(t("settings.for_switching_between_teacher_and_student"))
+					.setDesc(t("settings.for_switching_between_manager_and_member"))
 					.addButton((b) =>
 						b.setButtonText(t("common.reset")).setWarning().onClick(async () => {
 							await this.host.resetSetup();

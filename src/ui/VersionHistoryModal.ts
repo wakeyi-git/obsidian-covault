@@ -59,7 +59,7 @@ export class VersionHistoryModal extends Modal {
 		const list = contentEl.createDiv({ cls: "covault-version-list" });
 		for (const v of versions) {
 			const card = list.createDiv({ cls: "covault-version-card" });
-			const who = v.role === "manager" ? t("common.teacher") : t("common.student");
+			const who = v.role === "manager" ? t("common.manager") : t("common.member");
 			new Setting(card)
 				.setName(formatDate(v.createdAtMs))
 				.setDesc(t("version.msg", { kind: kindLabel(v.kind), who, by: v.createdBy, device: v.deviceId.slice(0, 6) }))

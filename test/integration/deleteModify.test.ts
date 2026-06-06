@@ -9,7 +9,7 @@ describe("최근 영구 삭제 되돌리기", () => {
 
 	it("노트 purge 후 스냅샷에서 되돌리기", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "d", role: "teacher", remoteDb: "mirror_s1" });
+		const dev = cluster.device({ deviceId: "d", role: "manager", remoteDb: "mirror_s1" });
 		const r = new RestoreManager(dev.ctx, dev.uploader);
 
 		dev.vault.seed("a.md", "important");
@@ -38,8 +38,8 @@ describe("삭제/수정 충돌 큐", () => {
 
 	async function setupConflict() {
 		cluster = new Cluster();
-		const a = cluster.device({ deviceId: "a", role: "teacher", remoteDb: "mirror_s1" });
-		const b = cluster.device({ deviceId: "b", role: "student", remoteDb: "mirror_s1" });
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
 
 		a.vault.seed("x.md", "v1");
 		await a.sync("both"); // 기준선
@@ -78,7 +78,7 @@ describe("삭제/수정 충돌 큐", () => {
 
 	it("P1: localRoot 있는 링크에서 '수정본 보관 후 삭제'가 복사본을 만든다", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "t", role: "teacher", remoteDb: "mirror_alice", localRoot: "students/alice" });
+		const dev = cluster.device({ deviceId: "t", role: "manager", remoteDb: "mirror_alice", localRoot: "students/alice" });
 		const r = new RestoreManager(dev.ctx, dev.uploader);
 
 		// 학생 폴더 아래 노트(dbPath="과제.md", localPath="students/alice/과제.md")
@@ -96,7 +96,7 @@ describe("삭제/수정 충돌 큐", () => {
 
 	it("P1(asset): localRoot 있는 링크에서 첨부 '수정본 보관 후 삭제'가 복사본을 만든다", async () => {
 		cluster = new Cluster();
-		const dev = cluster.device({ deviceId: "t", role: "teacher", remoteDb: "mirror_alice", localRoot: "students/alice" });
+		const dev = cluster.device({ deviceId: "t", role: "manager", remoteDb: "mirror_alice", localRoot: "students/alice" });
 		const r = new RestoreManager(dev.ctx, dev.uploader);
 
 		const data = new TextEncoder().encode("PNGDATA").buffer;

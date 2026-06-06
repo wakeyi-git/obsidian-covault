@@ -18,7 +18,7 @@ export async function runDiagnostics(core: CoreServices, targets: DiagTarget[]):
 
 	log.info(t("diagnostics.full_diagnostics_started"), true);
 	log.info(
-		t("diagnostics.settings_role_class_url_autosync_attachments",
+		t("diagnostics.settings_role_workspace_url_autosync_attachments",
 			{
 				role: s.role,
 				workspaceId: s.workspaceId,
@@ -37,7 +37,7 @@ export async function runDiagnostics(core: CoreServices, targets: DiagTarget[]):
 		return;
 	}
 	if (targets.length === 0) {
-		log.warn(t("diagnostics.no_db_to_diagnose_teacher_add"), true);
+		log.warn(t("diagnostics.no_db_to_diagnose_manager_add"), true);
 		return;
 	}
 
@@ -69,7 +69,7 @@ export async function runDiagnostics(core: CoreServices, targets: DiagTarget[]):
 				continue;
 			}
 			if (status === 403) {
-				log.warn(t("diagnostics.access_denied_403_for_another_student", { label, db }));
+				log.warn(t("diagnostics.access_denied_403_for_another_member", { label, db }));
 				continue;
 			}
 			if (status >= 400) {

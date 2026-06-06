@@ -52,20 +52,20 @@ export class SetupSection implements PanelSection {
 				],
 			},
 			{
-				title: t("panel.2_class_info"),
-				desc: t("panel.set_the_class_id_and_teacher"),
+				title: t("panel.2_workspace_info"),
+				desc: t("panel.set_the_workspace_id_and_manager"),
 				done: !!s.workspaceId,
 				actions: [{ label: t("panel.open_settings"), run: () => this.host.openSettings() }],
 			},
 			{
-				title: t("panel.3_add_students"),
-				desc: t("panel.add_students_add_student_in_the"),
+				title: t("panel.3_add_members"),
+				desc: t("panel.add_members_add_member_in_the"),
 				done: membersWithId.length > 0,
 				actions: [{ label: t("panel.open_settings"), run: () => this.host.openSettings(), cta: membersWithId.length === 0 }],
 			},
 			{
-				title: t("panel.4_invite_students"),
-				desc: t("panel.use_invite_on_a_student_card", {
+				title: t("panel.4_invite_members"),
+				desc: t("panel.use_invite_on_a_member_card", {
 					n: provisioned,
 				}),
 				done: provisioned > 0,
@@ -88,7 +88,7 @@ export class SetupSection implements PanelSection {
 		const steps = this.steps();
 		const doneCount = steps.filter((x) => x.done).length;
 
-		c.createDiv({ cls: "covault-panel-label", text: t("panel.teacher_setup") });
+		c.createDiv({ cls: "covault-panel-label", text: t("panel.manager_setup") });
 		c.createDiv({
 			cls: "covault-panel-hint",
 			text: t("panel.steps_done_follow_them_in_order", {
@@ -116,7 +116,7 @@ export class SetupSection implements PanelSection {
 			doneCount === steps.length ? t("panel.finish_dashboard") : t("panel.do_it_later_dashboard"),
 			async () => {
 				await this.host.completeOnboarding();
-				new Notice(t("panel.class_sync_closed_the_setup_guide"));
+				new Notice(t("panel.covault_closed_the_setup_guide"));
 				await this.host.activatePanel("sync");
 			},
 			{ cta: doneCount === steps.length },

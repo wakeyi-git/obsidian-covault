@@ -63,14 +63,14 @@ export class ManagerMode implements CoVaultMode {
 	async start(): Promise<void> {
 		const s = this.core.settings;
 		this.core.logger.ok(
-			t("mode.teacher_mode_started_students_shared", {
+			t("mode.manager_mode_started_members_shared", {
 				members: s.members.length,
 				shared: s.sharedSpaces.length,
 			}),
 			true,
 		);
 		if (this.syncs.length === 0) {
-			this.core.logger.warn(t("mode.no_students_or_shared_spaces_add"));
+			this.core.logger.warn(t("mode.no_members_or_shared_spaces_add"));
 			return;
 		}
 		for (const sync of this.syncs) await sync.start();
@@ -78,7 +78,7 @@ export class ManagerMode implements CoVaultMode {
 
 	async stop(): Promise<void> {
 		for (const sync of this.syncs) await sync.stop();
-		this.core.logger.info(t("mode.teacher_mode_stopped"));
+		this.core.logger.info(t("mode.manager_mode_stopped"));
 	}
 
 	async fullSync(direction: SyncDirection): Promise<void> {

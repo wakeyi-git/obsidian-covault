@@ -302,7 +302,7 @@ export class RealtimeManager {
 		);
 		// room 이름(교사·학생이 정확히 같아야 실시간 공유됨)
 		const room = f && space ? this.roomFor(f.path, space) : null;
-		log.info(t("realtime.room_teacher_and_students_must_have", { room: room ?? t("common.none_2") }));
+		log.info(t("realtime.room_manager_and_members_must_have", { room: room ?? t("common.none_2") }));
 		const session = f ? this.sessions.get(f.path) : undefined;
 		log.info(
 			t("realtime.session_connected_participants", {
