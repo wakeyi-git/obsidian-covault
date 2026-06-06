@@ -80,6 +80,12 @@ export class CoVaultSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		const s = this.host.settings;
+
+		// 항목 추가 등으로 display()를 다시 호출하면 containerEl.empty()가 콘텐츠를 비워
+		// 스크롤이 상단으로 튄다. 재렌더 전 스크롤 위치를 저장했다가 복원한다.
+		const scroller = this.scrollContainer();
+		const scrollTop = scroller?.scrollTop ?? 0;
+
 		containerEl.empty();
 
 		// 탭 제목이 이미 플러그인 이름을 표시하므로 상단 제목/그룹 헤딩은 두지 않는다(Obsidian 가이드).
@@ -93,6 +99,27 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		this.renderSyncOptions(s);
 		this.renderBackup();
 		this.renderApplyAndReset(s);
+
+		if (scroller && scrollTop > 0) {
+			scroller.scrollTop = scrollTop;
+			// 재렌더 직후 레이아웃이 늦게 확정되는 경우를 대비해 다음 프레임에 한 번 더 복원한다.
+			window.requestAnimationFrame(() => {
+				scroller.scrollTop = scrollTop;
+			});
+		}
+	}
+
+	/** containerEl을 감싸는 스크롤 가능한 조상 요소(설정 패널 본문). 없으면 null. */
+	private scrollContainer(): HTMLElement | null {
+		let el: HTMLElement | null = this.containerEl;
+		while (el) {
+			if (el.scrollHeight > el.clientHeight) {
+				const overflowY = getComputedStyle(el).overflowY;
+				if (overflowY === "auto" || overflowY === "scroll") return el;
+			}
+			el = el.parentElement;
+		}
+		return null;
 	}
 
 	// --- 설정 검증 경고(상단 지속 표시) ---

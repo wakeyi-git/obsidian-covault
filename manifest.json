@@ -1,7 +1,7 @@
 {
 	"id": "covault",
 	"name": "CoVault",
-	"version": "0.26.2",
+	"version": "0.26.3",
 	"minAppVersion": "1.11.4",
 	"description": "Two-way sync of each member's private vault folder with a manager, plus shared spaces — over self-hosted CouchDB, with realtime co-editing (Yjs) and QR onboarding to least-privilege accounts. For classrooms, teams, and any organization.",
 	"author": "wakeyi",
