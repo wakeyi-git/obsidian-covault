@@ -148,7 +148,16 @@
 		"streak": "🔥 {n}d",
 		"export_csv": "Export CSV",
 		"csv_copied": "Gradebook CSV copied to clipboard.",
-		"csv_copy_failed": "Could not copy CSV."
+		"csv_copy_failed": "Could not copy CSV.",
+		"sum_count": "{n}",
+		"sum_read": "Read {done}/{total}",
+		"sum_members_read": "Read {done}/{total} members",
+		"sum_submitted": "Submitted {done}/{total}",
+		"sum_done": "Done {done}/{total}",
+		"sum_done_members": "Done {done}/{total} members",
+		"sum_graded": "Graded {done}/{total}",
+		"sum_cells": "{n} filled",
+		"not_set": "Not set"
 	},
 	"deploy": {
 		"copy_to_members": "Copy to members",

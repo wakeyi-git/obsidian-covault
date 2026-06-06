@@ -148,7 +148,16 @@
 		"streak": "🔥 {n}일",
 		"export_csv": "CSV 내보내기",
 		"csv_copied": "성적부 CSV를 클립보드에 복사했습니다.",
-		"csv_copy_failed": "CSV를 복사하지 못했습니다."
+		"csv_copy_failed": "CSV를 복사하지 못했습니다.",
+		"sum_count": "{n}건",
+		"sum_read": "확인 {done}/{total}",
+		"sum_members_read": "확인 {done}/{total}명",
+		"sum_submitted": "제출 {done}/{total}",
+		"sum_done": "완료 {done}/{total}",
+		"sum_done_members": "완료 {done}/{total}명",
+		"sum_graded": "채점 {done}/{total}",
+		"sum_cells": "{n}칸 입력",
+		"not_set": "미설정"
 	},
 	"deploy": {
 		"copy_to_members": "구성원에게 복사",
