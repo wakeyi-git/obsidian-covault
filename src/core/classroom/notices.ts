@@ -39,6 +39,39 @@ export interface ResponseSummary {
 	comments: ResponseDoc[]; // comment/question(작성순)
 }
 
+/** 수업이 연결된 시간표 칸 위치(요일 인덱스, 교시 인덱스). */
+export interface LessonSlot {
+	day: number;
+	period: number;
+}
+
+/**
+ * 수업 안내를 시간표 슬롯 기준으로 정렬(순수). 오늘 요일을 맨 앞에 두고(요일 회전), 같은 요일은 교시 순서.
+ * 시간표에 연결되지 않은 수업은 뒤로(최신순). todayDayIndex/ numDays는 월=0 기준.
+ */
+export function sortLessonsBySchedule<T extends { uid: string; postedAtMs: number }>(
+	lessons: T[],
+	slotByUid: Map<string, LessonSlot>,
+	todayDayIndex: number,
+	numDays: number,
+): T[] {
+	const rotated = (day: number) => (((day - todayDayIndex) % numDays) + numDays) % numDays;
+	return [...lessons].sort((a, b) => {
+		const sa = slotByUid.get(a.uid);
+		const sb = slotByUid.get(b.uid);
+		if (sa && sb) {
+			const ra = rotated(sa.day);
+			const rb = rotated(sb.day);
+			if (ra !== rb) return ra - rb;
+			if (sa.period !== sb.period) return sa.period - sb.period;
+			return a.postedAtMs - b.postedAtMs;
+		}
+		if (sa) return -1; // 슬롯 연결된 수업이 먼저
+		if (sb) return 1;
+		return b.postedAtMs - a.postedAtMs; // 둘 다 미연결: 최신순
+	});
+}
+
 /** 한 알림장의 응답 집계(읽음 명단 + 미읽음 + 댓글/질문 스레드). */
 export function summarizeResponses(responses: ResponseDoc[], memberIds: string[]): ResponseSummary {
 	const live = responses.filter((r) => !r.deleted);

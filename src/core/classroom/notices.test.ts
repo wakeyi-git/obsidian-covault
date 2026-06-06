@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { slugify, noticeFilePath, sortNotices, summarizeResponses } from "./notices";
+import { slugify, noticeFilePath, sortNotices, summarizeResponses, sortLessonsBySchedule, LessonSlot } from "./notices";
 import { NoticeDoc, ResponseDoc } from "../model/types";
 
 describe("slugify / noticeFilePath", () => {
@@ -58,6 +58,33 @@ function resp(over: Partial<ResponseDoc>): ResponseDoc {
 		...over,
 	};
 }
+
+describe("sortLessonsBySchedule", () => {
+	const L = (uid: string, postedAtMs = 0) => ({ uid, postedAtMs });
+	// 슬롯: 월(0)1교시=a, 월2교시=b, 화(1)1교시=c, 수(2)=d
+	const slots = new Map<string, LessonSlot>([
+		["a", { day: 0, period: 0 }],
+		["b", { day: 0, period: 1 }],
+		["c", { day: 1, period: 0 }],
+		["d", { day: 2, period: 0 }],
+	]);
+
+	it("오늘(화=1) 우선, 같은 날은 교시 순, 이후 요일 회전", () => {
+		const out = sortLessonsBySchedule([L("a"), L("b"), L("c"), L("d")], slots, 1, 5);
+		// 화(c) → 수(d) → ... → 월(a,b) 맨 뒤(회전). 월은 a(1교시)→b(2교시).
+		expect(out.map((x) => x.uid)).toEqual(["c", "d", "a", "b"]);
+	});
+
+	it("월(0)이 오늘이면 월부터 교시 순", () => {
+		const out = sortLessonsBySchedule([L("d"), L("b"), L("a"), L("c")], slots, 0, 5);
+		expect(out.map((x) => x.uid)).toEqual(["a", "b", "c", "d"]);
+	});
+
+	it("미연결 수업은 뒤로(최신순)", () => {
+		const out = sortLessonsBySchedule([L("z1", 100), L("a"), L("z2", 200)], slots, 0, 5);
+		expect(out.map((x) => x.uid)).toEqual(["a", "z2", "z1"]);
+	});
+});
 
 describe("summarizeResponses", () => {
 	it("읽음 명단/미읽음/댓글 스레드 집계", () => {

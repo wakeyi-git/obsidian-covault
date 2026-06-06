@@ -3,11 +3,13 @@ import { PanelHost, panelButton } from "../PanelSection";
 import {
 	NoticeDoc,
 	ResponseDoc,
+	TimetableDoc,
 	RESPONSE_ID_PREFIX,
 	noticePrefix,
 	responseId,
+	timetableId,
 } from "../../../core/model/types";
-import { sortNotices, summarizeResponses } from "../../../core/classroom/notices";
+import { sortNotices, summarizeResponses, sortLessonsBySchedule, LessonSlot } from "../../../core/classroom/notices";
 import { weekStart, addWeeks, weekRangeLabel } from "../../../core/classroom/week";
 import { NoticeComposeModal } from "../../NoticeComposeModal";
 import { TimetableView } from "./TimetableView";
@@ -87,10 +89,23 @@ export class NoticesView {
 			this.timetable.render(ttBox);
 		}
 
-		const all = sortNotices(await store.listByPrefix<NoticeDoc>(noticePrefix()));
-		const notices = all.filter(
-			(n) => (n.category ?? "notice") === this.category && (!this.isLesson || n.weekKey === this.weekKey),
+		const raw = (await store.listByPrefix<NoticeDoc>(noticePrefix())).filter(
+			(n) => !n.deleted && (n.category ?? "notice") === this.category && (!this.isLesson || n.weekKey === this.weekKey),
 		);
+		// 수업 안내: 오늘 요일 우선 + 교시 순(시간표 슬롯 기준). 알림장: 고정/최신순.
+		let notices: NoticeDoc[];
+		if (this.isLesson) {
+			const tt = await store.get<TimetableDoc>(timetableId(this.weekKey));
+			const slotByUid = new Map<string, LessonSlot>();
+			for (const [cellKey, uid] of Object.entries(tt?.lessons ?? {})) {
+				const [day, period] = cellKey.split(":").map(Number);
+				slotByUid.set(uid, { day, period });
+			}
+			const todayIdx = (new Date().getDay() + 6) % 7; // 월=0
+			notices = sortLessonsBySchedule(raw, slotByUid, todayIdx, tt?.days.length ?? 5);
+		} else {
+			notices = sortNotices(raw);
+		}
 		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
 		if (notices.length === 0) {
 			c.createDiv({ cls: "covault-dash-empty", text: this.label(t("dashboard.no_notices"), t("dashboard.no_lessons")) });
