@@ -911,6 +911,23 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	/**
+	 * 현재 설정 기준으로 모든 프로비저닝된 구성원의 shares 문서를 다시 기록(교사). 공동 공간 삭제 시,
+	 * 구성원이 더 이상 존재하지 않는 공유 DB를 계속 동기화하지 않도록 shares에서 제거한다.
+	 */
+	async refreshMemberShares(): Promise<void> {
+		const s = this.settings;
+		if (s.role !== "manager") return;
+		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
+			this.logger.warn(t("command.enter_the_admin_account_first"), true);
+			return;
+		}
+		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
+		for (const st of s.members) {
+			if (st.provisioned && st.remoteDb) await this.writeMemberSync(admin, st);
+		}
+	}
+
+	/**
 	 * 실시간 토글(학생 개인 폴더/공유 공간/전체) 적용. 토큰 재발급 + 프로비저닝된 모든 학생의 shares/rtconfig
 	 * 재기록 + 모드 재시작. 공유 공간을 재배포(재프로비저닝)하지 않고 실시간 설정만 전파한다.
 	 */

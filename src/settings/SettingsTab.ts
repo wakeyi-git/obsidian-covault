@@ -65,6 +65,8 @@ export interface SettingsHost extends Plugin {
 	deleteMemberServer(member: MemberConfig): Promise<void>;
 	/** 공동 공간 서버 데이터(공유 DB) 삭제. */
 	deleteSharedServer(space: SharedSpace): Promise<void>;
+	/** 모든 구성원의 shares 문서 재기록(공동 공간 삭제 후 구성원이 사라진 DB를 동기화하지 않도록). */
+	refreshMemberShares(): Promise<void>;
 	redeployRealtime(): Promise<void>;
 	exportSettingsJson(): string;
 	importSettingsJson(json: string): Promise<{ ok: boolean; error?: string }>;
@@ -417,6 +419,8 @@ export class CoVaultSettingTab extends PluginSettingTab {
 								if (alsoServer) await this.host.deleteSharedServer(sp);
 								s.sharedSpaces.splice(index, 1);
 								await this.host.saveSettings();
+								// 구성원 shares에서 이 공간을 제거 → 구성원이 더 이상 동기화하지 않음.
+								await this.host.refreshMemberShares();
 								await this.host.restartMode();
 								this.display();
 							},
