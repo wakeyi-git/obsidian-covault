@@ -28,6 +28,7 @@ export class RoutinesView {
 		const head = c.createDiv({ cls: "covault-dash-modhead" });
 		panelButton(head, t("dashboard.back"), () => this.onBack());
 		head.createSpan({ cls: "covault-dash-modtitle", text: t("dashboard.routines") });
+		panelButton(head, t("dashboard.refresh"), () => void this.reload());
 		if (this.manager) {
 			panelButton(
 				head,

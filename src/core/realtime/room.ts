@@ -26,7 +26,7 @@ export function roomName(workspaceId: string, spaceId: string, localPath: string
  * 공유 폴더를 가리지 않게 한다. 빈 folder는 mirror 공간만 허용(잘못 설정된 share가 vault 전체를 삼키는 것 방지).
  * 제외(보관/충돌/excludeFolders) 판정은 호출측이 isExcluded로 주입한다.
  */
-export function pickSpace<T extends { folder: string; kind?: "share" | "mirror" }>(
+export function pickSpace<T extends { folder: string; kind?: "share" | "homeroom" | "mirror" }>(
 	spaces: T[],
 	localPath: string,
 	isExcluded: (folder: string) => boolean,

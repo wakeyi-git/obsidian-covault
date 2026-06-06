@@ -55,9 +55,12 @@ export class ManagerMode implements CoVaultMode {
 			// 공유 공간은 realtime!==false인 것만 실시간 대상(파일 동기화 링크는 위에서 별도로 모두 구성됨).
 			...shared
 				.filter((sp) => sp.realtime !== false)
-				.map((sp) => ({ id: sp.id, folder: sp.folder, token: sp.token, kind: "share" as const })),
+				.map((sp) => ({ id: sp.id, folder: sp.folder, token: sp.token, kind: (sp.kind === "homeroom" ? "homeroom" : "share") as "homeroom" | "share" })),
 			...mirrorSpaces,
 		];
+		// 학급 공동 공간 지정(있으면) — 알림장·수업안내·과제 공유의 기준 폴더/DB.
+		const hr = shared.find((sp) => sp.kind === "homeroom");
+		core.homeroom = hr ? { remoteDb: hr.remoteDb, folder: hr.folder } : null;
 	}
 
 	async start(): Promise<void> {

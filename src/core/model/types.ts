@@ -102,10 +102,11 @@ export interface SharesDoc extends PouchDocBase {
 		token?: string;
 		/**
 		 * 공간 종류. "share"(기본)=공유 공간(별도 share_* DB·폴더 링크 생성).
+		 * "homeroom"=학급 운영 대시보드(알림장·시간표·과제·루틴)를 담는 학급 공동 공간(동기화는 share와 동일).
 		 * "mirror"=학생 개인 mirror 자체의 1:1 실시간 공간 — 학생은 이미 개인 mirror를 동기화하므로
 		 * 별도 링크를 만들지 않고 실시간(room/token) 용도로만 쓴다.
 		 */
-		kind?: "share" | "mirror";
+		kind?: "share" | "homeroom" | "mirror";
 		/** 이 공간에서 실시간 공동 편집을 쓸지(미설정/true=사용, false=끔). 파일 동기화와 무관. */
 		realtime?: boolean;
 	}>;

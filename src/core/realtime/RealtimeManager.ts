@@ -56,7 +56,7 @@ export class RealtimeManager {
 		private app: App,
 		private core: CoreServices,
 		/** 현재 사용자의 공유 공간 목록(교사=설정, 학생=shares). main이 주입. */
-		private getSpaces: () => Array<{ id: string; folder: string; token?: string; kind?: "share" | "mirror" }>,
+		private getSpaces: () => Array<{ id: string; folder: string; token?: string; kind?: "share" | "homeroom" | "mirror" }>,
 		/** 로컬 경로 → 담당 동기화 링크(스냅샷 쓰기용). main이 현재 mode 기준으로 주입. */
 		private getSyncForPath: (localPath: string) => SnapshotTarget | undefined = () => undefined,
 	) {}

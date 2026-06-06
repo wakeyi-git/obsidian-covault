@@ -92,11 +92,7 @@ export class DashboardSection implements PanelSection {
 				cls: "covault-issues-title",
 				text: manager ? t("dashboard.homeroom_not_set_manager") : t("dashboard.homeroom_not_set_member"),
 			});
-			if (manager)
-				panelButton(box, t("dashboard.create_homeroom"), async () => {
-					await this.host.ensureHomeroom();
-					this.draw();
-				}, { cta: true });
+			if (manager) panelButton(box, t("dashboard.open_settings_homeroom"), () => this.host.openSettings(), { cta: true });
 		}
 
 		const grid = c.createDiv({ cls: "covault-dash-grid" });

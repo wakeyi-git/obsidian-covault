@@ -36,7 +36,7 @@ import {
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
-import { ensureHomeroomSpace, HOMEROOM_FOLDER, HOMEROOM_DB } from "./core/classroom/homeroom";
+import { findHomeroom, setHomeroom } from "./core/classroom/homeroom";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
@@ -428,29 +428,43 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	/**
-	 * 학급 공유 공간의 pouch(미프로비저닝/미수신이면 undefined). 고정 DB명(HOMEROOM_DB)으로 현재 모드의
+	 * 학급 공동 공간의 pouch(미지정/미수신이면 undefined). core.homeroom(지정된 공간 DB)로 현재 모드의
 	 * 동기화 링크에서 해석한다 — 교사(설정의 sharedSpaces)·학생(수신한 shares) 양쪽 모두 동작.
 	 */
 	private homeroomPouch(): PouchService | undefined {
-		return (this.mode?.getSyncs() ?? []).find((s) => s.ctx.remoteDb === HOMEROOM_DB)?.ctx.pouch;
+		const h = this.core.homeroom;
+		if (!h) return undefined;
+		return (this.mode?.getSyncs() ?? []).find((s) => s.ctx.remoteDb === h.remoteDb)?.ctx.pouch;
 	}
 
-	/** PanelHost: 학급 공유 공간이 준비됐는지(배포 + 동기화 링크 존재). */
+	/** 학급 운영 기능의 기준 폴더(지정된 학급 공동 공간의 폴더). 미지정이면 null. */
+	private homeroomFolder(): string | null {
+		return this.core.homeroom?.folder ?? null;
+	}
+
+	/** PanelHost: 학급 공동 공간이 준비됐는지(지정 + 배포 + 동기화 링크 존재). */
 	homeroomReady(): boolean {
 		return !!this.homeroomPouch();
 	}
 
-	/** PanelHost: 학급(homeroom) 공유 공간을 만들고(전원 멤버) 배포한다. 교사 전용. */
-	async ensureHomeroom(): Promise<void> {
-		if (this.settings.role !== "manager") {
+	/** SettingsHost: 공유 공간 하나를 학급 공동 공간으로 지정/해제(교사 전용). */
+	async setHomeroomSpace(space: SharedSpace, on: boolean): Promise<void> {
+		const s = this.settings;
+		if (s.role !== "manager") {
 			this.logger.warn(t("command.available_in_manager_mode_only"), true);
 			return;
 		}
-		const memberIds = this.settings.members.filter((m) => m.memberId && m.provisioned).map((m) => m.memberId);
-		const { space, spaces } = ensureHomeroomSpace(this.settings.sharedSpaces, memberIds, t("dashboard.homeroom_name"));
-		this.settings.sharedSpaces = spaces;
+		s.sharedSpaces = setHomeroom(s.sharedSpaces, on ? space.id : null);
 		await this.saveSettings();
-		await this.deployShared(space); // 프로비저닝 + 전원 shares 갱신 + 모드 재시작
+		const hr = s.sharedSpaces.find((sp) => sp.id === space.id);
+		// 지정한 공간이 미배포면 배포(프로비저닝 + 전원 shares 갱신 + 모드 재시작 포함).
+		if (on && hr && !hr.provisioned) {
+			await this.deployShared(hr);
+			return;
+		}
+		// 이미 배포된 경우: kind 변경을 구성원 shares에 전파 + 모드 재구성.
+		await this.refreshMemberShares();
+		await this.restartMode();
 	}
 
 	/** 게시 본문 파일 + NoticeDoc 생성(교사). 성공 시 uid, 실패 시 null. */
@@ -463,8 +477,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
 			return null;
 		}
+		const folder = this.homeroomFolder();
+		if (!folder) {
+			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
+			return null;
+		}
 		const ts = Date.now();
-		const path = noticeFilePath(HOMEROOM_FOLDER, ts, title, category === "lesson" ? "수업" : "알림장");
+		const path = noticeFilePath(folder, ts, title, category === "lesson" ? "수업" : "알림장");
 		await ensureParentFolders(this.app, path);
 		if (this.app.vault.getAbstractFileByPath(path)) {
 			this.logger.warn(t("dashboard.notice_file_exists"), true);
@@ -602,11 +621,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		const templateContent = def.templatePaths[0] ? await this.readVaultText(def.templatePaths[0]) : null;
 		const templateName = def.templatePaths[0]?.split("/").pop() || "과제.md";
 		const fallback = `# ${def.title}\n\n${def.instructions || ""}\n`;
+		const homeFolder = this.homeroomFolder() ?? "";
 
-		// 공유 과제: 학급 폴더에 한 번만 작성(전원 공유). 경로가 교사·학생 양측 동일(_학급 고정).
+		// 공유 과제: 학급 공동 공간 폴더에 한 번만 작성(전원 공유). 경로가 교사·학생 양측 동일.
 		let sharedWorkPath: string | null = null;
 		if (def.privacy === "shared") {
-			sharedWorkPath = `${assignmentWorkDir("shared", "", HOMEROOM_FOLDER, slug)}/${templateName}`;
+			sharedWorkPath = `${assignmentWorkDir("shared", "", homeFolder, slug)}/${templateName}`;
 			const body = templateContent != null ? substituteTemplate(templateContent, { memberId: "", memberName: "", workspaceId: s.workspaceId, date }) : fallback;
 			await this.writeFileIfAbsent(sharedWorkPath, body);
 		}
@@ -620,8 +640,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				workPaths = sharedWorkPath ? [sharedWorkPath] : [];
 			} else {
 				// 저장은 학생측 경로(dbPath, localRoot 상대), 파일 작성은 교사 vault의 member.localRoot 아래.
-				const studentPath = `${assignmentWorkDir("mirror", "", HOMEROOM_FOLDER, slug)}/${templateName}`;
-				const teacherPath = `${assignmentWorkDir("mirror", member.localRoot, HOMEROOM_FOLDER, slug)}/${templateName}`;
+				const studentPath = `${assignmentWorkDir("mirror", "", homeFolder, slug)}/${templateName}`;
+				const teacherPath = `${assignmentWorkDir("mirror", member.localRoot, homeFolder, slug)}/${templateName}`;
 				const body = templateContent != null ? substituteTemplate(templateContent, { memberId: member.memberId, memberName: member.memberName, workspaceId: s.workspaceId, date }) : fallback;
 				await this.writeFileIfAbsent(teacherPath, body);
 				workPaths = [studentPath];
@@ -892,7 +912,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		const s = this.settings;
 		const spaces: SharesDoc["spaces"] = s.sharedSpaces
 			.filter((sp) => sp.members.includes(st.memberId))
-			.map((sp) => ({ id: sp.id, name: sp.name, remoteDb: sp.remoteDb, folder: sp.folder, token: sp.token, kind: "share", realtime: sp.realtime !== false }));
+			.map((sp) => ({
+				id: sp.id,
+				name: sp.name,
+				remoteDb: sp.remoteDb,
+				folder: sp.folder,
+				token: sp.token,
+				kind: sp.kind === "homeroom" ? ("homeroom" as const) : ("share" as const),
+				realtime: sp.realtime !== false,
+			}));
 		// 개인 mirror 1:1 실시간(folder=""=학생 vault 전체). 동기화 링크는 안 만들고 room/token 용도로만.
 		if (st.realtime && st.realtimeToken) {
 			spaces.push({ id: `mirror-${st.memberId}`, name: st.memberName, remoteDb: st.remoteDb, folder: "", token: st.realtimeToken, kind: "mirror", realtime: true });

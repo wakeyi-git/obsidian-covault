@@ -59,6 +59,9 @@ export class MemberMode implements CoVaultMode {
 			this.core.sharedSpaces = spaces
 				.filter((sp) => sp.kind === "mirror" || sp.realtime !== false)
 				.map((sp) => ({ id: sp.id, folder: sp.folder, token: sp.token, kind: sp.kind }));
+			// 학급 공동 공간 지정 수신 — 알림장·수업안내·과제 공유의 기준 폴더/DB.
+			const hr = spaces.find((sp) => sp.kind === "homeroom");
+			this.core.homeroom = hr ? { remoteDb: hr.remoteDb, folder: hr.folder } : null;
 			// 동기화 링크는 공유 공간(kind!=="mirror")만 만든다 — mirror는 개인 mirror로 이미 동기화되므로 중복 금지.
 			// 실시간 on/off와 무관하게 모든 공유 공간을 동기화한다.
 			const linkSpaces = spaces.filter((sp) => sp.kind !== "mirror");

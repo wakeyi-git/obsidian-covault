@@ -67,6 +67,8 @@ export interface SettingsHost extends Plugin {
 	deleteSharedServer(space: SharedSpace): Promise<void>;
 	/** 모든 구성원의 shares 문서 재기록(공동 공간 삭제 후 구성원이 사라진 DB를 동기화하지 않도록). */
 	refreshMemberShares(): Promise<void>;
+	/** 공유 공간 하나를 학급 공동 공간으로 지정/해제. */
+	setHomeroomSpace(space: SharedSpace, on: boolean): Promise<void>;
 	redeployRealtime(): Promise<void>;
 	exportSettingsJson(): string;
 	importSettingsJson(json: string): Promise<{ ok: boolean; error?: string }>;
@@ -447,6 +449,17 @@ export class CoVaultSettingTab extends PluginSettingTab {
 			noAutoCorrect(txt.inputEl);
 			this.applyOnBlur(txt.inputEl);
 		});
+
+		// 학급 공동 공간 지정 — 알림장·수업안내·과제(공유) 등 학급 운영 기능이 이 공간의 폴더/DB를 기준으로 동작.
+		new Setting(card)
+			.setName(t("settings.homeroom_space"))
+			.setDesc(t("settings.homeroom_space_desc"))
+			.addToggle((tg) =>
+				tg.setValue(sp.kind === "homeroom").onChange(async (v) => {
+					await this.host.setHomeroomSpace(sp, v);
+					this.display();
+				}),
+			);
 
 		const memberHead = new Setting(card).setName(t("panel.members"));
 		const membersWithId = s.members.filter((st) => st.memberId);

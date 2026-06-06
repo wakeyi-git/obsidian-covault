@@ -22,7 +22,13 @@ export class CoreServices {
 
 	/** 현재 사용자의 공유 공간(교사=설정, 학생=shares 문서). 모드가 런타임에 채운다. RealtimeManager가 참조.
 	 * kind="mirror"는 학생 개인 mirror의 1:1 실시간 공간(folder=""=학생 vault 전체일 수 있음). */
-	sharedSpaces: Array<{ id: string; folder: string; token?: string; kind?: "share" | "mirror" }> = [];
+	sharedSpaces: Array<{ id: string; folder: string; token?: string; kind?: "share" | "homeroom" | "mirror" }> = [];
+
+	/**
+	 * 학급 공동 공간(homeroom)으로 지정된 공유 공간의 DB·폴더. 모드가 런타임에 채운다(교사=설정, 학생=shares).
+	 * 알림장·수업안내·과제(공유) 등 학급 운영 기능이 이 폴더/DB를 기준으로 동작한다. 미지정이면 null.
+	 */
+	homeroom: { remoteDb: string; folder: string } | null = null;
 
 	/** 피드백 문서(§19.5) 변경 알림. main이 FeedbackStore에 연결. 링크의 LocalApplier가 호출. */
 	onFeedbackChange: () => void = () => {};

@@ -1,37 +1,35 @@
 import { describe, it, expect } from "vitest";
-import { ensureHomeroomSpace, findHomeroom, HOMEROOM_ID, HOMEROOM_DB, HOMEROOM_FOLDER } from "./homeroom";
+import { findHomeroom, setHomeroom } from "./homeroom";
 import { ClassroomStore } from "./ClassroomStore";
 import { SharedSpace } from "../../settings/types";
 import { PouchDocBase, NoticeDoc, noticeId, noticePrefix } from "../model/types";
 
-describe("ensureHomeroomSpace", () => {
-	it("없으면 학급 공간을 생성(전원 멤버, 고정 id/DB/폴더)", () => {
-		const { space, spaces } = ensureHomeroomSpace([], ["a", "b"], "학급");
-		expect(space.id).toBe(HOMEROOM_ID);
-		expect(space.kind).toBe("homeroom");
-		expect(space.remoteDb).toBe(HOMEROOM_DB);
-		expect(space.folder).toBe(HOMEROOM_FOLDER);
-		expect(space.members).toEqual(["a", "b"]);
-		expect(spaces).toHaveLength(1);
+describe("setHomeroom / findHomeroom", () => {
+	const base: SharedSpace[] = [
+		{ id: "g1", name: "모둠1", remoteDb: "share_g1", folder: "모둠1", members: ["a"] },
+		{ id: "g2", name: "학급방", remoteDb: "share_g2", folder: "학급방", members: ["a", "b"] },
+	];
+
+	it("미지정이면 findHomeroom은 undefined", () => {
+		expect(findHomeroom(base)).toBeUndefined();
 	});
 
-	it("있으면 멤버만 갱신하고 DB/폴더는 보존(이미 배포 안전)", () => {
-		const existing: SharedSpace[] = [
-			{ id: HOMEROOM_ID, kind: "homeroom", name: "우리반", remoteDb: HOMEROOM_DB, folder: "_학급", members: ["a"], provisioned: true },
-		];
-		const { space, spaces } = ensureHomeroomSpace(existing, ["a", "b", "c"], "학급");
-		expect(space.members).toEqual(["a", "b", "c"]);
-		expect(space.provisioned).toBe(true);
-		expect(space.name).toBe("우리반");
-		expect(spaces).toHaveLength(1);
+	it("한 공간을 학급 공동 공간으로 지정", () => {
+		const next = setHomeroom(base, "g2");
+		expect(findHomeroom(next)?.id).toBe("g2");
+		expect(next.find((s) => s.id === "g1")?.kind).toBeUndefined();
 	});
 
-	it("일반 공유 공간과 섞여 있어도 학급 공간만 찾는다", () => {
-		const spaces: SharedSpace[] = [
-			{ id: "g1", name: "모둠1", remoteDb: "share_g1", folder: "모둠1", members: ["a"] },
-			{ id: HOMEROOM_ID, kind: "homeroom", name: "학급", remoteDb: HOMEROOM_DB, folder: "_학급", members: ["a"] },
-		];
-		expect(findHomeroom(spaces)?.id).toBe(HOMEROOM_ID);
+	it("다른 공간으로 바꾸면 이전 지정은 해제(하나만 유지)", () => {
+		const one = setHomeroom(base, "g2");
+		const two = setHomeroom(one, "g1");
+		expect(findHomeroom(two)?.id).toBe("g1");
+		expect(two.find((s) => s.id === "g2")?.kind).toBeUndefined();
+	});
+
+	it("null이면 전체 해제", () => {
+		const cleared = setHomeroom(setHomeroom(base, "g2"), null);
+		expect(findHomeroom(cleared)).toBeUndefined();
 	});
 });
 
