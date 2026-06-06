@@ -74,12 +74,16 @@ export class TimetableView {
 				const td = row.createEl("td");
 				const lessonUid = doc.lessons?.[key];
 				if (this.manager) {
-					const input = td.createEl("input", { attr: { type: "text" } });
+					const cell = td.createDiv({ cls: "covault-tt-cell" });
+					const input = cell.createEl("input", { attr: { type: "text" } });
 					input.value = doc.cells[key] ?? "";
 					input.tabIndex = di * periods + pi + 1; // 열 우선 순서(요일 di, 교시 pi)
 					input.onchange = () => void this.setCell(key, input.value);
-					// 수업 안내 연결: 있으면 열기(📄), 없으면 생성(＋).
-					const btn = td.createEl("button", { cls: "covault-tt-lesson", text: lessonUid ? "📄" : "＋" });
+					// 수업 안내 연결: 있으면 열기(📄), 없으면 생성(＋). 입력칸과 나란히 배치(겹침 방지).
+					const btn = cell.createEl("button", {
+						cls: `covault-tt-lesson${lessonUid ? " is-linked" : ""}`,
+						text: lessonUid ? "📄" : "＋",
+					});
 					btn.tabIndex = -1;
 					btn.title = lessonUid ? t("dashboard.open_lesson") : t("dashboard.add_lesson");
 					btn.onclick = () => void (lessonUid ? this.host.openLesson(lessonUid) : this.createLesson(key, d, doc.periods[pi]));
