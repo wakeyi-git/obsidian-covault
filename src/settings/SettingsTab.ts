@@ -61,6 +61,10 @@ export interface SettingsHost extends Plugin {
 	rotateMemberPassword(member: MemberConfig): Promise<void>;
 	ingestInvite(code: string): Promise<void>;
 	deployShared(space: SharedSpace): Promise<void>;
+	/** 구성원 서버 데이터(미러 DB + 계정) 삭제. */
+	deleteMemberServer(member: MemberConfig): Promise<void>;
+	/** 공동 공간 서버 데이터(공유 DB) 삭제. */
+	deleteSharedServer(space: SharedSpace): Promise<void>;
 	redeployRealtime(): Promise<void>;
 	exportSettingsJson(): string;
 	importSettingsJson(json: string): Promise<{ ok: boolean; error?: string }>;
@@ -406,10 +410,14 @@ export class CoVaultSettingTab extends PluginSettingTab {
 							message: t("panel.removes_this_shared_space_from_the",
 							),
 							warning: true,
-							onConfirm: async () => {
+							checkbox: sp.provisioned
+								? { label: t("settings.also_delete_server_data"), desc: t("settings.also_delete_shared_server_desc") }
+								: undefined,
+							onConfirm: async (alsoServer) => {
+								if (alsoServer) await this.host.deleteSharedServer(sp);
 								s.sharedSpaces.splice(index, 1);
 								await this.host.saveSettings();
-								this.host.requestApply();
+								await this.host.restartMode();
 								this.display();
 							},
 						}).open(),
@@ -508,10 +516,14 @@ export class CoVaultSettingTab extends PluginSettingTab {
 							message: t("panel.removes_this_member_from_the_list",
 							),
 							warning: true,
-							onConfirm: async () => {
+							checkbox: st.provisioned
+								? { label: t("settings.also_delete_server_data"), desc: t("settings.also_delete_member_server_desc") }
+								: undefined,
+							onConfirm: async (alsoServer) => {
+								if (alsoServer) await this.host.deleteMemberServer(st);
 								this.host.settings.members.splice(index, 1);
 								await this.host.saveSettings();
-								this.host.requestApply();
+								await this.host.restartMode();
 								this.display();
 							},
 						}).open(),

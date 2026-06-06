@@ -7,13 +7,18 @@ export interface ConfirmOptions {
 	message: string;
 	confirmText?: string;
 	warning?: boolean;
-	onConfirm: () => void | Promise<void>;
+	/** 선택 체크박스(예: "서버 데이터도 삭제"). 값은 onConfirm 인자로 전달. */
+	checkbox?: { label: string; desc?: string; default?: boolean };
+	onConfirm: (checked: boolean) => void | Promise<void>;
 }
 
 /** 간단한 확인 모달(파괴적 동작 실수 방지). 서버 초기화처럼 단어 입력까지는 필요 없는 경우에 쓴다. */
 export class ConfirmModal extends Modal {
+	private checked: boolean;
+
 	constructor(app: App, private opts: ConfirmOptions) {
 		super(app);
+		this.checked = opts.checkbox?.default ?? false;
 	}
 
 	onOpen(): void {
@@ -22,6 +27,12 @@ export class ConfirmModal extends Modal {
 		for (const line of this.opts.message.split("\n")) {
 			if (line.trim()) contentEl.createEl("p", { cls: "setting-item-description", text: line });
 		}
+		if (this.opts.checkbox) {
+			const set = new Setting(contentEl).setName(this.opts.checkbox.label).addToggle((tg) =>
+				tg.setValue(this.checked).onChange((v) => (this.checked = v)),
+			);
+			if (this.opts.checkbox.desc) set.setDesc(this.opts.checkbox.desc);
+		}
 		new Setting(contentEl)
 			.addButton((b) => b.setButtonText(t("common.cancel")).onClick(() => this.close()))
 			.addButton((b) => {
@@ -29,7 +40,7 @@ export class ConfirmModal extends Modal {
 				if (this.opts.warning) b.setWarning();
 				b.onClick(async () => {
 					this.close();
-					await this.opts.onConfirm();
+					await this.opts.onConfirm(this.checked);
 				});
 			});
 	}
