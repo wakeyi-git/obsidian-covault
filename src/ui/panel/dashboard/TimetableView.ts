@@ -58,7 +58,8 @@ export class TimetableView {
 	private renderGrid(c: HTMLElement): void {
 		const doc = this.doc;
 		if (!doc) return;
-		const table = c.createEl("table", { cls: "covault-timetable" });
+		const wrap = c.createDiv({ cls: "covault-timetable-wrap" });
+		const table = wrap.createEl("table", { cls: "covault-timetable" });
 		const headRow = table.createEl("tr");
 		headRow.createEl("th", { text: "" });
 		for (const d of doc.days) headRow.createEl("th", { text: d });

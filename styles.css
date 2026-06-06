@@ -1000,40 +1000,45 @@
 	min-width: 0;
 }
 
+.covault-timetable-wrap {
+	overflow-x: auto;
+}
 .covault-timetable {
 	border-collapse: collapse;
-	width: 100%;
 	font-size: 12px;
 }
 .covault-timetable th,
 .covault-timetable td {
 	border: 1px solid var(--background-modifier-border);
-	padding: 2px 4px;
+	padding: 1px 2px;
 	text-align: center;
 }
 .covault-tt-cell {
 	display: flex;
 	align-items: center;
-	gap: 2px;
+	gap: 1px;
 }
 .covault-tt-cell input {
-	flex: 1;
-	min-width: 0;
+	width: 58px;
 	border: none;
 	background: transparent;
 	text-align: center;
 	font-size: 12px;
+	padding: 2px 0;
 }
 .covault-tt-lesson {
 	flex: none;
-	padding: 0 4px;
-	font-size: 13px;
-	line-height: 1.4;
+	width: 18px;
+	min-width: 18px;
+	height: 18px;
+	padding: 0;
+	font-size: 12px;
+	line-height: 1;
 	background: transparent;
 	border: none;
-	cursor: pointer;
-	opacity: 0.45;
 	box-shadow: none;
+	cursor: pointer;
+	opacity: 0.4;
 }
 .covault-tt-lesson:hover,
 .covault-tt-lesson.is-linked {
