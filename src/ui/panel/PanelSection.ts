@@ -37,8 +37,8 @@ export interface PanelHost {
 	homeroomReady(): boolean;
 	/** 학급(homeroom) 공유 공간 생성+배포(교사 전용). */
 	ensureHomeroom(): Promise<void>;
-	/** 알림장 게시(교사): 본문 파일 생성 + NoticeDoc 기록. */
-	postNotice(title: string, body: string): Promise<boolean>;
+	/** 게시(교사): 본문 파일 생성 + NoticeDoc 기록. category=알림장/수업. */
+	postNotice(title: string, body: string, category?: "notice" | "lesson"): Promise<boolean>;
 	// 과제(assignments)
 	assignmentDefs(): AssignmentDoc[];
 	createAssignment(input: {
@@ -62,6 +62,7 @@ export interface PanelHost {
 	createRoutine(input: { title: string; items: string[]; recurrence: "daily" | "weekly"; weekdays?: number[] }): Promise<boolean>;
 	deleteRoutine(uid: string): Promise<void>;
 	myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null>;
+	myRoutineDays(uid: string): Promise<RoutineStateDoc[]>;
 	toggleRoutineItem(uid: string, day: string, itemId: string, checked: boolean): Promise<boolean>;
 	listRoutineStates(uid: string, day: string): Promise<RoutineStateDoc[]>;
 	getDashboardRows(): Promise<DashboardRow[]>;

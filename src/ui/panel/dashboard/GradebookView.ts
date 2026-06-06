@@ -1,6 +1,7 @@
+import { Notice } from "obsidian";
 import { PanelHost, panelButton } from "../PanelSection";
 import { AssignmentStateDoc } from "../../../core/model/types";
-import { gradeTotal, rubricMax, displayStatus } from "../../../core/classroom/assignments";
+import { gradeTotal, rubricMax, displayStatus, gradebookCsv } from "../../../core/classroom/assignments";
 import { t } from "../../../i18n";
 
 /** 통합 성적부(교사) — 학생 × 과제 점수 매트릭스. */
@@ -37,6 +38,21 @@ export class GradebookView {
 			const states = await this.host.listAssignmentStates(def.uid);
 			stateMap.set(def.uid, new Map(states.map((s) => [s.memberId, s])));
 		}
+
+		// CSV 내보내기(클립보드 복사).
+		panelButton(head, t("dashboard.export_csv"), async () => {
+			const csv = gradebookCsv(
+				defs.map((d) => ({ uid: d.uid, title: d.title, rubric: d.rubric, points: d.points })),
+				members.map((m) => ({ memberId: m.memberId, memberName: m.memberName || m.memberId })),
+				stateMap,
+			);
+			try {
+				await navigator.clipboard.writeText(csv);
+				new Notice(t("dashboard.csv_copied"));
+			} catch {
+				new Notice(t("dashboard.csv_copy_failed"));
+			}
+		});
 
 		const wrap = c.createDiv({ cls: "covault-gradebook-wrap" });
 		const table = wrap.createEl("table", { cls: "covault-gradebook" });

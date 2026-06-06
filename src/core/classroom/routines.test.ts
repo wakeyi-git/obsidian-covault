@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dayStr, routineAppliesOn, completion, completionPct } from "./routines";
+import { dayStr, routineAppliesOn, completion, completionPct, computeStreak } from "./routines";
 import { RoutineDoc, RoutineStateDoc } from "../model/types";
 
 describe("dayStr", () => {
@@ -42,5 +42,30 @@ describe("completion / completionPct", () => {
 		expect(completion(r, st(["i0", "i2", "i99"]))).toEqual({ done: 2, total: 4 });
 		expect(completionPct({ done: 2, total: 4 })).toBe(50);
 		expect(completionPct({ done: 0, total: 0 })).toBe(0);
+	});
+});
+
+describe("computeStreak", () => {
+	const DAY = 86_400_000;
+	const today = new Date(2026, 5, 10, 12, 0).getTime(); // 2026-06-10
+	const d = (offset: number) => dayStr(today - offset * DAY);
+
+	it("daily: 오늘 포함 연속 완료", () => {
+		const done = new Set([d(0), d(1), d(2)]);
+		expect(computeStreak({ recurrence: "daily" }, done, today)).toBe(3);
+	});
+	it("daily: 오늘 미완료여도 어제까지 streak 유지", () => {
+		const done = new Set([d(1), d(2), d(3)]);
+		expect(computeStreak({ recurrence: "daily" }, done, today)).toBe(3);
+	});
+	it("daily: 중간에 끊기면 거기서 중단", () => {
+		const done = new Set([d(0), d(1), d(3), d(4)]);
+		expect(computeStreak({ recurrence: "daily" }, done, today)).toBe(2);
+	});
+	it("weekly: 적용 안 되는 요일은 건너뜀(끊김 아님)", () => {
+		// 적용 요일을 오늘 요일만으로 한정 → 지난주 같은 요일과 연속
+		const wd = new Date(today).getDay();
+		const done = new Set([d(0), d(7), d(14)]);
+		expect(computeStreak({ recurrence: "weekly", weekdays: [wd] }, done, today)).toBe(3);
 	});
 });

@@ -6,13 +6,13 @@ export class NoticeComposeModal extends Modal {
 	private title = "";
 	private body = "";
 
-	constructor(app: App, private onSubmit: (title: string, body: string) => void | Promise<void>) {
+	constructor(app: App, private onSubmit: (title: string, body: string) => void | Promise<void>, private heading?: string) {
 		super(app);
 	}
 
 	onOpen(): void {
 		const { contentEl } = this;
-		contentEl.createEl("h3", { text: t("dashboard.new_notice") });
+		contentEl.createEl("h3", { text: this.heading ?? t("dashboard.new_notice") });
 
 		new Setting(contentEl).setName(t("dashboard.notice_title")).addText((txt) => {
 			txt.setPlaceholder(t("dashboard.notice_title_placeholder")).onChange((v) => (this.title = v));

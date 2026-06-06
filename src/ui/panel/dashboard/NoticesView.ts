@@ -11,11 +11,18 @@ import { sortNotices, summarizeResponses } from "../../../core/classroom/notices
 import { NoticeComposeModal } from "../../NoticeComposeModal";
 import { t, formatDate } from "../../../i18n";
 
-/** 알림장 모듈 — 목록 + (교사)게시/집계 + (학생)읽음·댓글. 대시보드 허브에서 렌더된다. */
+/** 알림장/수업안내 모듈 — 목록 + (교사)게시/집계 + (학생)읽음·댓글. category로 분리. */
 export class NoticesView {
 	private container: HTMLElement | null = null;
 
-	constructor(private host: PanelHost, private onBack: () => void) {}
+	constructor(private host: PanelHost, private onBack: () => void, private category: "notice" | "lesson" = "notice") {}
+
+	private get isLesson(): boolean {
+		return this.category === "lesson";
+	}
+	private label(notice: string, lesson: string): string {
+		return this.isLesson ? lesson : notice;
+	}
 
 	render(container: HTMLElement): void {
 		this.container = container;
@@ -38,12 +45,17 @@ export class NoticesView {
 		// 헤더(뒤로 + 제목 + 교사 게시)
 		const head = c.createDiv({ cls: "covault-dash-modhead" });
 		panelButton(head, t("dashboard.back"), () => this.onBack());
-		head.createSpan({ cls: "covault-dash-modtitle", text: t("dashboard.notices") });
+		head.createSpan({ cls: "covault-dash-modtitle", text: this.label(t("dashboard.notices"), t("dashboard.lessons")) });
 		if (this.manager) {
 			panelButton(
 				head,
-				t("dashboard.new_notice"),
-				() => new NoticeComposeModal(this.host.app, (title, body) => this.post(title, body)).open(),
+				this.label(t("dashboard.new_notice"), t("dashboard.new_lesson")),
+				() =>
+					new NoticeComposeModal(
+						this.host.app,
+						(title, body) => this.post(title, body),
+						this.label(t("dashboard.new_notice"), t("dashboard.new_lesson")),
+					).open(),
 				{ cta: true },
 			);
 		}
@@ -54,10 +66,11 @@ export class NoticesView {
 			return;
 		}
 
-		const notices = sortNotices(await store.listByPrefix<NoticeDoc>(noticePrefix()));
+		const all = sortNotices(await store.listByPrefix<NoticeDoc>(noticePrefix()));
+		const notices = all.filter((n) => (n.category ?? "notice") === this.category);
 		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
 		if (notices.length === 0) {
-			c.createDiv({ cls: "covault-dash-empty", text: t("dashboard.no_notices") });
+			c.createDiv({ cls: "covault-dash-empty", text: this.label(t("dashboard.no_notices"), t("dashboard.no_lessons")) });
 			return;
 		}
 		const byTarget = new Map<string, ResponseDoc[]>();
@@ -68,7 +81,7 @@ export class NoticesView {
 	}
 
 	private async post(title: string, body: string): Promise<void> {
-		const ok = await this.host.postNotice(title, body);
+		const ok = await this.host.postNotice(title, body, this.category);
 		if (ok) await this.reload();
 	}
 

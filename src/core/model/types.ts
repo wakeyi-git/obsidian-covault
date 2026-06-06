@@ -191,6 +191,8 @@ export interface NoticeDoc extends PouchDocBase {
 	postedAtMs: number;
 	pinned?: boolean;
 	allowResponses?: boolean; // 양방향 응답 허용(기본 true)
+	/** 게시 종류. "notice"(알림장, 기본) | "lesson"(수업 안내). 같은 메커니즘, 폴더/뷰만 분리. */
+	category?: "notice" | "lesson";
 	createdBy: string;
 	createdByRole: "member" | "manager";
 	deleted?: boolean;
@@ -357,4 +359,8 @@ export interface RoutineStateDoc extends PouchDocBase {
 export const ROUTINE_STATE_ID_PREFIX = "routine-state:";
 export function routineStateId(routineUid: string, memberId: string, day: string): string {
 	return `${ROUTINE_STATE_ID_PREFIX}${routineUid}:${memberId}:${day}`;
+}
+/** 한 (루틴,구성원)의 모든 날짜 상태 prefix(streak 계산용). */
+export function routineStatePrefix(routineUid: string, memberId: string): string {
+	return `${ROUTINE_STATE_ID_PREFIX}${routineUid}:${memberId}:`;
 }

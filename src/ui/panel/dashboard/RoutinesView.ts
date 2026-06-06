@@ -1,6 +1,6 @@
 import { PanelHost, panelButton } from "../PanelSection";
 import { RoutineDoc } from "../../../core/model/types";
-import { dayStr, routineAppliesOn, completion, completionPct } from "../../../core/classroom/routines";
+import { dayStr, routineAppliesOn, completion, completionPct, computeStreak } from "../../../core/classroom/routines";
 import { RoutineEditModal } from "../../RoutineEditModal";
 import { t } from "../../../i18n";
 
@@ -86,12 +86,22 @@ export class RoutinesView {
 		}
 		const list = c.createDiv({ cls: "covault-dash-list" });
 		for (const r of routines) {
-			const state = await this.host.myRoutineState(r.uid, this.day);
+			const days = await this.host.myRoutineDays(r.uid);
+			const state = days.find((d) => d.day === this.day) ?? null;
 			const checked = new Set(state?.checked ?? []);
 			const comp = completion(r, state);
+			// 연속 완료(streak): 완전 완료한 날짜 집합으로 계산.
+			const completedDays = new Set(
+				days.filter((d) => {
+					const cc = completion(r, d);
+					return cc.total > 0 && cc.done === cc.total;
+				}).map((d) => d.day),
+			);
+			const streak = computeStreak(r, completedDays, now);
 			const card = list.createDiv({ cls: "covault-dash-card" });
 			const top = card.createDiv({ cls: "covault-dash-card-row" });
 			top.createSpan({ cls: "covault-dash-card-title", text: r.title });
+			if (streak > 0) top.createSpan({ cls: "covault-dash-streak", text: t("dashboard.streak", { n: streak }) });
 			const pct = top.createSpan({ cls: "covault-dash-score", text: `${completionPct(comp)}%` });
 			for (const item of r.items) {
 				const lab = card.createDiv({ cls: "covault-dash-check" });

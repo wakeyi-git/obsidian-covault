@@ -2,7 +2,7 @@ import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade, assignmentId, assignmentStateId, ASSIGNMENT_STATE_ID_PREFIX } from "./core/model/types";
-import { RoutineDoc, RoutineStateDoc, routineId, routinePrefix, routineStateId } from "./core/model/types";
+import { RoutineDoc, RoutineStateDoc, routineId, routinePrefix, routineStateId, routineStatePrefix } from "./core/model/types";
 import { ensureParentFolders } from "./core/vault/folders";
 import { noticeFilePath } from "./core/classroom/notices";
 import { assignmentWorkDir, substituteTemplate, slugify } from "./core/classroom/assignments";
@@ -453,8 +453,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		await this.deployShared(space); // 프로비저닝 + 전원 shares 갱신 + 모드 재시작
 	}
 
-	/** PanelHost: 알림장 게시(교사). 본문 마크다운 파일을 학급 폴더에 만들고 NoticeDoc 메타를 학급 공유에 기록. */
-	async postNotice(title: string, body: string): Promise<boolean> {
+	/** PanelHost: 게시(교사). 본문 마크다운 파일을 학급 폴더에 만들고 NoticeDoc 메타를 학급 공유에 기록. */
+	async postNotice(title: string, body: string, category: "notice" | "lesson" = "notice"): Promise<boolean> {
 		if (this.settings.role !== "manager") {
 			this.logger.warn(t("command.available_in_manager_mode_only"), true);
 			return false;
@@ -464,7 +464,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			return false;
 		}
 		const ts = Date.now();
-		const path = noticeFilePath(HOMEROOM_FOLDER, ts, title);
+		const path = noticeFilePath(HOMEROOM_FOLDER, ts, title, category === "lesson" ? "수업" : "알림장");
 		await ensureParentFolders(this.app, path);
 		if (this.app.vault.getAbstractFileByPath(path)) {
 			this.logger.warn(t("dashboard.notice_file_exists"), true);
@@ -482,6 +482,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			filePath: path,
 			postedAtMs: ts,
 			allowResponses: true,
+			category,
 			createdBy: this.settings.userId,
 			createdByRole: "manager",
 		};
@@ -756,6 +757,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		};
 		await sync.ctx.pouch.put(doc);
 		return true;
+	}
+
+	/** PanelHost: 학생 본인의 한 루틴 전체 날짜 상태(streak 계산용). */
+	async myRoutineDays(uid: string): Promise<RoutineStateDoc[]> {
+		const sync = this.studentMirrorSync();
+		if (!sync) return [];
+		return sync.ctx.pouch.allDocsByPrefix<RoutineStateDoc>(routineStatePrefix(uid, this.settings.userId));
 	}
 
 	/** PanelHost: 한 루틴의 학생별 상태(교사, 각 학생 미러에서 수집). */

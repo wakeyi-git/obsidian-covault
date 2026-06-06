@@ -1099,6 +1099,12 @@
 	gap: 6px;
 	padding: 3px 0;
 }
+.covault-dash-streak {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--color-orange);
+	white-space: nowrap;
+}
 
 .covault-gradebook-wrap {
 	overflow-x: auto;

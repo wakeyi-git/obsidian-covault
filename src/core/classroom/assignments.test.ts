@@ -8,6 +8,7 @@ import {
 	criterionMax,
 	rubricMax,
 	gradeTotal,
+	gradebookCsv,
 } from "./assignments";
 import { AssignmentStateDoc, AssignmentDoc, RubricCriterion } from "../model/types";
 
@@ -89,5 +90,27 @@ describe("rubric 채점", () => {
 		expect(gradeTotal({ rubricScores: { c1: 9, c2: 4 } }, rubric)).toBe(13);
 		expect(gradeTotal({ score: 88 }, undefined)).toBe(88);
 		expect(gradeTotal(undefined, rubric)).toBe(0);
+	});
+});
+
+describe("gradebookCsv", () => {
+	it("헤더 + 구성원별 점수, grade 없으면 빈칸, 특수문자 이스케이프", () => {
+		const defs = [
+			{ uid: "a1", title: "과제1", points: 100 },
+			{ uid: "a2", title: "에세이, 1편", points: 50 }, // 쉼표 → 따옴표 이스케이프
+		];
+		const members = [
+			{ memberId: "a", memberName: "철수" },
+			{ memberId: "b", memberName: "영희" },
+		];
+		const map = new Map<string, Map<string, AssignmentStateDoc>>([
+			["a1", new Map([["a", state({ memberId: "a", grade: { score: 90 } })]])],
+			["a2", new Map([["b", state({ memberId: "b", grade: { score: 45 } })]])],
+		]);
+		const csv = gradebookCsv(defs, members, map);
+		const lines = csv.split("\n");
+		expect(lines[0]).toBe('member,과제1,"에세이, 1편"');
+		expect(lines[1]).toBe("철수,90,"); // a1=90, a2 빈칸
+		expect(lines[2]).toBe("영희,,45"); // a1 빈칸, a2=45
 	});
 });

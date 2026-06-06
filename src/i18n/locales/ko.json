@@ -45,8 +45,8 @@
 		"create_homeroom": "학급 공간 만들기",
 		"notices": "알림장",
 		"notices_desc": "공지를 게시하고 구성원이 읽고 응답합니다.",
-		"timetable": "시간표·수업",
-		"timetable_desc": "주간 시간표와 수업 안내.",
+		"timetable": "시간표",
+		"timetable_desc": "주간 수업 시간표.",
 		"assignments": "과제",
 		"assignments_desc": "배포·제출·채점·반환.",
 		"routines": "체크리스트",
@@ -140,7 +140,15 @@
 		"gradebook": "성적부",
 		"gradebook_desc": "전체 구성원·과제의 점수 한눈에.",
 		"gradebook_empty": "아직 과제나 구성원이 없습니다.",
-		"member": "구성원"
+		"member": "구성원",
+		"lessons": "수업 안내",
+		"lessons_desc": "수업 안내를 게시하고 구성원이 읽고 응답합니다.",
+		"new_lesson": "새 수업 안내",
+		"no_lessons": "아직 수업 안내가 없습니다.",
+		"streak": "🔥 {n}일",
+		"export_csv": "CSV 내보내기",
+		"csv_copied": "성적부 CSV를 클립보드에 복사했습니다.",
+		"csv_copy_failed": "CSV를 복사하지 못했습니다."
 	},
 	"deploy": {
 		"copy_to_members": "구성원에게 복사",

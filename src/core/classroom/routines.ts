@@ -33,3 +33,26 @@ export function completion(routine: Pick<RoutineDoc, "items">, state: RoutineSta
 export function completionPct(c: RoutineCompletion): number {
 	return c.total === 0 ? 0 : Math.round((c.done / c.total) * 100);
 }
+
+const DAY_MS = 86_400_000;
+
+/**
+ * 연속 완료(streak) 계산(순수). today부터 거꾸로, 루틴이 적용되는 날만 보며 완전 완료면 +1, 아니면 중단.
+ * 적용 안 되는 요일은 건너뛴다(연속 끊김 아님). 오늘이 아직 미완료면 어제까지로 streak을 인정한다.
+ */
+export function computeStreak(
+	routine: Pick<RoutineDoc, "recurrence" | "weekdays">,
+	completedDays: Set<string>,
+	today: number,
+	maxLookback = 90,
+): number {
+	let streak = 0;
+	for (let i = 0; i < maxLookback; i++) {
+		const ts = today - i * DAY_MS;
+		if (!routineAppliesOn(routine, ts)) continue;
+		if (completedDays.has(dayStr(ts))) streak++;
+		else if (i === 0) continue; // 오늘 아직 미완료 → 끊지 말고 어제부터 이어서 센다.
+		else break;
+	}
+	return streak;
+}

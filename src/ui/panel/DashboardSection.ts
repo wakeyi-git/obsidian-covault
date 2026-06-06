@@ -6,7 +6,7 @@ import { RoutinesView } from "./dashboard/RoutinesView";
 import { GradebookView } from "./dashboard/GradebookView";
 import { t } from "../../i18n";
 
-type DashView = "hub" | "notices" | "timetable" | "assignments" | "routines" | "gradebook";
+type DashView = "hub" | "notices" | "lessons" | "timetable" | "assignments" | "routines" | "gradebook";
 
 /**
  * 학급 운영 대시보드(홈). 허브에서 모듈(알림장·시간표/수업·과제·체크리스트)로 진입한다.
@@ -35,7 +35,13 @@ export class DashboardSection implements PanelSection {
 		c.empty();
 
 		if (this.view === "notices") {
-			const v = new NoticesView(this.host, () => this.go("hub"));
+			const v = new NoticesView(this.host, () => this.go("hub"), "notice");
+			this.active = v;
+			v.render(c);
+			return;
+		}
+		if (this.view === "lessons") {
+			const v = new NoticesView(this.host, () => this.go("hub"), "lesson");
 			this.active = v;
 			v.render(c);
 			return;
@@ -93,6 +99,7 @@ export class DashboardSection implements PanelSection {
 
 		const grid = c.createDiv({ cls: "covault-dash-grid" });
 		this.moduleCard(grid, t("dashboard.notices"), t("dashboard.notices_desc"), () => this.go("notices"));
+		this.moduleCard(grid, t("dashboard.lessons"), t("dashboard.lessons_desc"), () => this.go("lessons"));
 		this.moduleCard(grid, t("dashboard.timetable"), t("dashboard.timetable_desc"), () => this.go("timetable"));
 		this.moduleCard(grid, t("dashboard.assignments"), t("dashboard.assignments_desc"), () => this.go("assignments"));
 		this.moduleCard(grid, t("dashboard.routines"), t("dashboard.routines_desc"), () => this.go("routines"));

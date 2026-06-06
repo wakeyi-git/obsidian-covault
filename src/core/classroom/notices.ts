@@ -15,11 +15,11 @@ function pad(n: number): string {
 	return String(n).padStart(2, "0");
 }
 
-/** 알림장 본문 파일 경로: <folder>/알림장/<YYYYMMDD-HHmm>-<slug>.md. */
-export function noticeFilePath(folder: string, ts: number, title: string): string {
+/** 게시 본문 파일 경로: <folder>/<sub>/<YYYYMMDD-HHmm>-<slug>.md. sub=알림장(기본)/수업. */
+export function noticeFilePath(folder: string, ts: number, title: string, sub = "알림장"): string {
 	const d = new Date(ts);
 	const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
-	return `${folder}/알림장/${stamp}-${slugify(title)}.md`;
+	return `${folder}/${sub}/${stamp}-${slugify(title)}.md`;
 }
 
 /** 표시 순서: 삭제 제외 → 고정(pinned) 먼저 → 최신(postedAtMs desc). */

@@ -45,8 +45,8 @@
 		"create_homeroom": "Create homeroom space",
 		"notices": "Notices",
 		"notices_desc": "Post announcements; members read and respond.",
-		"timetable": "Timetable & lessons",
-		"timetable_desc": "Weekly timetable and lesson guides.",
+		"timetable": "Timetable",
+		"timetable_desc": "Weekly class timetable.",
 		"assignments": "Assignments",
 		"assignments_desc": "Distribute, submit, grade, and return work.",
 		"routines": "Routines",
@@ -140,7 +140,15 @@
 		"gradebook": "Gradebook",
 		"gradebook_desc": "Scores across all members and assignments.",
 		"gradebook_empty": "No assignments or members yet.",
-		"member": "Member"
+		"member": "Member",
+		"lessons": "Lessons",
+		"lessons_desc": "Lesson guides; members read and respond.",
+		"new_lesson": "New lesson",
+		"no_lessons": "No lessons yet.",
+		"streak": "🔥 {n}d",
+		"export_csv": "Export CSV",
+		"csv_copied": "Gradebook CSV copied to clipboard.",
+		"csv_copy_failed": "Could not copy CSV."
 	},
 	"deploy": {
 		"copy_to_members": "Copy to members",
