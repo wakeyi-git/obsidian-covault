@@ -147,11 +147,13 @@ export class MemberMode implements CoVaultMode {
 			) {
 				s.realtimeEnabled = doc.enabled;
 				s.yjsServerUrl = doc.url;
-				if (setSecretValue(app, YJS_TOKEN_ID, doc.token)) {
+				if (doc.token && setSecretValue(app, YJS_TOKEN_ID, doc.token)) {
 					s.yjsToken = "";
 					s.yjsTokenSet = true;
 				} else {
+					// 빈 토큰이면 Secret Storage 저장이 성공해도 "토큰 있음"으로 표시하지 않는다.
 					s.yjsToken = doc.token;
+					s.yjsTokenSet = !!doc.token;
 				}
 				s.realtimeSnapshotSec = snapshotSec;
 				await this.core.save();

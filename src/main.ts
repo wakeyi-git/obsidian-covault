@@ -568,6 +568,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		const s = this.settings;
 		// 관리자: 구성원 DB가 없어도 먼저 프로비저닝 권한(_users)을 검증한다(첫 구성원 추가 전에도 의미 있는 결과).
 		if (s.role === "manager") {
+			// 빈 설정에서 누르면 잘못된 요청/예외가 나므로 URL/계정/비밀번호 필수값을 먼저 확인한다.
+			if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
+				this.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
+				return;
+			}
 			const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
 			const chk = await admin.checkAdmin();
 			if (chk.ok) this.logger.ok(t("command.admin_provisioning_access_ok"), true);

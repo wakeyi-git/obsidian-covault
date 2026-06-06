@@ -58,6 +58,7 @@ describe("portable round-trip (P2)", () => {
 			versionMaxCount: 3,
 			versionMaxAgeDays: 14,
 			yjsTokenTtlDays: 30,
+			inviteTtlDays: 21,
 			language: "en",
 			password: "secret",
 			passwordSet: true,
@@ -78,6 +79,7 @@ describe("portable round-trip (P2)", () => {
 		expect(m.versionMaxCount).toBe(3);
 		expect(m.versionMaxAgeDays).toBe(14);
 		expect(m.yjsTokenTtlDays).toBe(30);
+		expect(m.inviteTtlDays).toBe(21);
 		expect(m.language).toBe("en");
 		// device/secret/role은 현재 기기 보존
 		expect(m.deviceId).toBe("other");
