@@ -7,7 +7,7 @@ import { LinkStatus } from "../../core/sync/MirrorContext";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "../../core/sync/RestoreManager";
 import { PurgeSnapshot } from "../../core/sync/recentPurge";
 import { DeleteModifyItem } from "../../core/sync/deleteModifyQueue";
-import { VersionDoc } from "../../core/model/types";
+import { VersionDoc, AssignmentDoc, AssignmentStateDoc } from "../../core/model/types";
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
@@ -39,6 +39,22 @@ export interface PanelHost {
 	ensureHomeroom(): Promise<void>;
 	/** 알림장 게시(교사): 본문 파일 생성 + NoticeDoc 기록. */
 	postNotice(title: string, body: string): Promise<boolean>;
+	// 과제(assignments)
+	assignmentDefs(): AssignmentDoc[];
+	createAssignment(input: {
+		title: string;
+		instructions: string;
+		dueAt?: number;
+		points?: number;
+		privacy: "mirror" | "shared";
+		targetMembers: string[];
+		templatePath?: string;
+	}): Promise<boolean>;
+	listMyAssignments(): Promise<AssignmentStateDoc[]>;
+	listAssignmentStates(uid: string): Promise<AssignmentStateDoc[]>;
+	submitAssignment(state: AssignmentStateDoc): Promise<boolean>;
+	unsubmitAssignment(state: AssignmentStateDoc): Promise<boolean>;
+	openVaultPath(path: string): Promise<void>;
 	getDashboardRows(): Promise<DashboardRow[]>;
 	openConflictModal(): void;
 	fullSync(dir: "both" | "up" | "down"): Promise<void>;

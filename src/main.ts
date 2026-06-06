@@ -1,8 +1,11 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId } from "./core/model/types";
+import { AssignmentDoc, AssignmentStateDoc, assignmentId, assignmentStateId, ASSIGNMENT_STATE_ID_PREFIX } from "./core/model/types";
 import { ensureParentFolders } from "./core/vault/folders";
 import { noticeFilePath } from "./core/classroom/notices";
+import { assignmentWorkDir, substituteTemplate, slugify } from "./core/classroom/assignments";
+import { VersionStore } from "./core/sync/VersionStore";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
 import { Logger } from "./core/log/Logger";
 import { CoreServices } from "./core/CoreServices";
@@ -483,6 +486,183 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		const ok = await this.classroom.put(doc);
 		if (ok) this.logger.ok(t("dashboard.notice_posted", { title }), true);
 		return ok;
+	}
+
+	// --- 과제(assignments) ---
+
+	/** PanelHost: 교사 과제 정의 목록(설정 보관). */
+	assignmentDefs(): AssignmentDoc[] {
+		return this.settings.assignments ?? [];
+	}
+
+	private memberSyncByRemoteDb(db: string): MirrorSync | undefined {
+		return (this.mode?.getSyncs() ?? []).find((s) => s.ctx.remoteDb === db);
+	}
+	private studentMirrorSync(): MirrorSync | undefined {
+		return this.memberSyncByRemoteDb(this.settings.remoteDb);
+	}
+	private async readVaultText(path: string): Promise<string | null> {
+		const f = this.app.vault.getAbstractFileByPath(path);
+		return f instanceof TFile ? await this.app.vault.read(f) : null;
+	}
+	private async writeFileIfAbsent(path: string, body: string): Promise<void> {
+		await ensureParentFolders(this.app, path);
+		if (!this.app.vault.getAbstractFileByPath(path)) await this.app.vault.create(path, body);
+	}
+
+	/** PanelHost: 과제 생성 + 배포(교사). */
+	async createAssignment(input: {
+		title: string;
+		instructions: string;
+		dueAt?: number;
+		points?: number;
+		privacy: "mirror" | "shared";
+		targetMembers: string[];
+		templatePath?: string;
+	}): Promise<boolean> {
+		const s = this.settings;
+		if (s.role !== "manager") {
+			this.logger.warn(t("command.available_in_manager_mode_only"), true);
+			return false;
+		}
+		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
+			this.logger.warn(t("command.enter_the_admin_account_first"), true);
+			return false;
+		}
+		if (input.privacy === "shared" && !this.homeroomReady()) {
+			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
+			return false;
+		}
+		const uid = `${Date.now().toString(36)}`;
+		const def: AssignmentDoc = {
+			_id: assignmentId(uid),
+			type: "assignment",
+			schemaVersion: 1,
+			workspaceId: s.workspaceId,
+			uid,
+			title: input.title,
+			instructions: input.instructions,
+			templatePaths: input.templatePath ? [input.templatePath] : [],
+			privacy: input.privacy,
+			targetMembers: [...input.targetMembers],
+			dueAt: input.dueAt,
+			points: input.points,
+			createdBy: s.userId,
+			createdAtMs: Date.now(),
+		};
+		s.assignments = [...(s.assignments ?? []), def];
+		await this.saveSettings();
+		await this.distributeAssignment(def);
+		return true;
+	}
+
+	private async distributeAssignment(def: AssignmentDoc): Promise<void> {
+		const s = this.settings;
+		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
+		const slug = slugify(def.title);
+		const date = new Date().toISOString().slice(0, 10);
+		const templateContent = def.templatePaths[0] ? await this.readVaultText(def.templatePaths[0]) : null;
+		const templateName = def.templatePaths[0]?.split("/").pop() || "과제.md";
+		const fallback = `# ${def.title}\n\n${def.instructions || ""}\n`;
+
+		// 공유 과제: 학급 폴더에 한 번만 작성(전원 공유). 경로가 교사·학생 양측 동일(_학급 고정).
+		let sharedWorkPath: string | null = null;
+		if (def.privacy === "shared") {
+			sharedWorkPath = `${assignmentWorkDir("shared", "", HOMEROOM_FOLDER, slug)}/${templateName}`;
+			const body = templateContent != null ? substituteTemplate(templateContent, { memberId: "", memberName: "", workspaceId: s.workspaceId, date }) : fallback;
+			await this.writeFileIfAbsent(sharedWorkPath, body);
+		}
+
+		let count = 0;
+		for (const memberId of def.targetMembers) {
+			const member = s.members.find((m) => m.memberId === memberId && m.provisioned);
+			if (!member) continue;
+			let workPaths: string[];
+			if (def.privacy === "shared") {
+				workPaths = sharedWorkPath ? [sharedWorkPath] : [];
+			} else {
+				// 저장은 학생측 경로(dbPath, localRoot 상대), 파일 작성은 교사 vault의 member.localRoot 아래.
+				const studentPath = `${assignmentWorkDir("mirror", "", HOMEROOM_FOLDER, slug)}/${templateName}`;
+				const teacherPath = `${assignmentWorkDir("mirror", member.localRoot, HOMEROOM_FOLDER, slug)}/${templateName}`;
+				const body = templateContent != null ? substituteTemplate(templateContent, { memberId: member.memberId, memberName: member.memberName, workspaceId: s.workspaceId, date }) : fallback;
+				await this.writeFileIfAbsent(teacherPath, body);
+				workPaths = [studentPath];
+			}
+			const stateDoc: AssignmentStateDoc = {
+				_id: assignmentStateId(def.uid, memberId),
+				type: "assignment-state",
+				schemaVersion: 1,
+				workspaceId: s.workspaceId,
+				assignmentUid: def.uid,
+				memberId,
+				title: def.title,
+				workPaths,
+				dueAt: def.dueAt,
+				state: "assigned",
+				assignedAtMs: Date.now(),
+			};
+			const r = await admin.putDoc(member.remoteDb, stateDoc as unknown as { _id: string; [k: string]: unknown });
+			if (!r.ok) this.logger.error(t("dashboard.assignment_distribute_failed", { id: memberId, err: r.error ?? "" }));
+			else count++;
+		}
+		this.logger.ok(t("dashboard.assignment_distributed", { title: def.title, count }), true);
+		this.requestApply();
+	}
+
+	/** PanelHost: 학생 본인 과제 상태 목록(개인 미러). */
+	async listMyAssignments(): Promise<AssignmentStateDoc[]> {
+		const sync = this.studentMirrorSync();
+		if (!sync) return [];
+		const docs = await sync.ctx.pouch.allDocsByPrefix<AssignmentStateDoc>(ASSIGNMENT_STATE_ID_PREFIX);
+		return docs.filter((d) => !d.deleted);
+	}
+
+	/** PanelHost: 한 과제의 학생별 상태(교사, 각 학생 미러에서 수집). */
+	async listAssignmentStates(uid: string): Promise<AssignmentStateDoc[]> {
+		const def = this.assignmentDefs().find((d) => d.uid === uid);
+		if (!def) return [];
+		const out: AssignmentStateDoc[] = [];
+		for (const memberId of def.targetMembers) {
+			const member = this.settings.members.find((m) => m.memberId === memberId);
+			if (!member) continue;
+			const sync = this.memberSyncByRemoteDb(member.remoteDb);
+			if (!sync) continue;
+			const doc = await sync.ctx.pouch.get<AssignmentStateDoc>(assignmentStateId(uid, memberId));
+			if (doc && !doc.deleted) out.push(doc);
+		}
+		return out;
+	}
+
+	/** PanelHost: 학생 제출(스냅샷 + 상태=submitted). */
+	async submitAssignment(stateDoc: AssignmentStateDoc): Promise<boolean> {
+		const sync = this.studentMirrorSync();
+		if (!sync) return false;
+		const vs = new VersionStore(sync.ctx);
+		for (const p of stateDoc.workPaths) {
+			const dbPath = sync.ctx.toDbPath(p);
+			const content = await this.readVaultText(p);
+			if (dbPath && content != null) await vs.snapshot(dbPath, content, "submit", 0);
+		}
+		const current = (await sync.ctx.pouch.get<AssignmentStateDoc>(stateDoc._id)) ?? stateDoc;
+		await sync.ctx.pouch.put({ ...current, state: "submitted", submittedAtMs: Date.now() });
+		this.logger.ok(t("dashboard.assignment_submitted", { title: stateDoc.title }), true);
+		return true;
+	}
+
+	/** PanelHost: 제출 취소(반환 전, 상태=assigned). */
+	async unsubmitAssignment(stateDoc: AssignmentStateDoc): Promise<boolean> {
+		const sync = this.studentMirrorSync();
+		if (!sync) return false;
+		const current = await sync.ctx.pouch.get<AssignmentStateDoc>(stateDoc._id);
+		if (!current || current.state === "returned") return false;
+		await sync.ctx.pouch.put({ ...current, state: "assigned", submittedAtMs: undefined });
+		return true;
+	}
+
+	/** PanelHost: vault 파일 열기(작업 파일). */
+	async openVaultPath(path: string): Promise<void> {
+		const f = this.app.vault.getAbstractFileByPath(path);
+		if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f, { active: true });
 	}
 
 	/**

@@ -1,3 +1,5 @@
+import { AssignmentDoc } from "../core/model/types";
+
 export type Role = "member" | "manager";
 
 export type ConflictPolicy = "preserve-local";
@@ -74,6 +76,9 @@ export interface CoVaultSettings {
 
 	/** Manager Mode: 공유 공간 목록(모둠/학급 공유). */
 	sharedSpaces: SharedSpace[];
+
+	/** Manager Mode: 과제 정의 목록(교사 기기 보관, 동기화 안 함). 배포 시 학생 미러에 상태 문서 생성. */
+	assignments?: AssignmentDoc[];
 
 	/** 동기화 root 밖으로 취급해 제외할 폴더 (기술문서 §11.1). */
 	excludeFolders: string[];
