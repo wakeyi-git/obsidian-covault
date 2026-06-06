@@ -122,7 +122,7 @@ export class NoticesView {
 		panelButton(acts, t("dashboard.open"), () => this.openFile(n.filePath));
 		if (this.manager) {
 			panelButton(acts, t("common.delete"), async () => {
-				await this.host.classroomStore.softDelete(n);
+				await this.host.deleteNotice(n);
 				await this.reload();
 			}, { warning: true });
 		}

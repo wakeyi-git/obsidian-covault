@@ -23,8 +23,10 @@ export class DashboardSection implements PanelSection {
 
 	render(container: HTMLElement): void {
 		this.root = container;
-		// 원격 변경(다른 기기 게시/응답) 시 현재 화면 갱신.
-		this.unsub = this.host.classroomStore.onChange(() => this.draw());
+		// 변경 알림 시 허브만 갱신(요약 최신화). 모듈 뷰는 자체 상태(선택한 주 등)를 잃지 않도록 재생성하지 않는다.
+		this.unsub = this.host.classroomStore.onChange(() => {
+			if (this.view === "hub") this.draw();
+		});
 		this.draw();
 	}
 

@@ -966,6 +966,7 @@
 .covault-dash-weeklabel {
 	font-weight: 600;
 	flex: 1;
+	text-align: center;
 }
 .covault-dash-empty {
 	color: var(--text-muted);
@@ -1029,14 +1030,16 @@
 	border: 1px solid var(--background-modifier-border);
 	padding: 1px 2px;
 	text-align: center;
+	overflow: hidden;
 }
 .covault-tt-cell {
 	display: flex;
 	align-items: center;
-	gap: 1px;
+	gap: 2px;
+	min-width: 0;
 }
 .covault-tt-cell input {
-	flex: 1;
+	flex: 1 1 0;
 	min-width: 0;
 	width: auto;
 	border: none;
@@ -1046,11 +1049,12 @@
 	padding: 2px 0;
 }
 .covault-tt-lesson {
-	flex: none;
+	flex: 0 0 18px;
 	width: 18px;
 	min-width: 18px;
 	height: 18px;
 	padding: 0;
+	margin: 0;
 	font-size: 12px;
 	line-height: 1;
 	background: transparent;

@@ -82,6 +82,7 @@ export class TimetableView {
 				if (this.manager) {
 					const cell = td.createDiv({ cls: "covault-tt-cell" });
 					const input = cell.createEl("input", { attr: { type: "text" } });
+					input.size = 1; // 본래 너비를 최소화 → flex로만 폭 결정(버튼을 밀어내지 않음)
 					input.value = doc.cells[key] ?? "";
 					input.tabIndex = di * periods + pi + 1; // 열 우선 순서(요일 di, 교시 pi)
 					input.onchange = () => void this.setCell(key, input.value);

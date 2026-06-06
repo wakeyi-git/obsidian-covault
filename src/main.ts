@@ -529,6 +529,19 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return this.createPost(title, "", "lesson", weekKey);
 	}
 
+	/** PanelHost: 게시(알림장/수업) 삭제(교사). 메타 soft delete + 본문 파일 삭제(동기화로 학생도 제거). */
+	async deleteNotice(notice: NoticeDoc): Promise<void> {
+		await this.classroom.softDelete(notice);
+		const f = this.app.vault.getAbstractFileByPath(notice.filePath);
+		if (f instanceof TFile) {
+			try {
+				await this.app.vault.trash(f, false); // vault 내 .trash로 이동 → 폴더에서 사라져 삭제가 동기화됨
+			} catch {
+				await this.app.vault.delete(f).catch(() => {});
+			}
+		}
+	}
+
 	/** PanelHost: 수업 안내(uid) 열기. 본문 파일을 열고, 학생이면 읽음 처리. */
 	async openLesson(uid: string): Promise<void> {
 		const doc = await this.classroom.get<NoticeDoc>(noticeId(uid));

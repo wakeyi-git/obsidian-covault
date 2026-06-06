@@ -7,7 +7,7 @@ import { LinkStatus } from "../../core/sync/MirrorContext";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "../../core/sync/RestoreManager";
 import { PurgeSnapshot } from "../../core/sync/recentPurge";
 import { DeleteModifyItem } from "../../core/sync/deleteModifyQueue";
-import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion, RoutineDoc, RoutineStateDoc } from "../../core/model/types";
+import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion, RoutineDoc, RoutineStateDoc, NoticeDoc } from "../../core/model/types";
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
@@ -39,6 +39,8 @@ export interface PanelHost {
 	postNotice(title: string, body: string, category?: "notice" | "lesson", weekKey?: string): Promise<boolean>;
 	/** 수업 안내 생성(교사) → uid 반환(시간표 칸 연결용). weekKey=해당 주간 태그. */
 	createLesson(title: string, weekKey?: string): Promise<string | null>;
+	/** 게시(알림장/수업) 삭제(교사): 메타 + 본문 파일 삭제. */
+	deleteNotice(notice: NoticeDoc): Promise<void>;
 	/** 수업 안내(uid) 열기(+학생 읽음 처리). */
 	openLesson(uid: string): Promise<void>;
 	// 과제(assignments)
