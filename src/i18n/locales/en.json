@@ -160,7 +160,9 @@
 		"not_set": "Not set",
 		"open_lesson": "Open lesson",
 		"add_lesson": "Add lesson for this slot",
-		"period_suffix": ""
+		"period_suffix": "",
+		"edit": "Edit",
+		"edit_routine": "Edit routine"
 	},
 	"deploy": {
 		"copy_to_members": "Copy to members",
@@ -223,6 +225,7 @@
 		"cancel": "Cancel",
 		"apply": "Apply",
 		"delete": "Delete",
+		"save": "Save",
 		"add": "Add",
 		"close": "Close",
 		"import": "Import",

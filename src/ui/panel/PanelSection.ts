@@ -67,6 +67,10 @@ export interface PanelHost {
 		title: string;
 		items: Array<{ label: string; recurrence: "daily" | "weekly"; weekdays?: number[] }>;
 	}): Promise<boolean>;
+	updateRoutine(
+		uid: string,
+		input: { title: string; items: Array<{ id?: string; label: string; recurrence: "daily" | "weekly"; weekdays?: number[] }> },
+	): Promise<boolean>;
 	deleteRoutine(uid: string): Promise<void>;
 	myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null>;
 	myRoutineDays(uid: string): Promise<RoutineStateDoc[]>;

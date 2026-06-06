@@ -62,6 +62,16 @@ export class RoutinesView {
 			const card = list.createDiv({ cls: "covault-dash-card" });
 			const top = card.createDiv({ cls: "covault-dash-card-row" });
 			top.createSpan({ cls: "covault-dash-card-title", text: r.title });
+			panelButton(top, t("dashboard.edit"), () =>
+				new RoutineEditModal(
+					this.host.app,
+					async (input) => {
+						await this.host.updateRoutine(r.uid, input);
+						await this.reload();
+					},
+					{ title: r.title, items: r.items },
+				).open(),
+			);
 			panelButton(top, t("common.delete"), async () => {
 				await this.host.deleteRoutine(r.uid);
 				await this.reload();

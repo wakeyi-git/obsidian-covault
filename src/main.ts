@@ -760,6 +760,31 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return this.classroom.put(doc);
 	}
 
+	/** PanelHost: 루틴 편집(교사). 제목·항목 갱신. 기존 항목 id는 보존(체크 상태 연속성). */
+	async updateRoutine(
+		uid: string,
+		input: { title: string; items: Array<{ id?: string; label: string; recurrence: "daily" | "weekly"; weekdays?: number[] }> },
+	): Promise<boolean> {
+		if (this.settings.role !== "manager") {
+			this.logger.warn(t("command.available_in_manager_mode_only"), true);
+			return false;
+		}
+		const existing = await this.classroom.get<RoutineDoc>(routineId(uid));
+		if (!existing) return false;
+		const used = new Set<string>();
+		const items = input.items.map((it, idx) => {
+			const id = it.id && !used.has(it.id) ? it.id : `g${Date.now().toString(36)}${idx}`;
+			used.add(id);
+			return {
+				id,
+				label: it.label,
+				recurrence: it.recurrence,
+				weekdays: it.recurrence === "weekly" ? it.weekdays : undefined,
+			};
+		});
+		return this.classroom.put({ ...existing, title: input.title, items });
+	}
+
 	/** PanelHost: 루틴 삭제(교사, soft delete). */
 	async deleteRoutine(uid: string): Promise<void> {
 		const doc = await this.classroom.get<RoutineDoc>(routineId(uid));
