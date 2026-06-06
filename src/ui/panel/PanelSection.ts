@@ -7,7 +7,7 @@ import { LinkStatus } from "../../core/sync/MirrorContext";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "../../core/sync/RestoreManager";
 import { PurgeSnapshot } from "../../core/sync/recentPurge";
 import { DeleteModifyItem } from "../../core/sync/deleteModifyQueue";
-import { VersionDoc, AssignmentDoc, AssignmentStateDoc } from "../../core/model/types";
+import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion } from "../../core/model/types";
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
@@ -49,11 +49,13 @@ export interface PanelHost {
 		privacy: "mirror" | "shared";
 		targetMembers: string[];
 		templatePath?: string;
+		rubric?: RubricCriterion[];
 	}): Promise<boolean>;
 	listMyAssignments(): Promise<AssignmentStateDoc[]>;
 	listAssignmentStates(uid: string): Promise<AssignmentStateDoc[]>;
 	submitAssignment(state: AssignmentStateDoc): Promise<boolean>;
 	unsubmitAssignment(state: AssignmentStateDoc): Promise<boolean>;
+	returnAssignment(uid: string, memberId: string, grade: AssignmentGrade): Promise<boolean>;
 	openVaultPath(path: string): Promise<void>;
 	getDashboardRows(): Promise<DashboardRow[]>;
 	openConflictModal(): void;

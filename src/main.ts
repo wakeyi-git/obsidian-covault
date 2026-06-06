@@ -1,7 +1,7 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId } from "./core/model/types";
-import { AssignmentDoc, AssignmentStateDoc, assignmentId, assignmentStateId, ASSIGNMENT_STATE_ID_PREFIX } from "./core/model/types";
+import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade, assignmentId, assignmentStateId, ASSIGNMENT_STATE_ID_PREFIX } from "./core/model/types";
 import { ensureParentFolders } from "./core/vault/folders";
 import { noticeFilePath } from "./core/classroom/notices";
 import { assignmentWorkDir, substituteTemplate, slugify } from "./core/classroom/assignments";
@@ -519,6 +519,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		privacy: "mirror" | "shared";
 		targetMembers: string[];
 		templatePath?: string;
+		rubric?: import("./core/model/types").RubricCriterion[];
 	}): Promise<boolean> {
 		const s = this.settings;
 		if (s.role !== "manager") {
@@ -547,6 +548,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			targetMembers: [...input.targetMembers],
 			dueAt: input.dueAt,
 			points: input.points,
+			rubric: input.rubric && input.rubric.length > 0 ? input.rubric : undefined,
 			createdBy: s.userId,
 			createdAtMs: Date.now(),
 		};
@@ -663,6 +665,21 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	async openVaultPath(path: string): Promise<void> {
 		const f = this.app.vault.getAbstractFileByPath(path);
 		if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f, { active: true });
+	}
+
+	/** PanelHost: 채점 반환(교사). 학생 미러의 상태 문서에 grade + state=returned 기록 → 학생 수신. */
+	async returnAssignment(uid: string, memberId: string, grade: AssignmentGrade): Promise<boolean> {
+		if (this.settings.role !== "manager") return false;
+		const member = this.settings.members.find((m) => m.memberId === memberId);
+		if (!member) return false;
+		const sync = this.memberSyncByRemoteDb(member.remoteDb);
+		if (!sync) return false;
+		const cur = await sync.ctx.pouch.get<AssignmentStateDoc>(assignmentStateId(uid, memberId));
+		if (!cur) return false;
+		await sync.ctx.pouch.put({ ...cur, grade, state: "returned", returnedAtMs: Date.now() });
+		this.requestApply();
+		this.logger.ok(t("dashboard.assignment_returned", { name: member.memberName || memberId }), true);
+		return true;
 	}
 
 	/**

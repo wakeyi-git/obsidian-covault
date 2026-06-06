@@ -1,5 +1,6 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import { CoVaultSettings } from "../settings/types";
+import { RubricCriterion } from "../core/model/types";
 import { t } from "../i18n";
 
 export interface AssignmentInput {
@@ -10,6 +11,7 @@ export interface AssignmentInput {
 	privacy: "mirror" | "shared";
 	targetMembers: string[];
 	templatePath?: string;
+	rubric?: RubricCriterion[];
 }
 
 /** 과제 생성 모달(교사). 제목·안내·마감·배점·대상·공개범위·템플릿. */
@@ -21,6 +23,7 @@ export class AssignmentCreateModal extends Modal {
 	private privacy: "mirror" | "shared" = "mirror";
 	private templatePath = "";
 	private targets = new Set<string>();
+	private criteria: Array<{ title: string; max: string }> = [];
 
 	constructor(app: App, private settings: CoVaultSettings, private onSubmit: (input: AssignmentInput) => void | Promise<void>) {
 		super(app);
@@ -61,6 +64,11 @@ export class AssignmentCreateModal extends Modal {
 			.setDesc(t("dashboard.template_path_desc"))
 			.addText((tx) => tx.setPlaceholder("템플릿/과제.md").onChange((v) => (this.templatePath = v)));
 
+		// 루브릭(기준 × 배점)
+		contentEl.createDiv({ cls: "covault-dash-label", text: t("dashboard.rubric") });
+		const rubricBox = contentEl.createDiv({ cls: "covault-dash-rubric" });
+		this.renderRubric(rubricBox);
+
 		// 대상 멤버
 		contentEl.createDiv({ cls: "covault-dash-label", text: t("dashboard.targets") });
 		const members = this.settings.members.filter((m) => m.memberId && m.provisioned);
@@ -100,9 +108,39 @@ export class AssignmentCreateModal extends Modal {
 							privacy: this.privacy,
 							targetMembers: [...this.targets],
 							templatePath: this.templatePath.trim() || undefined,
+							rubric: this.buildRubric(),
 						});
 					}),
 			);
+	}
+
+	private renderRubric(box: HTMLElement): void {
+		box.empty();
+		this.criteria.forEach((cr, i) => {
+			const row = box.createDiv({ cls: "covault-dash-rubric-row" });
+			const ti = row.createEl("input", { attr: { type: "text", placeholder: t("dashboard.criterion") } });
+			ti.value = cr.title;
+			ti.oninput = () => (cr.title = ti.value);
+			const pi = row.createEl("input", { cls: "covault-dash-rubric-pts", attr: { type: "number", placeholder: t("dashboard.max") } });
+			pi.value = cr.max;
+			pi.oninput = () => (cr.max = pi.value);
+			const del = row.createEl("button", { cls: "mod-warning", text: "✕" });
+			del.onclick = () => {
+				this.criteria.splice(i, 1);
+				this.renderRubric(box);
+			};
+		});
+		const add = box.createEl("button", { text: t("dashboard.add_criterion") });
+		add.onclick = () => {
+			this.criteria.push({ title: "", max: "" });
+			this.renderRubric(box);
+		};
+	}
+
+	private buildRubric(): RubricCriterion[] {
+		return this.criteria
+			.filter((c) => c.title.trim())
+			.map((c, i) => ({ id: `r${i}`, title: c.title.trim(), levels: [{ label: "", points: Number(c.max) || 0 }] }));
 	}
 
 	onClose(): void {

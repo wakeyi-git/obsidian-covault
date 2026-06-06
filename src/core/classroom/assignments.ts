@@ -1,7 +1,26 @@
-import { AssignmentDoc, AssignmentStateDoc } from "../model/types";
+import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion } from "../model/types";
 import { slugify } from "./notices";
 
 export { slugify };
+
+/** 한 기준의 최대 배점(레벨 점수 합 — 단일 레벨이면 그 값). */
+export function criterionMax(c: RubricCriterion): number {
+	return c.levels.reduce((a, l) => a + (l.points || 0), 0);
+}
+
+/** 루브릭 총 만점. */
+export function rubricMax(rubric: RubricCriterion[] | undefined): number {
+	return (rubric ?? []).reduce((a, c) => a + criterionMax(c), 0);
+}
+
+/** 채점 총점: 루브릭이 있으면 기준별 점수 합, 없으면 grade.score. */
+export function gradeTotal(grade: AssignmentGrade | undefined, rubric: RubricCriterion[] | undefined): number {
+	if (!grade) return 0;
+	if (rubric && rubric.length > 0) {
+		return rubric.reduce((a, c) => a + (grade.rubricScores?.[c.id] ?? 0), 0);
+	}
+	return grade.score ?? 0;
+}
 
 /**
  * 과제 작업 폴더 base. 개인=<root>/_과제/<slug>(root="" 학생 측이면 _과제/<slug>), 공유=<학급>/과제/<slug>.

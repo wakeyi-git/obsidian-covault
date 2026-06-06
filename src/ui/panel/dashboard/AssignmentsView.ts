@@ -1,7 +1,8 @@
 import { PanelHost, panelButton } from "../PanelSection";
 import { AssignmentDoc, AssignmentStateDoc } from "../../../core/model/types";
-import { buildMatrix, statusCounts, displayStatus, AssignmentDisplayStatus } from "../../../core/classroom/assignments";
+import { buildMatrix, statusCounts, displayStatus, gradeTotal, rubricMax, AssignmentDisplayStatus, MatrixRow } from "../../../core/classroom/assignments";
 import { AssignmentCreateModal } from "../../AssignmentCreateModal";
+import { GradingModal } from "../../GradingModal";
 import { t, formatDate } from "../../../i18n";
 
 function statusLabel(s: AssignmentDisplayStatus): string {
@@ -90,14 +91,42 @@ export class AssignmentsView {
 				const line = card.createDiv({ cls: "covault-dash-matrix-row" });
 				line.createSpan({ cls: "covault-dash-matrix-name", text: r.memberName });
 				line.createSpan({ cls: `covault-dash-status is-${r.status}`, text: statusLabel(r.status) });
-				const wp = r.state?.workPaths?.[0];
-				if (wp) {
-					const member = this.host.settings.members.find((m) => m.memberId === r.memberId);
-					const full = def.privacy === "shared" || !member ? wp : `${member.localRoot}/${wp}`;
-					panelButton(line, t("dashboard.open"), () => this.host.openVaultPath(full));
+				if (r.state?.grade) {
+					const total = gradeTotal(r.state.grade, def.rubric);
+					const max = def.rubric ? rubricMax(def.rubric) : def.points;
+					line.createSpan({ cls: "covault-dash-score", text: max != null ? `${total}/${max}` : String(total) });
 				}
+				const full = this.teacherWorkPath(def, r);
+				if (full) panelButton(line, t("dashboard.open"), () => this.host.openVaultPath(full));
+				if (r.state) panelButton(line, t("dashboard.grade"), () => this.openGrading(def, r, full));
 			}
 		}
+	}
+
+	/** 교사 측 작업 파일 경로(개인=member.localRoot 접두, 공유=그대로). 없으면 null. */
+	private teacherWorkPath(def: AssignmentDoc, r: MatrixRow): string | null {
+		const wp = r.state?.workPaths?.[0];
+		if (!wp) return null;
+		if (def.privacy === "shared") return wp;
+		const member = this.host.settings.members.find((m) => m.memberId === r.memberId);
+		return member ? `${member.localRoot}/${wp}` : wp;
+	}
+
+	private openGrading(def: AssignmentDoc, r: MatrixRow, openPath: string | null): void {
+		new GradingModal(this.host.app, {
+			title: def.title,
+			memberName: r.memberName,
+			openPath,
+			rubric: def.rubric,
+			points: def.points,
+			initial: r.state?.grade,
+			onOpenWork: (p) => this.host.openVaultPath(p),
+			onReturn: async (grade) => {
+				grade.score = gradeTotal(grade, def.rubric); // 학생이 단일 총점으로 보도록 저장
+				await this.host.returnAssignment(def.uid, r.memberId, grade);
+				await this.reload();
+			},
+		}).open();
 	}
 
 	// --- 학생: 내 과제 + 제출 ---
@@ -116,11 +145,19 @@ export class AssignmentsView {
 			top.createSpan({ cls: "covault-dash-card-title", text: st.title });
 			top.createSpan({ cls: `covault-dash-status is-${status}`, text: statusLabel(status) });
 			if (st.dueAt) card.createDiv({ cls: "covault-dash-card-desc", text: t("dashboard.due", { date: formatDate(new Date(st.dueAt)) }) });
+
+			// 반환된 과제: 성적 + 총평 표시.
+			if (st.state === "returned" && st.grade) {
+				const score = st.grade.score ?? (st.grade.rubricScores ? Object.values(st.grade.rubricScores).reduce((a, b) => a + b, 0) : 0);
+				card.createDiv({ cls: "covault-dash-grade", text: t("dashboard.your_score", { score }) });
+				if (st.grade.comment) card.createDiv({ cls: "covault-dash-card-desc", text: st.grade.comment });
+			}
+
 			const actions = card.createDiv({ cls: "covault-dash-actions" });
 			const wp = st.workPaths?.[0];
 			if (wp) panelButton(actions, t("dashboard.open"), () => this.host.openVaultPath(wp));
 			if (st.state === "returned") {
-				// 반환됨(채점은 Phase 3) — 제출 버튼 없음.
+				// 반환됨 — 제출 버튼 없음(성적은 위에 표시).
 			} else if (st.state === "submitted") {
 				panelButton(actions, t("dashboard.unsubmit"), async () => {
 					await this.host.unsubmitAssignment(st);

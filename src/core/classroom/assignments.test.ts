@@ -5,8 +5,11 @@ import {
 	displayStatus,
 	buildMatrix,
 	statusCounts,
+	criterionMax,
+	rubricMax,
+	gradeTotal,
 } from "./assignments";
-import { AssignmentStateDoc, AssignmentDoc } from "../model/types";
+import { AssignmentStateDoc, AssignmentDoc, RubricCriterion } from "../model/types";
 
 describe("assignmentWorkDir / substituteTemplate", () => {
 	it("개인=교사측 <root>/_과제, 학생측(root='')은 _과제, 공유=학급/과제", () => {
@@ -68,5 +71,23 @@ describe("buildMatrix / statusCounts", () => {
 		const c = statusCounts(rows);
 		expect(c.submitted).toBe(1);
 		expect(c.overdue).toBe(2);
+	});
+});
+
+describe("rubric 채점", () => {
+	const rubric: RubricCriterion[] = [
+		{ id: "c1", title: "정확성", levels: [{ label: "만점", points: 10 }] },
+		{ id: "c2", title: "표현", levels: [{ label: "상", points: 3 }, { label: "중", points: 2 }] },
+	];
+	it("criterionMax/rubricMax", () => {
+		expect(criterionMax(rubric[0])).toBe(10);
+		expect(criterionMax(rubric[1])).toBe(5);
+		expect(rubricMax(rubric)).toBe(15);
+		expect(rubricMax(undefined)).toBe(0);
+	});
+	it("gradeTotal: 루브릭 있으면 기준별 합, 없으면 score", () => {
+		expect(gradeTotal({ rubricScores: { c1: 9, c2: 4 } }, rubric)).toBe(13);
+		expect(gradeTotal({ score: 88 }, undefined)).toBe(88);
+		expect(gradeTotal(undefined, rubric)).toBe(0);
 	});
 });
