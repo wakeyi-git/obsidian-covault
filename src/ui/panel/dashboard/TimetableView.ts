@@ -80,12 +80,18 @@ export class TimetableView {
 				// 삭제된 수업을 가리키면 미연결 처리(+ 버튼 복구).
 				const lessonUid = rawUid && validLessons.has(rawUid) ? rawUid : undefined;
 				if (this.manager) {
+					// 인라인 스타일로 레이아웃을 고정한다(styles.css 캐시/구버전과 무관하게 겹침 방지).
 					const cell = td.createDiv({ cls: "covault-tt-cell" });
+					cell.style.display = "flex";
+					cell.style.alignItems = "center";
+					cell.style.gap = "2px";
+					cell.style.minWidth = "0";
 					const input = cell.createEl("input", { attr: { type: "text" } });
 					input.size = 1; // 본래 너비를 최소화 → flex로만 폭 결정(버튼을 밀어내지 않음)
 					input.value = doc.cells[key] ?? "";
 					input.tabIndex = di * periods + pi + 1; // 열 우선 순서(요일 di, 교시 pi)
 					input.onchange = () => void this.setCell(key, input.value);
+					Object.assign(input.style, { flex: "1 1 0", minWidth: "0", width: "auto", border: "none", background: "transparent", textAlign: "center" });
 					// 수업 안내 연결: 있으면 열기(📄), 없으면 생성(＋). 입력칸과 나란히 배치(겹침 방지).
 					const btn = cell.createEl("button", {
 						cls: `covault-tt-lesson${lessonUid ? " is-linked" : ""}`,
@@ -93,6 +99,19 @@ export class TimetableView {
 					});
 					btn.tabIndex = -1;
 					btn.title = lessonUid ? t("dashboard.open_lesson") : t("dashboard.add_lesson");
+					Object.assign(btn.style, {
+						position: "static", // 구버전 styles.css의 absolute 무력화
+						flex: "0 0 auto",
+						background: "transparent",
+						border: "none",
+						boxShadow: "none",
+						padding: "0 2px",
+						margin: "0",
+						minWidth: "0",
+						cursor: "pointer",
+						fontSize: "13px",
+						opacity: lessonUid ? "1" : "0.5",
+					});
 					btn.onclick = () => void (lessonUid ? this.host.openLesson(lessonUid) : this.createLesson(key, d, doc.periods[pi]));
 				} else {
 					const text = doc.cells[key] ?? "";
