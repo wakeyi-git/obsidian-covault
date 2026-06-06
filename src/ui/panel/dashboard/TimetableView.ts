@@ -68,19 +68,48 @@ export class TimetableView {
 		doc.periods.forEach((p, pi) => {
 			const row = table.createEl("tr");
 			row.createEl("th", { text: p });
-			doc.days.forEach((_d, di) => {
+			doc.days.forEach((d, di) => {
 				const key = `${di}:${pi}`;
 				const td = row.createEl("td");
+				const lessonUid = doc.lessons?.[key];
 				if (this.manager) {
 					const input = td.createEl("input", { attr: { type: "text" } });
 					input.value = doc.cells[key] ?? "";
 					input.tabIndex = di * periods + pi + 1; // 열 우선 순서(요일 di, 교시 pi)
 					input.onchange = () => void this.setCell(key, input.value);
+					// 수업 안내 연결: 있으면 열기(📄), 없으면 생성(＋).
+					const btn = td.createEl("button", { cls: "covault-tt-lesson", text: lessonUid ? "📄" : "＋" });
+					btn.tabIndex = -1;
+					btn.title = lessonUid ? t("dashboard.open_lesson") : t("dashboard.add_lesson");
+					btn.onclick = () => void (lessonUid ? this.host.openLesson(lessonUid) : this.createLesson(key, d, doc.periods[pi]));
 				} else {
-					td.setText(doc.cells[key] ?? "");
+					const text = doc.cells[key] ?? "";
+					if (lessonUid && text) {
+						const link = td.createEl("a", { cls: "covault-tt-link", text });
+						link.onclick = (e) => {
+							e.preventDefault();
+							void this.host.openLesson(lessonUid);
+						};
+					} else {
+						td.setText(text);
+					}
 				}
 			});
 		});
+	}
+
+	/** 칸에서 수업 안내 생성 후 칸에 연결(교사). */
+	private async createLesson(key: string, day: string, period: string): Promise<void> {
+		if (!this.doc) return;
+		const subject = this.doc.cells[key]?.trim();
+		const title = subject ? `${subject} (${day} ${period}${t("dashboard.period_suffix")})` : `${day} ${period}${t("dashboard.period_suffix")}`;
+		const uid = await this.host.createLesson(title);
+		if (!uid) return;
+		const lessons = { ...(this.doc.lessons ?? {}), [key]: uid };
+		this.doc = { ...this.doc, lessons, updatedAtMs: Date.now(), updatedBy: this.host.settings.userId };
+		await this.host.classroomStore.put(this.doc);
+		await this.host.openLesson(uid);
+		await this.reload();
 	}
 
 	private async setCell(key: string, value: string): Promise<void> {

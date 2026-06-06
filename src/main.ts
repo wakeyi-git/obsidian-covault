@@ -1,6 +1,6 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
-import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId } from "./core/model/types";
+import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId, ResponseDoc, responseId } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade, assignmentId, assignmentStateId, ASSIGNMENT_STATE_ID_PREFIX } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc, routineId, routinePrefix, routineStateId, routineStatePrefix } from "./core/model/types";
 import { ensureParentFolders } from "./core/vault/folders";
@@ -453,22 +453,22 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		await this.deployShared(space); // 프로비저닝 + 전원 shares 갱신 + 모드 재시작
 	}
 
-	/** PanelHost: 게시(교사). 본문 마크다운 파일을 학급 폴더에 만들고 NoticeDoc 메타를 학급 공유에 기록. */
-	async postNotice(title: string, body: string, category: "notice" | "lesson" = "notice"): Promise<boolean> {
+	/** 게시 본문 파일 + NoticeDoc 생성(교사). 성공 시 uid, 실패 시 null. */
+	private async createPost(title: string, body: string, category: "notice" | "lesson"): Promise<string | null> {
 		if (this.settings.role !== "manager") {
 			this.logger.warn(t("command.available_in_manager_mode_only"), true);
-			return false;
+			return null;
 		}
 		if (!this.homeroomReady()) {
 			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
-			return false;
+			return null;
 		}
 		const ts = Date.now();
 		const path = noticeFilePath(HOMEROOM_FOLDER, ts, title, category === "lesson" ? "수업" : "알림장");
 		await ensureParentFolders(this.app, path);
 		if (this.app.vault.getAbstractFileByPath(path)) {
 			this.logger.warn(t("dashboard.notice_file_exists"), true);
-			return false;
+			return null;
 		}
 		await this.app.vault.create(path, `# ${title}\n\n${body}\n`);
 		const uid = `${ts.toString(36)}`;
@@ -487,8 +487,41 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			createdByRole: "manager",
 		};
 		const ok = await this.classroom.put(doc);
-		if (ok) this.logger.ok(t("dashboard.notice_posted", { title }), true);
-		return ok;
+		if (!ok) return null;
+		this.logger.ok(t("dashboard.notice_posted", { title }), true);
+		return uid;
+	}
+
+	/** PanelHost: 게시(교사). 본문 마크다운 파일을 학급 폴더에 만들고 NoticeDoc 메타를 학급 공유에 기록. */
+	async postNotice(title: string, body: string, category: "notice" | "lesson" = "notice"): Promise<boolean> {
+		return (await this.createPost(title, body, category)) != null;
+	}
+
+	/** PanelHost: 수업 안내 생성(교사). 성공 시 uid 반환(시간표 칸 연결용). */
+	async createLesson(title: string): Promise<string | null> {
+		return this.createPost(title, "", "lesson");
+	}
+
+	/** PanelHost: 수업 안내(uid) 열기. 본문 파일을 열고, 학생이면 읽음 처리. */
+	async openLesson(uid: string): Promise<void> {
+		const doc = await this.classroom.get<NoticeDoc>(noticeId(uid));
+		if (!doc) return;
+		await this.openVaultPath(doc.filePath);
+		if (this.settings.role === "member") {
+			const now = Date.now();
+			const r: ResponseDoc = {
+				_id: responseId(doc._id, this.settings.userId, "read"),
+				type: "response",
+				schemaVersion: 1,
+				workspaceId: this.settings.workspaceId,
+				targetId: doc._id,
+				kind: "read",
+				byUser: this.settings.userId,
+				byRole: "member",
+				createdAtMs: now,
+			};
+			await this.classroom.put(r);
+		}
 	}
 
 	// --- 과제(assignments) ---

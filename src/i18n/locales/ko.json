@@ -157,7 +157,10 @@
 		"sum_done_members": "완료 {done}/{total}명",
 		"sum_graded": "채점 {done}/{total}",
 		"sum_cells": "{n}칸 입력",
-		"not_set": "미설정"
+		"not_set": "미설정",
+		"open_lesson": "수업 안내 열기",
+		"add_lesson": "이 칸에 수업 안내 추가",
+		"period_suffix": "교시"
 	},
 	"deploy": {
 		"copy_to_members": "구성원에게 복사",

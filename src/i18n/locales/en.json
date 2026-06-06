@@ -157,7 +157,10 @@
 		"sum_done_members": "Done {done}/{total} members",
 		"sum_graded": "Graded {done}/{total}",
 		"sum_cells": "{n} filled",
-		"not_set": "Not set"
+		"not_set": "Not set",
+		"open_lesson": "Open lesson",
+		"add_lesson": "Add lesson for this slot",
+		"period_suffix": ""
 	},
 	"deploy": {
 		"copy_to_members": "Copy to members",

@@ -240,6 +240,8 @@ export interface TimetableDoc extends PouchDocBase {
 	days: string[]; // 요일 라벨(예: ["월","화",...])
 	periods: string[]; // 교시 라벨(예: ["1","2",...])
 	cells: Record<string, string>; // "<dayIndex>:<periodIndex>" → 과목/내용
+	/** 칸별 수업 안내 연결: "<dayIndex>:<periodIndex>" → 수업(lesson NoticeDoc) uid. */
+	lessons?: Record<string, string>;
 	updatedAtMs: number;
 	updatedBy: string;
 }

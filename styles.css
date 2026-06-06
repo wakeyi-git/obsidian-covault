@@ -1008,6 +1008,28 @@
 	text-align: center;
 	font-size: 12px;
 }
+.covault-timetable td {
+	position: relative;
+}
+.covault-tt-lesson {
+	position: absolute;
+	top: 0;
+	right: 0;
+	padding: 0 2px;
+	font-size: 9px;
+	line-height: 1.2;
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	opacity: 0.5;
+}
+.covault-tt-lesson:hover {
+	opacity: 1;
+}
+.covault-tt-link {
+	cursor: pointer;
+	text-decoration: underline;
+}
 
 .covault-dash-matrix-row {
 	display: flex;
