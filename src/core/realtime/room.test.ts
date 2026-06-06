@@ -21,10 +21,10 @@ describe("relUnder", () => {
 
 describe("roomName — 교사/학생 패리티", () => {
 	it("교사(folder='학생A')와 학생(folder='')이 같은 mirror room을 산출", () => {
-		const teacher = roomName("c1", "mirror-s1", "학생A/note.md", "학생A");
-		const student = roomName("c1", "mirror-s1", "note.md", "");
-		expect(teacher).toBe("ws_c1/share/mirror-s1/note.md");
-		expect(student).toBe(teacher);
+		const manager = roomName("c1", "mirror-s1", "학생A/note.md", "학생A");
+		const member = roomName("c1", "mirror-s1", "note.md", "");
+		expect(manager).toBe("ws_c1/share/mirror-s1/note.md");
+		expect(member).toBe(manager);
 	});
 
 	it("하위 폴더도 양측 동일", () => {

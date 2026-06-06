@@ -109,7 +109,7 @@ export class FeedbackSection implements PanelSection {
 		}
 		for (const it of items) {
 			const note = it.localPath.split("/").pop() || it.localPath;
-			this.renderCard(it.doc, it.localPath, t("panel.msg", { student: it.memberName, note }));
+			this.renderCard(it.doc, it.localPath, t("panel.msg", { member: it.memberName, note }));
 		}
 	}
 

@@ -4,8 +4,8 @@ README가 참조하는 이미지 파일을 여기에 넣으세요(파일명 유�
 
 | 파일명 | 내용 |
 |---|---|
-| `teacher-settings.png` | 교사 설정 탭(학급·관리자 계정·학생 목록 그룹) |
-| `qr-invite.png` | 학생 초대 QR 모달 |
+| `manager-settings.png` | 운영자 설정 탭(워크스페이스·관리자 계정·구성원 목록 그룹) |
+| `qr-invite.png` | 구성원 초대 QR 모달 |
 | `realtime.png` | 공유 문서 실시간 공동 편집(커서·이름 표시) |
 | `feedback.png` | 피드백 패널(앵커 댓글 목록) |
 

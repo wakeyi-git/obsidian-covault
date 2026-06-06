@@ -57,8 +57,8 @@ export interface SettingsHost extends Plugin {
 	restartMode(): Promise<void>;
 	requestApply(): void;
 	resetSetup(): Promise<void>;
-	inviteMember(student: MemberConfig): Promise<boolean>;
-	rotateMemberPassword(student: MemberConfig): Promise<void>;
+	inviteMember(member: MemberConfig): Promise<boolean>;
+	rotateMemberPassword(member: MemberConfig): Promise<void>;
 	ingestInvite(code: string): Promise<void>;
 	deployShared(space: SharedSpace): Promise<void>;
 	redeployRealtime(): Promise<void>;
@@ -340,7 +340,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 	private renderSharedCard(group: SettingGroup, sp: SharedSpace, index: number): void {
 		const s = this.host.settings;
-		const card = group.listEl.createDiv({ cls: "covault-student-card" });
+		const card = group.listEl.createDiv({ cls: "covault-member-card" });
 
 		new Setting(card)
 			.setName(sp.name || t("settings.shared_space", { n: index + 1 }))
@@ -426,14 +426,14 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					? t("panel.members_changed_redeploy_needed")
 					: t("panel.deployed");
 		const statusEl = card.createEl("div", {
-			cls: "covault-student-status",
+			cls: "covault-member-status",
 			text: t("panel.db", { db: sp.remoteDb, badge }),
 		});
 		if (status === "needs-redeploy") statusEl.addClass("covault-dash-conflict");
 	}
 
 	private renderMemberCard(group: SettingGroup, st: MemberConfig, index: number): void {
-		const card = group.listEl.createDiv({ cls: "covault-student-card" });
+		const card = group.listEl.createDiv({ cls: "covault-member-card" });
 
 		const head = new Setting(card)
 			.setName(st.memberName || st.memberId || t("settings.member", { n: index + 1 }))
@@ -474,13 +474,13 @@ export class CoVaultSettingTab extends PluginSettingTab {
 			);
 
 		this.memberField(card, t("settings.name"), st, "memberName", t("common.member_a"));
-		this.memberField(card, t("settings.member_id"), st, "memberId", "student_a");
+		this.memberField(card, t("settings.member_id"), st, "memberId", "member_a");
 		// 비우면 초대 시점에 학생 ID로 자동 채움 (계정=ID, DB=mirror_<ID>, 폴더=이름/ID)
 		this.memberField(card, t("settings.mirror_db_auto_if_empty"), st, "remoteDb", t("settings.mirror_memberid"));
 		this.memberField(card, t("settings.folder_auto_if_empty"), st, "localRoot", t("settings.name_or_memberid"));
 
 		card.createEl("div", {
-			cls: "covault-student-status",
+			cls: "covault-member-status",
 			text: st.provisioned ? t("settings.status_provisioned") : t("settings.status_not_provisioned_pressing_invite_creates"),
 		});
 	}

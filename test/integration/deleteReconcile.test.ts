@@ -10,12 +10,12 @@ describe("삭제 정합 (delete reconcile)", () => {
 
 	it("시나리오1: 신규/빈 vault 전체 동기화는 원격 문서를 tombstone하지 않는다(기준선 없음)", async () => {
 		cluster = new Cluster();
-		const teacher = cluster.device({ deviceId: "t", role: "manager", remoteDb: "mirror_s1" });
+		const manager = cluster.device({ deviceId: "t", role: "manager", remoteDb: "mirror_s1" });
 		const fresh = cluster.device({ deviceId: "fresh", role: "member", remoteDb: "mirror_s1" });
 		const observer = cluster.device({ deviceId: "obs", role: "member", remoteDb: "mirror_s1" });
 
-		for (const p of ["a.md", "b.md", "c.md"]) teacher.vault.seed(p, `content-${p}`);
-		await teacher.sync("up");
+		for (const p of ["a.md", "b.md", "c.md"]) manager.vault.seed(p, `content-${p}`);
+		await manager.sync("up");
 
 		// 빈 vault(기준선 manifest 없음)에서 양방향 전체 동기화
 		await fresh.sync("both");

@@ -21,7 +21,7 @@ export interface LinkStatus {
 }
 
 /**
- * 하나의 student↔mirror 링크의 컨텍스트 + 공유 헬퍼. 기술문서 §9 / §16 / §14.2.
+ * 하나의 member↔mirror 링크의 컨텍스트 + 공유 헬퍼. 기술문서 §9 / §16 / §14.2.
  *
  * 경로 매핑, vault 입출력, NoteDoc 빌드, 동기화 상태(syncState)와 changes 체크포인트(lastSeq)를
  * 한곳에서 다룬다. Applier/Watcher/Subscriber/FullSync가 공유한다.

@@ -53,7 +53,7 @@ export class CoreServices {
 	 */
 	private localDbName(db: string): string {
 		const vaultKey = (this.app as any).appId ?? this.app.vault.getName();
-		return `classsync_${vaultKey}_${db}`;
+		return `covault_${vaultKey}_${db}`;
 	}
 
 	/** 잦은 체크포인트 갱신을 모아 저장(과도한 디스크 쓰기 방지). */

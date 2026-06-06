@@ -47,9 +47,9 @@ export interface PanelHost {
 	/** 교사 온보딩 완료 표시(마법사 자동 노출 중단). */
 	completeOnboarding(): Promise<void>;
 	/** 원본 경로(파일/폴더)를 선택 학생들에게 복사. 기술문서 §20. */
-	bulkCopy(sourcePath: string, opts: CopyOptions, studentIds: string[]): Promise<CopyResult & { error?: string }>;
+	bulkCopy(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyResult & { error?: string }>;
 	/** 배포 미리보기(dry-run). */
-	bulkCopyPreview(sourcePath: string, opts: CopyOptions, studentIds: string[]): Promise<CopyPlan & { error?: string }>;
+	bulkCopyPreview(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyPlan & { error?: string }>;
 	deployShared(space: SharedSpace): Promise<void>;
 	/** 모든 링크의 삭제된(tombstone) 파일 목록. 복구 패널용(보고서 §2 P1). */
 	listDeletedFiles(): Promise<DeletedItem[]>;

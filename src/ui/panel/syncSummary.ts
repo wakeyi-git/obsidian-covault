@@ -18,10 +18,10 @@ export interface SyncSummary {
 
 /** 대시보드 상단 요약 + 조치 카드용 모델 계산(순수 함수, 테스트 가능). */
 export function computeSyncSummary(rows: DashboardRow[], s: CoVaultSettings): SyncSummary {
-	const teacher = s.role === "manager";
-	const members = teacher ? s.members.length : rows.length;
-	const invited = teacher ? s.members.filter((st) => st.provisioned).length : rows.length;
-	const notInvited = teacher ? s.members.filter((st) => st.memberId && !st.provisioned).length : 0;
+	const manager = s.role === "manager";
+	const members = manager ? s.members.length : rows.length;
+	const invited = manager ? s.members.filter((st) => st.provisioned).length : rows.length;
+	const notInvited = manager ? s.members.filter((st) => st.memberId && !st.provisioned).length : 0;
 	const shared = s.sharedSpaces.length;
 	const conflicts = rows.reduce((n, r) => n + (r.conflicts || 0), 0);
 	const errorCount = rows.filter((r) => r.state === "error").length;

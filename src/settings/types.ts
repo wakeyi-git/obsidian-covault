@@ -46,7 +46,7 @@ export interface CoVaultSettings {
 	/** 최초 1회 역할 선택 완료 여부. true면 역할이 잠긴다(기술문서 §5.4 보강). */
 	setupComplete: boolean;
 	/** 교사 온보딩 마법사 완료/닫기 여부. true면 역할 선택 후 마법사를 자동으로 띄우지 않는다. */
-	teacherOnboardingDone?: boolean;
+	managerOnboardingDone?: boolean;
 
 	role: Role;
 	workspaceId: string;

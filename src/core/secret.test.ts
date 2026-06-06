@@ -41,12 +41,12 @@ describe("secret storage helpers", () => {
 
 	it("학생별 비밀번호 키 + 라운드트립", () => {
 		const app = fakeApp();
-		setMemberPassword(app, "student_a", "pwA");
-		setMemberPassword(app, "student_b", "pwB");
-		expect(getMemberPassword(app, "student_a", "")).toBe("pwA");
-		expect(getMemberPassword(app, "student_b", "")).toBe("pwB");
+		setMemberPassword(app, "member_a", "pwA");
+		setMemberPassword(app, "member_b", "pwB");
+		expect(getMemberPassword(app, "member_a", "")).toBe("pwA");
+		expect(getMemberPassword(app, "member_b", "")).toBe("pwB");
 		// 키가 학생별로 분리됨
-		expect(app.secretStorage.listSecrets()).toContain(memberPasswordId("student_a"));
+		expect(app.secretStorage.listSecrets()).toContain(memberPasswordId("member_a"));
 	});
 
 	it("memberPasswordId 정규화(소문자-영숫자-대시)", () => {

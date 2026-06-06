@@ -26,7 +26,7 @@ export class MemberBulkImportModal extends Modal {
 
 		const ta = contentEl.createEl("textarea", { cls: "covault-backup-input" });
 		ta.rows = 8;
-		ta.placeholder = "홍길동,hong\n김학생 kim_student\n이영희";
+		ta.placeholder = "홍길동,hong\n김학생 kim_member\n이영희";
 		ta.addEventListener("input", () => {
 			this.text = ta.value;
 			this.renderPreview();

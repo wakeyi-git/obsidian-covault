@@ -213,7 +213,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				);
 				await this.startMode();
 				// 교사는 온보딩 마법사를 자동으로 띄운다(이미 완료/닫았으면 생략).
-				if (role === "manager" && !this.settings.teacherOnboardingDone) await this.activatePanel("setup");
+				if (role === "manager" && !this.settings.managerOnboardingDone) await this.activatePanel("setup");
 			},
 			(code) => void this.ingestInvite(code),
 		).open();
@@ -271,7 +271,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	// --- 학생 프로비저닝 + 초대 (Manager) ---
 	/** 성공(프로비저닝+초대 표시) 시 true. 실패 시 false(호출자가 로컬 상태를 되돌릴 수 있게). */
-	async inviteMember(student: MemberConfig): Promise<boolean> {
+	async inviteMember(member: MemberConfig): Promise<boolean> {
 		await this.activatePanel("log");
 		const s = this.settings;
 		const adminPw = this.couchPassword();
@@ -279,54 +279,54 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			this.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
 			return false;
 		}
-		if (!student.memberId) {
+		if (!member.memberId) {
 			this.logger.warn(t("command.enter_a_member_id"), true);
 			return false;
 		}
 		// 기본값 보정
-		if (!student.username) student.username = student.memberId;
-		if (!student.remoteDb) student.remoteDb = `mirror_${student.memberId}`;
-		if (!student.localRoot) student.localRoot = student.memberName || student.memberId;
+		if (!member.username) member.username = member.memberId;
+		if (!member.remoteDb) member.remoteDb = `mirror_${member.memberId}`;
+		if (!member.localRoot) member.localRoot = member.memberName || member.memberId;
 		// CouchDB 이름 규칙 위반은 프로비저닝 HTTP 에러 전에 막는다(보고서 P2).
-		if (!isValidCouchName(student.memberId) || !isValidCouchName(student.username) || !isValidCouchName(student.remoteDb)) {
-			this.logger.warn(t("command.invalid_id_or_db_name", { id: student.memberId }), true);
+		if (!isValidCouchName(member.memberId) || !isValidCouchName(member.username) || !isValidCouchName(member.remoteDb)) {
+			this.logger.warn(t("command.invalid_id_or_db_name", { id: member.memberId }), true);
 			return false;
 		}
 		// 학생 비밀번호: Secret Storage 우선 → 평문 폴백 → 없으면 생성.
-		let studentPw = getMemberPassword(this.app, student.memberId, student.password);
-		if (!studentPw) studentPw = genPassword();
+		let memberPw = getMemberPassword(this.app, member.memberId, member.password);
+		if (!memberPw) memberPw = genPassword();
 
-		this.logger.info(t("command.provisioning_member", { id: student.memberId, db: student.remoteDb }));
+		this.logger.info(t("command.provisioning_member", { id: member.memberId, db: member.remoteDb }));
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
 		const res = await admin.provisionMember({
-			username: student.username,
-			password: studentPw,
-			remoteDb: student.remoteDb,
+			username: member.username,
+			password: memberPw,
+			remoteDb: member.remoteDb,
 		});
 		if (!res.ok) {
 			this.logger.error(t("command.provisioning_failed", { err: res.error ?? "" }), true);
 			return false;
 		}
 		// 성공 → Secret Storage 보관 + 평문 클리어(미지원 환경은 평문 폴백 유지).
-		if (setMemberPassword(this.app, student.memberId, studentPw)) student.password = undefined;
-		else student.password = studentPw;
-		student.provisioned = true;
+		if (setMemberPassword(this.app, member.memberId, memberPw)) member.password = undefined;
+		else member.password = memberPw;
+		member.provisioned = true;
 		// 실시간/공유 설정을 학생 DB에 기록(개인 mirror 실시간 토큰 포함) — 공유 공간 배포 없이도 실시간이 동작.
-		await this.mintMirrorToken(student);
+		await this.mintMirrorToken(member);
 		await this.saveSettings();
-		await this.writeMemberSync(admin, student);
+		await this.writeMemberSync(admin, member);
 		this.requestApply(); // 새 학생 링크를 자동으로 동기화에 반영
-		this.logger.ok(t("command.provisioning_complete_account_db_permissions", { id: student.memberId }), true);
+		this.logger.ok(t("command.provisioning_complete_account_db_permissions", { id: member.memberId }), true);
 
 		const payload: InvitePayload = {
 			v: 1,
 			couchdbUrl: s.couchdbUrl,
 			workspaceId: s.workspaceId,
-			memberId: student.memberId,
-			memberName: student.memberName,
-			remoteDb: student.remoteDb,
-			username: student.username,
-			password: studentPw,
+			memberId: member.memberId,
+			memberName: member.memberName,
+			remoteDb: member.remoteDb,
+			username: member.username,
+			password: memberPw,
 		};
 		new InviteModal(this.app, payload).open();
 		return true;
@@ -338,22 +338,22 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	 *
 	 * 서버 갱신이 실패하면 로컬 비밀번호를 이전 값으로 되돌려, 로컬만 새 비밀번호로 바뀐 불일치를 막는다.
 	 */
-	async rotateMemberPassword(student: MemberConfig): Promise<void> {
+	async rotateMemberPassword(member: MemberConfig): Promise<void> {
 		if (this.settings.role !== "manager") return;
-		if (!student.memberId) {
+		if (!member.memberId) {
 			this.logger.warn(t("command.enter_a_member_id"), true);
 			return;
 		}
-		const prev = getMemberPassword(this.app, student.memberId, student.password);
+		const prev = getMemberPassword(this.app, member.memberId, member.password);
 		const next = genPassword();
 		// 새 비밀번호를 먼저 보관(inviteMember가 Secret Storage/평문에서 읽으므로) → 재프로비저닝.
-		if (!setMemberPassword(this.app, student.memberId, next)) student.password = next;
-		this.logger.info(t("invite.reissuing_password_previous_invite_invalidated", { id: student.memberId }), true);
-		const ok = await this.inviteMember(student); // 재프로비저닝(_users 갱신) + 새 초대 표시
+		if (!setMemberPassword(this.app, member.memberId, next)) member.password = next;
+		this.logger.info(t("invite.reissuing_password_previous_invite_invalidated", { id: member.memberId }), true);
+		const ok = await this.inviteMember(member); // 재프로비저닝(_users 갱신) + 새 초대 표시
 		if (!ok) {
 			// 서버 실패 → 이전 비밀번호로 되돌림(이전 초대 유지).
-			if (!setMemberPassword(this.app, student.memberId, prev)) student.password = prev;
-			else student.password = undefined;
+			if (!setMemberPassword(this.app, member.memberId, prev)) member.password = prev;
+			else member.password = undefined;
 			this.logger.warn(t("invite.password_reissue_failed_keeping_the_previous"), true);
 		}
 	}
@@ -392,7 +392,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		space.lastDeployedAt = Date.now();
 		space.lastMemberSnapshot = [...space.members].sort();
 
-		// 배포 때마다 모든 실시간 토큰을 재발급한다(공유: realtime 플래그, 개인 mirror: student.realtime).
+		// 배포 때마다 모든 실시간 토큰을 재발급한다(공유: realtime 플래그, 개인 mirror: member.realtime).
 		// 이 배포에서 모든 학생의 shares가 다시 기록되므로, 시크릿/멤버/플래그 변경 시 구 토큰 재유출을 막는다.
 		await this.mintRealtimeTokens();
 		await this.saveSettings();
@@ -406,7 +406,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/**
 	 * 모든 실시간 서명 토큰을 재발급/회수(교사). 공유 공간은 realtime!==false일 때만, 개인 mirror는
-	 * student.realtime일 때만 발급한다. 시크릿이 없으면(legacy/제거 중) 모두 비워 stale 재배포를 막는다.
+	 * member.realtime일 때만 발급한다. 시크릿이 없으면(legacy/제거 중) 모두 비워 stale 재배포를 막는다.
 	 * (유출 시 해당 공간 room만 접근 가능 — 학급 전체 아님.) 시크릿은 Secret Storage에서 읽는다.
 	 */
 	private async mintRealtimeTokens(): Promise<void> {
@@ -430,21 +430,21 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	 * 개인 mirror 실시간 토큰 발급/회수(교사). realtime 허용 + yjsSecret 있을 때만 발급, 아니면 비운다.
 	 * spaceId=mirror-<memberId>이라 서버의 share 룸 prefix(class_<c>/share/<s>/) 검증을 그대로 통과한다.
 	 */
-	private async mintMirrorToken(student: MemberConfig): Promise<void> {
+	private async mintMirrorToken(member: MemberConfig): Promise<void> {
 		const s = this.settings;
 		const yjsSecret = getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
-		if (student.realtime && yjsSecret) {
+		if (member.realtime && yjsSecret) {
 			const ttl =
 				s.yjsTokenTtlDays && s.yjsTokenTtlDays > 0
 					? Math.floor(Date.now() / 1000) + s.yjsTokenTtlDays * 86400
 					: undefined;
-			student.realtimeToken = await mintSpaceToken(yjsSecret, {
+			member.realtimeToken = await mintSpaceToken(yjsSecret, {
 				workspaceId: s.workspaceId,
-				spaceId: `mirror-${student.memberId}`,
+				spaceId: `mirror-${member.memberId}`,
 				exp: ttl,
 			});
 		} else {
-			delete student.realtimeToken;
+			delete member.realtimeToken;
 		}
 	}
 
@@ -716,7 +716,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/** 교사 온보딩 완료 표시(마법사 자동 노출 중단). */
 	async completeOnboarding(): Promise<void> {
-		this.settings.teacherOnboardingDone = true;
+		this.settings.managerOnboardingDone = true;
 		await this.saveSettings();
 	}
 
@@ -874,9 +874,9 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	async bulkCopy(
 		sourcePath: string,
 		opts: CopyOptions,
-		studentIds: string[],
+		memberIds: string[],
 	): Promise<CopyResult & { error?: string }> {
-		const r = this.resolveCopy(sourcePath, opts, studentIds);
+		const r = this.resolveCopy(sourcePath, opts, memberIds);
 		if ("error" in r) return { written: 0, skipped: 0, details: [], error: r.error };
 		try {
 			return r.src instanceof TFolder
@@ -891,9 +891,9 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	async bulkCopyPreview(
 		sourcePath: string,
 		opts: CopyOptions,
-		studentIds: string[],
+		memberIds: string[],
 	): Promise<CopyPlan & { error?: string }> {
-		const r = this.resolveCopy(sourcePath, opts, studentIds);
+		const r = this.resolveCopy(sourcePath, opts, memberIds);
 		if ("error" in r) return { members: [], error: r.error };
 		try {
 			return await r.bulk.preview(r.src, r.targets, r.opts);
@@ -906,13 +906,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private resolveCopy(
 		sourcePath: string,
 		opts: CopyOptions,
-		studentIds: string[],
+		memberIds: string[],
 	): { src: TFile | TFolder; targets: MemberConfig[]; bulk: BulkCopy; opts: CopyOptions } | { error: string } {
 		if (this.settings.role !== "manager") return { error: t("command.available_in_manager_mode_only") };
 		const src = this.app.vault.getAbstractFileByPath(sourcePath);
 		if (!(src instanceof TFile) && !(src instanceof TFolder))
 			return { error: t("deploy.path_not_found", { path: sourcePath }) };
-		const targets = this.settings.members.filter((st) => studentIds.includes(st.memberId));
+		const targets = this.settings.members.filter((st) => memberIds.includes(st.memberId));
 		if (targets.length === 0) return { error: t("deploy.no_target_members") };
 		// 파일: 대상 경로가 비어 있으면 원본 파일명으로.
 		const finalOpts = src instanceof TFile && !opts.destPath ? { ...opts, destPath: src.name } : opts;

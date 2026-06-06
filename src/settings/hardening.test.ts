@@ -17,7 +17,7 @@ describe("clearSpaceTokens (P1)", () => {
 // --- P2-b: CouchDB 이름 검증 ---
 describe("isValidCouchName (P2)", () => {
 	it("유효한 이름 통과", () => {
-		for (const n of ["student_a", "2024001", "mirror_s1", "share_g1", "a-b_c"]) expect(isValidCouchName(n)).toBe(true);
+		for (const n of ["member_a", "2024001", "mirror_s1", "share_g1", "a-b_c"]) expect(isValidCouchName(n)).toBe(true);
 	});
 	it("규칙 위반 거부", () => {
 		for (const n of ["Member", "학생", "a b", "_x", "-x", "a.b", "a/b", ""]) expect(isValidCouchName(n)).toBe(false);
@@ -37,7 +37,7 @@ describe("validateSettings 형식 검사 (P2)", () => {
 	});
 	it("정상 설정은 형식 오류 없음", () => {
 		const issues = validateSettings(
-			base({ members: [{ memberId: "student_a", memberName: "x", remoteDb: "mirror_student_a", username: "student_a", localRoot: "a" }] }),
+			base({ members: [{ memberId: "member_a", memberName: "x", remoteDb: "mirror_member_a", username: "member_a", localRoot: "a" }] }),
 		);
 		expect(issues.some((i) => i.code.startsWith("bad-"))).toBe(false);
 	});

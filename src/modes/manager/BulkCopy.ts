@@ -53,7 +53,7 @@ export interface CopyPlan {
 /**
  * 교사 → 학생 파일/폴더 복사. 기술문서 §12.5 / §20.
  *
- * 학생 폴더(student.localRoot)에 파일을 쓰면 기존 동기화 엔진이 자동으로 각 학생 vault에 전파한다.
+ * 학생 폴더(member.localRoot)에 파일을 쓰면 기존 동기화 엔진이 자동으로 각 학생 vault에 전파한다.
  * 템플릿 변수 치환(§20.4)과 기존 파일 처리 정책(§20.3)을 지원한다.
  */
 export class BulkCopy {

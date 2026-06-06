@@ -5,8 +5,8 @@
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
-/* Teacher 학생 카드 */
-.covault-student-card {
+/* 구성원 카드 */
+.covault-member-card {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	padding: 8px 12px;
@@ -15,16 +15,16 @@
 }
 
 /* 카드가 든 그룹은 새 블록 포맷팅 컨텍스트로 만들어 첫 카드의 위쪽 마진이 상쇄되지 않게 한다. */
-.setting-group .setting-items:has(> .covault-student-card) {
+.setting-group .setting-items:has(> .covault-member-card) {
 	display: flow-root;
 }
 
-.covault-student-card .setting-item {
+.covault-member-card .setting-item {
 	border-top: none;
 	padding: 6px 0;
 }
 
-.covault-student-status {
+.covault-member-status {
 	font-size: 12px;
 	color: var(--text-muted);
 	padding-top: 4px;

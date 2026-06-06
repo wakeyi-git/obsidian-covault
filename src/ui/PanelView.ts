@@ -58,8 +58,8 @@ export class CoVaultPanelView extends ItemView {
 	}
 
 	private tabs(): PanelTab[] {
-		const teacher = this.host.settings.role === "manager";
-		return teacher
+		const manager = this.host.settings.role === "manager";
+		return manager
 			? ["setup", "feedback", "deploy", "sync", "manage", "recovery", "history", "log"]
 			: ["feedback", "sync", "manage", "recovery", "history", "log"];
 	}

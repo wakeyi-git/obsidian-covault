@@ -3,10 +3,10 @@ import { parseMemberRoster, finalizeRoster } from "./memberRoster";
 
 describe("parseMemberRoster", () => {
 	it("쉼표/공백/이름만 형식을 파싱", () => {
-		const r = parseMemberRoster("홍길동,hong\n김학생 kim_student\n이영희");
+		const r = parseMemberRoster("홍길동,hong\n김학생 kim_member\n이영희");
 		expect(r).toEqual([
 			{ name: "홍길동", id: "hong" },
-			{ name: "김학생", id: "kim_student" },
+			{ name: "김학생", id: "kim_member" },
 			{ name: "이영희", id: "" },
 		]);
 	});
@@ -22,7 +22,7 @@ describe("parseMemberRoster", () => {
 });
 
 describe("finalizeRoster", () => {
-	it("ID 없으면 이름 슬러그, 비-ASCII면 student 폴백", () => {
+	it("ID 없으면 이름 슬러그, 비-ASCII면 member 폴백", () => {
 		const r = finalizeRoster([{ name: "John Doe", id: "" }, { name: "홍길동", id: "" }], []);
 		expect(r[0].id).toBe("john_doe");
 		expect(r[1].id).toBe("member");

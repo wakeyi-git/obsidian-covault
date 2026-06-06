@@ -14,7 +14,7 @@ import { FullSync, SyncDirection } from "./FullSync";
 import { t } from "../../i18n";
 
 /**
- * 하나의 student↔mirror 링크 동기화 엔진. 기술문서 §23.3.
+ * 하나의 member↔mirror 링크 동기화 엔진. 기술문서 §23.3.
  *
  * 오프라인 우선 구조:
  *  - PouchDB live replication(retry)으로 로컬 DB ↔ 원격을 자동 동기화(오프라인 큐·재연결·충돌).

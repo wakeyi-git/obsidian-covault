@@ -3,7 +3,7 @@
  *
  * DB path는 항상 학생 vault 기준 상대 경로(POSIX, 슬래시 구분)다.
  * - Member Mode: localPath = join(localRoot, dbPath)
- * - Manager Mode: localPath = join(student.localRoot, dbPath)
+ * - Manager Mode: localPath = join(member.localRoot, dbPath)
  */
 
 /** 슬래시 정규화 + 앞뒤 슬래시 제거. */

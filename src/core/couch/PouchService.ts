@@ -90,7 +90,7 @@ export class PouchService {
 	 * 401/403이면 쓰기 권한 없음. 진단용. 기술문서 §22.3.
 	 */
 	async probeWrite(): Promise<{ ok: boolean; status?: number; error?: string }> {
-		const id = "_local/classsync_probe";
+		const id = "_local/covault_probe";
 		try {
 			const existing = (await this.remote.get(id).catch(() => null)) as { _rev?: string } | null;
 			const res = await this.remote.put({ _id: id, _rev: existing?._rev, t: Date.now() } as any);
