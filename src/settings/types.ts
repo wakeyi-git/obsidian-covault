@@ -13,6 +13,8 @@ export interface SharedSpace {
 	folder: string; // 각 vault 내 폴더명
 	members: string[]; // memberId[]
 	provisioned?: boolean;
+	/** 공간 종류. "homeroom"=학급 운영 대시보드(알림장·시간표·루틴 등)를 담는 전원 공유 공간. 미설정=일반 모둠 공유. */
+	kind?: "homeroom";
 	/** 이 공간에서 실시간 공동 편집을 쓸지(미설정/true=사용, false=끔). 끄면 토큰을 발급하지 않는다. 기술문서 §19. */
 	realtime?: boolean;
 	/** 이 공간의 실시간 서명 토큰(HMAC 모드). 배포 시 발급되어 shares 문서로 학생에 전달된다. */

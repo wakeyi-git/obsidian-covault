@@ -882,3 +882,42 @@
 	font-size: 11px;
 	padding: 2px 8px;
 }
+
+/* --- 학급 운영 대시보드 --- */
+.covault-dash-title {
+	font-weight: 700;
+	font-size: 15px;
+	margin: 4px 0 10px;
+}
+
+.covault-dash-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.covault-dash-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 10px;
+	background: var(--background-secondary);
+}
+
+.covault-dash-card-title {
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+.covault-dash-card-desc {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.covault-dash-card-soon {
+	margin-top: 8px;
+	font-size: 10px;
+	color: var(--text-faint);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}

@@ -27,6 +27,9 @@ export class CoreServices {
 	/** 피드백 문서(§19.5) 변경 알림. main이 FeedbackStore에 연결. 링크의 LocalApplier가 호출. */
 	onFeedbackChange: () => void = () => {};
 
+	/** 학급 운영(대시보드) 문서 변경 알림. main이 ClassroomStore에 연결. */
+	onClassroomChange: () => void = () => {};
+
 	private persistTimer: ReturnType<typeof setTimeout> | null = null;
 	private readonly persistDelayMs = 1500;
 

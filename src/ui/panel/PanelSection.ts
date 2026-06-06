@@ -1,6 +1,7 @@
 import { App } from "obsidian";
 import { Logger } from "../../core/log/Logger";
 import { FeedbackStore } from "../../core/feedback/FeedbackStore";
+import { ClassroomStore } from "../../core/classroom/ClassroomStore";
 import { CoVaultSettings, SharedSpace } from "../../settings/types";
 import { LinkStatus } from "../../core/sync/MirrorContext";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "../../core/sync/RestoreManager";
@@ -10,7 +11,7 @@ import { VersionDoc } from "../../core/model/types";
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
-export type PanelTab = "setup" | "feedback" | "deploy" | "sync" | "manage" | "recovery" | "history" | "log";
+export type PanelTab = "dashboard" | "setup" | "feedback" | "deploy" | "sync" | "manage" | "recovery" | "history" | "log";
 
 /** 동기화 상태 표 한 행(링크별). */
 export interface DashboardRow extends LinkStatus {
@@ -30,6 +31,12 @@ export interface PanelHost {
 	settings: CoVaultSettings;
 	logger: Logger;
 	feedbackStore: FeedbackStore;
+	/** 학급 운영(대시보드) 저장소. */
+	classroomStore: ClassroomStore;
+	/** 학급 공유 공간이 배포·수신되어 사용 가능한지. */
+	homeroomReady(): boolean;
+	/** 학급(homeroom) 공유 공간 생성+배포(교사 전용). */
+	ensureHomeroom(): Promise<void>;
 	getDashboardRows(): Promise<DashboardRow[]>;
 	openConflictModal(): void;
 	fullSync(dir: "both" | "up" | "down"): Promise<void>;

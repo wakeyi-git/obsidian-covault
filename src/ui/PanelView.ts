@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { PanelHost, PanelSection, PanelTab } from "./panel/PanelSection";
+import { DashboardSection } from "./panel/DashboardSection";
 import { FeedbackSection } from "./panel/FeedbackSection";
 import { SetupSection } from "./panel/SetupSection";
 import { SyncStatusSection } from "./panel/SyncStatusSection";
@@ -14,6 +15,8 @@ export const PANEL_VIEW_TYPE = "covault-panel";
 
 function tabLabel(tab: PanelTab): string {
 	switch (tab) {
+		case "dashboard":
+			return t("dashboard.dashboard");
 		case "setup":
 			return t("panel.get_started");
 		case "feedback":
@@ -60,8 +63,8 @@ export class CoVaultPanelView extends ItemView {
 	private tabs(): PanelTab[] {
 		const manager = this.host.settings.role === "manager";
 		return manager
-			? ["setup", "feedback", "deploy", "sync", "manage", "recovery", "history", "log"]
-			: ["feedback", "sync", "manage", "recovery", "history", "log"];
+			? ["dashboard", "setup", "feedback", "deploy", "sync", "manage", "recovery", "history", "log"]
+			: ["dashboard", "feedback", "sync", "manage", "recovery", "history", "log"];
 	}
 
 	async onOpen(): Promise<void> {
@@ -122,6 +125,8 @@ export class CoVaultPanelView extends ItemView {
 
 	private createSection(tab: PanelTab): PanelSection {
 		switch (tab) {
+			case "dashboard":
+				return new DashboardSection(this.host);
 			case "setup":
 				return new SetupSection(this.host);
 			case "feedback":

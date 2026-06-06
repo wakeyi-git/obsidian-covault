@@ -36,6 +36,23 @@
 		"realtime_snapshot_not_saved_may_not": "실시간 스냅샷 미저장({reason}): {path} — 비실시간 멤버에 전파되지 않을 수 있습니다.",
 		"snapshot_save_failed": "스냅샷 저장 실패: {path} — {error}"
 	},
+	"dashboard": {
+		"dashboard": "대시보드",
+		"classroom_dashboard": "학급 대시보드",
+		"homeroom_name": "우리 학급",
+		"homeroom_not_set_manager": "학급 공간이 아직 설정되지 않았습니다. 만들면 알림장·시간표·루틴을 전원과 공유할 수 있습니다.",
+		"homeroom_not_set_member": "운영자의 학급 공간을 기다리는 중입니다.",
+		"create_homeroom": "학급 공간 만들기",
+		"notices": "알림장",
+		"notices_desc": "공지를 게시하고 구성원이 읽고 응답합니다.",
+		"timetable": "시간표·수업",
+		"timetable_desc": "주간 시간표와 수업 안내.",
+		"assignments": "과제",
+		"assignments_desc": "배포·제출·채점·반환.",
+		"routines": "체크리스트",
+		"routines_desc": "매일 체크리스트, 구성원별 완료 현황.",
+		"coming_soon": "준비 중"
+	},
 	"deploy": {
 		"copy_to_members": "구성원에게 복사",
 		"preview": "미리보기",
@@ -493,6 +510,7 @@
 		"covault_available_in_manager_mode": "CoVault: 운영자 모드에서만 사용할 수 있습니다.",
 		"applied_settings_and_restarted_sync": "설정을 적용해 동기화를 재시작했습니다.",
 		"open_panel": "패널 열기",
+		"open_dashboard": "학급 대시보드 열기",
 		"open_log_panel": "로그 패널 열기",
 		"run_full_diagnostics_server_read_write": "종합 진단 실행 (서버·읽기/쓰기 권한·실시간)",
 		"upload_only": "업로드만 실행",

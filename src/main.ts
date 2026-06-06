@@ -29,6 +29,9 @@ import {
 } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
+import { ClassroomStore } from "./core/classroom/ClassroomStore";
+import { ensureHomeroomSpace, findHomeroom } from "./core/classroom/homeroom";
+import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
 import { PanelHost, PanelTab, DashboardRow, DeleteModifyRow, PurgeRow } from "./ui/panel/PanelSection";
@@ -56,11 +59,17 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private realtime!: RealtimeManager;
 	private rtStatus!: HTMLElement;
 	private feedback!: FeedbackStore;
+	private classroom!: ClassroomStore;
 	private applyTimer: number | null = null;
 
 	/** PanelHost: 피드백 섹션이 사용. */
 	get feedbackStore(): FeedbackStore {
 		return this.feedback;
+	}
+
+	/** PanelHost: 대시보드 섹션이 사용. */
+	get classroomStore(): ClassroomStore {
+		return this.classroom;
 	}
 
 	async onload(): Promise<void> {
@@ -89,6 +98,10 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			() => this.mode?.getSyncs() ?? [],
 		);
 		this.core.onFeedbackChange = () => this.feedback.refresh();
+
+		// 학급 운영(대시보드) 저장소 — 학급 공유 공간 pouch에 알림장·시간표 등 공통 문서를 읽고 쓴다.
+		this.classroom = new ClassroomStore(this.core, () => this.homeroomPouch());
+		this.core.onClassroomChange = () => this.classroom.refresh();
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.onWorkspaceChange()));
 		this.registerEvent(this.app.workspace.on("file-open", () => this.onWorkspaceChange()));
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.onWorkspaceChange()));
@@ -406,6 +419,31 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 		this.logger.ok(t("command.shared_space_deployment_complete", { name: space.name }), true);
 		await this.restartMode();
+	}
+
+	/** 학급 공유 공간의 pouch(미프로비저닝/미수신이면 undefined). 현재 모드의 동기화 링크에서 해석. */
+	private homeroomPouch(): PouchService | undefined {
+		const home = findHomeroom(this.settings.sharedSpaces);
+		if (!home?.remoteDb) return undefined;
+		return (this.mode?.getSyncs() ?? []).find((s) => s.ctx.remoteDb === home.remoteDb)?.ctx.pouch;
+	}
+
+	/** PanelHost: 학급 공유 공간이 준비됐는지(배포 + 동기화 링크 존재). */
+	homeroomReady(): boolean {
+		return !!this.homeroomPouch();
+	}
+
+	/** PanelHost: 학급(homeroom) 공유 공간을 만들고(전원 멤버) 배포한다. 교사 전용. */
+	async ensureHomeroom(): Promise<void> {
+		if (this.settings.role !== "manager") {
+			this.logger.warn(t("command.available_in_manager_mode_only"), true);
+			return;
+		}
+		const memberIds = this.settings.members.filter((m) => m.memberId && m.provisioned).map((m) => m.memberId);
+		const { space, spaces } = ensureHomeroomSpace(this.settings.sharedSpaces, memberIds, t("dashboard.homeroom_name"));
+		this.settings.sharedSpaces = spaces;
+		await this.saveSettings();
+		await this.deployShared(space); // 프로비저닝 + 전원 shares 갱신 + 모드 재시작
 	}
 
 	/**
@@ -784,6 +822,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	// --- 명령 등록 (패널 버튼과 동일 메서드를 호출) ---
 	private registerCommands(): void {
 		this.addCommand({ id: "covault-open-panel", name: t("command.open_panel"), callback: () => this.activatePanel() });
+		this.addCommand({ id: "covault-open-dashboard", name: t("command.open_dashboard"), callback: () => this.activatePanel("dashboard") });
 		this.addCommand({ id: "covault-open-log", name: t("command.open_log_panel"), callback: () => this.activatePanel("log") });
 		this.addCommand({
 			id: "covault-test-connection",

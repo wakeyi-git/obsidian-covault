@@ -36,6 +36,23 @@
 		"realtime_snapshot_not_saved_may_not": "Realtime snapshot not saved ({reason}): {path} — may not propagate to non-realtime members.",
 		"snapshot_save_failed": "Snapshot save failed: {path} — {error}"
 	},
+	"dashboard": {
+		"dashboard": "Dashboard",
+		"classroom_dashboard": "Classroom dashboard",
+		"homeroom_name": "Homeroom",
+		"homeroom_not_set_manager": "The homeroom space isn't set up yet. Create it to share notices, the timetable, and routines with everyone.",
+		"homeroom_not_set_member": "Waiting for the homeroom space from your manager.",
+		"create_homeroom": "Create homeroom space",
+		"notices": "Notices",
+		"notices_desc": "Post announcements; members read and respond.",
+		"timetable": "Timetable & lessons",
+		"timetable_desc": "Weekly timetable and lesson guides.",
+		"assignments": "Assignments",
+		"assignments_desc": "Distribute, submit, grade, and return work.",
+		"routines": "Routines",
+		"routines_desc": "Daily checklists; track completion per member.",
+		"coming_soon": "Coming soon"
+	},
 	"deploy": {
 		"copy_to_members": "Copy to members",
 		"preview": "Preview",
@@ -493,6 +510,7 @@
 		"covault_available_in_manager_mode": "CoVault: Available in Manager Mode only.",
 		"applied_settings_and_restarted_sync": "Applied settings and restarted sync.",
 		"open_panel": "Open panel",
+		"open_dashboard": "Open classroom dashboard",
 		"open_log_panel": "Open log panel",
 		"run_full_diagnostics_server_read_write": "Run full diagnostics (server, read/write permissions, realtime)",
 		"upload_only": "Upload only",
