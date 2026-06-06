@@ -62,6 +62,8 @@ export class TimetableView {
 		headRow.createEl("th", { text: "" });
 		for (const d of doc.days) headRow.createEl("th", { text: d });
 
+		// Tab 이동을 "같은 요일의 다음 교시"(열 우선) 순서로 만들기 위해 입력들을 열 우선으로 모은다.
+		const colMajor: HTMLInputElement[] = new Array(doc.days.length * doc.periods.length);
 		doc.periods.forEach((p, pi) => {
 			const row = table.createEl("tr");
 			row.createEl("th", { text: p });
@@ -72,8 +74,23 @@ export class TimetableView {
 					const input = td.createEl("input", { attr: { type: "text" } });
 					input.value = doc.cells[key] ?? "";
 					input.onchange = () => void this.setCell(key, input.value);
+					colMajor[di * doc.periods.length + pi] = input;
 				} else {
 					td.setText(doc.cells[key] ?? "");
+				}
+			});
+		});
+
+		// Tab=다음 교시(아래), Shift+Tab=이전 교시. 한 요일을 위→아래로 채운 뒤 다음 요일로.
+		colMajor.forEach((input, idx) => {
+			if (!input) return;
+			input.addEventListener("keydown", (e) => {
+				if (e.key !== "Tab") return;
+				const next = colMajor[e.shiftKey ? idx - 1 : idx + 1];
+				if (next) {
+					e.preventDefault();
+					next.focus();
+					next.select();
 				}
 			});
 		});
