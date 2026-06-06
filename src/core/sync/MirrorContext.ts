@@ -5,6 +5,7 @@ import { NoteDoc, AssetDoc, assetId } from "../model/types";
 import { sha256 } from "../hash/hash";
 import { dbPathToLocal, localPathToDb, normalizePath, validateVaultPath, insertLabelBeforeExt } from "../path/path";
 import { VersionStore } from "./VersionStore";
+import { ensureParentFolders } from "../vault/folders";
 import { t } from "../../i18n";
 
 /** 파일명에 쓸 수 없는 문자를 _로 치환. */
@@ -213,14 +214,8 @@ export class MirrorContext {
 	}
 
 	private async ensureParentFolder(localPath: string): Promise<void> {
-		const idx = localPath.lastIndexOf("/");
-		if (idx <= 0) return;
-		const folder = localPath.slice(0, idx);
-		if (!this.app.vault.getAbstractFileByPath(folder)) {
-			await this.app.vault.createFolder(folder).catch(() => {
-				/* 이미 존재 등 무시 */
-			});
-		}
+		// 누락된 모든 조상 폴더를 재귀로 생성한다(깊은 경로 a/b/c.md 안전).
+		await ensureParentFolders(this.app, localPath);
 	}
 
 	// --- 바이너리(첨부파일) 입출력 ---

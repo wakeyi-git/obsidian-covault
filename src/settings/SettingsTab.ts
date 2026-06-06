@@ -124,7 +124,11 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 	// --- 설정 검증 경고(상단 지속 표시) ---
 	private renderIssues(s: CoVaultSettings): void {
-		const issues = validateSettings(s);
+		// 실시간 자격증명은 marker가 아니라 실제 Secret Storage 값으로 판단(지워진 비밀값을 marker가 가리지 않게).
+		const realtimeCredPresent =
+			!!getSecretValue(this.app, YJS_TOKEN_ID, s.yjsToken) ||
+			!!getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
+		const issues = validateSettings(s, { realtimeCredPresent });
 		if (issues.length === 0) return;
 		const box = this.containerEl.createDiv({ cls: "covault-issues" });
 		box.createDiv({ cls: "covault-issues-title", text: t("panel.settings_need_attention", { n: issues.length }) });

@@ -1,6 +1,7 @@
 import { App, TFile, TFolder, normalizePath } from "obsidian";
 import { CoVaultSettings, MemberConfig } from "../../settings/types";
 import { ExistingPolicy, CopyAction, decideAction } from "./copyAction";
+import { ensureParentFolders } from "../../core/vault/folders";
 
 export { decideAction };
 export type { ExistingPolicy, CopyAction };
@@ -189,13 +190,7 @@ export class BulkCopy {
 	}
 
 	private async ensureParent(localPath: string): Promise<void> {
-		const idx = localPath.lastIndexOf("/");
-		if (idx <= 0) return;
-		const folder = localPath.slice(0, idx);
-		if (!this.app.vault.getAbstractFileByPath(folder)) {
-			await this.app.vault.createFolder(folder).catch(() => {
-				/* 이미 존재 등 무시 */
-			});
-		}
+		// 누락된 모든 조상 폴더를 재귀로 생성한다(깊은 경로 안전).
+		await ensureParentFolders(this.app, localPath);
 	}
 }

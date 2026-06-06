@@ -45,13 +45,19 @@ describe("secret storage helpers", () => {
 		setMemberPassword(app, "member_b", "pwB");
 		expect(getMemberPassword(app, "member_a", "")).toBe("pwA");
 		expect(getMemberPassword(app, "member_b", "")).toBe("pwB");
-		// 키가 학생별로 분리됨
+		// 키가 구성원별로 분리됨
 		expect(app.secretStorage.listSecrets()).toContain(memberPasswordId("member_a"));
 	});
 
-	it("memberPasswordId 정규화(소문자-영숫자-대시)", () => {
-		expect(memberPasswordId("Member_A")).toBe("covault-member-pw-member-a");
-		expect(memberPasswordId("2024-001")).toBe("covault-member-pw-2024-001");
-		expect(memberPasswordId("  spaced id  ")).toBe("covault-member-pw-spaced-id");
+	it("키는 _/- 가 섞여도 충돌하지 않는다(회귀)", () => {
+		// 서로 다른 유효 ID는 서로 다른 키여야 한다(정규화 방식이면 둘 다 member-a로 충돌).
+		expect(memberPasswordId("member_a")).not.toBe(memberPasswordId("member-a"));
+
+		const app = fakeApp();
+		setMemberPassword(app, "member_a", "pw_underscore");
+		setMemberPassword(app, "member-a", "pw-hyphen");
+		// 서로 덮어쓰지 않는다.
+		expect(getMemberPassword(app, "member_a", "")).toBe("pw_underscore");
+		expect(getMemberPassword(app, "member-a", "")).toBe("pw-hyphen");
 	});
 });

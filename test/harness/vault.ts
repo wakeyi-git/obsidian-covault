@@ -21,6 +21,24 @@ export class InMemoryVault {
 		return this.vaultName;
 	}
 
+	/** 실제 Obsidian처럼 즉시 부모 폴더가 없으면 생성 거부(중첩 경로 적용 누락 검출용). */
+	private requireParent(p: string, op: string): void {
+		const idx = p.lastIndexOf("/");
+		if (idx <= 0) return; // 루트 직속이면 부모 검사 불필요
+		const parent = p.slice(0, idx);
+		if (!this.folders.has(parent)) throw new Error(`${op}: missing parent folder: ${parent}`);
+	}
+
+	/** 경로의 모든 조상 폴더를 폴더 집합에 등록(seed 등 초기 상태 구성용). */
+	private registerAncestors(p: string): void {
+		const parts = p.split("/").filter(Boolean);
+		let cur = "";
+		for (let i = 0; i < parts.length - 1; i++) {
+			cur = cur ? `${cur}/${parts[i]}` : parts[i];
+			this.folders.add(cur);
+		}
+	}
+
 	getAbstractFileByPath(path: string): TAbstractFile | null {
 		const p = normalizePath(path);
 		const e = this.files.get(p);
@@ -59,6 +77,7 @@ export class InMemoryVault {
 	async create(path: string, content: string): Promise<TFile> {
 		const p = normalizePath(path);
 		if (this.files.has(p)) throw new Error(`create: already exists: ${p}`);
+		this.requireParent(p, "create");
 		const file = new TFile(p, byteLen(content));
 		this.files.set(p, { file, content });
 		return file;
@@ -67,6 +86,7 @@ export class InMemoryVault {
 	async createBinary(path: string, data: ArrayBuffer): Promise<TFile> {
 		const p = normalizePath(path);
 		if (this.files.has(p)) throw new Error(`createBinary: already exists: ${p}`);
+		this.requireParent(p, "createBinary");
 		const file = new TFile(p, data.byteLength);
 		this.files.set(p, { file, binary: data });
 		return file;
@@ -81,6 +101,7 @@ export class InMemoryVault {
 
 	async createFolder(path: string): Promise<TFolder> {
 		const p = normalizePath(path);
+		this.requireParent(p, "createFolder");
 		this.folders.add(p);
 		return new TFolder(p);
 	}
@@ -122,12 +143,14 @@ export class InMemoryVault {
 	/** 엔진을 거치지 않고 직접 파일을 심는다(초기 상태 구성용). */
 	seed(path: string, content: string): TFile {
 		const p = normalizePath(path);
+		this.registerAncestors(p);
 		const file = new TFile(p, byteLen(content));
 		this.files.set(p, { file, content });
 		return file;
 	}
 	seedBinary(path: string, data: ArrayBuffer): TFile {
 		const p = normalizePath(path);
+		this.registerAncestors(p);
 		const file = new TFile(p, data.byteLength);
 		this.files.set(p, { file, binary: data });
 		return file;

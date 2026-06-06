@@ -11,10 +11,20 @@ export const YJS_TOKEN_ID = "covault-yjs-token";
 /** 활성 CouchDB 계정 비밀번호(교사 admin / 학생 본인). replication·프로비저닝에 사용. */
 export const COUCH_PASSWORD_ID = "covault-couch-password";
 
-/** 학생별 비밀번호 Secret Storage 키(교사 보유분). id는 소문자-영숫자-대시로 정규화. */
+/** base64url 인코딩(UTF-8 안전). 키에 memberId를 충돌 없이 담는 용도. */
+function b64url(s: string): string {
+	return btoa(unescape(encodeURIComponent(s)))
+		.replace(/\+/g, "-")
+		.replace(/\//g, "_")
+		.replace(/=+$/, "");
+}
+
+/**
+ * 구성원별 비밀번호 Secret Storage 키(교사 보유분). memberId를 base64url로 담아 충돌을 없앤다.
+ * (정규화 방식은 `member_a`와 `member-a`가 같은 키로 충돌하므로 쓰지 않는다.)
+ */
 export function memberPasswordId(memberId: string): string {
-	const safe = memberId.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
-	return `covault-member-pw-${safe}`;
+	return `covault-member-pw-${b64url(memberId)}`;
 }
 
 export function getMemberPassword(app: App, memberId: string, fallback: string | undefined): string {

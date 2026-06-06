@@ -62,6 +62,22 @@ describe("validateSettings", () => {
 		).not.toContain("rt-no-token");
 	});
 
+	it("marker가 true여도 런타임 자격증명이 없으면 rt-no-token 경고 유지", () => {
+		// marker(yjsTokenSet/yjsSecretSet)만 true이고 실제 Secret Storage 값은 비어 있는 edge case.
+		const withMarkers = s({
+			realtimeEnabled: true,
+			yjsServerUrl: "wss://x",
+			yjsTokenSet: true,
+			yjsSecretSet: true,
+		});
+		// 기본(marker 휴리스틱)이면 경고가 사라진다.
+		expect(codes(validateSettings(withMarkers))).not.toContain("rt-no-token");
+		// UI가 런타임 부재(false)를 넘기면 경고가 유지된다.
+		expect(codes(validateSettings(withMarkers, { realtimeCredPresent: false }))).toContain("rt-no-token");
+		// 런타임 존재(true)면 경고 없음.
+		expect(codes(validateSettings(withMarkers, { realtimeCredPresent: true }))).not.toContain("rt-no-token");
+	});
+
 	it("학생 모드에서는 중복/폴더 검사 안 함", () => {
 		const out = validateSettings(s({ role: "member" }));
 		expect(out).toEqual([]);

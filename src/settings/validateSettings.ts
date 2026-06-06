@@ -28,11 +28,20 @@ function duplicates(values: string[]): string[] {
 	return [...dup];
 }
 
+export interface ValidateOptions {
+	/**
+	 * 실시간 자격증명(Yjs token/secret)이 런타임에 실제로 존재하는지. UI가 Secret Storage를 조회해 넘긴다.
+	 * 주어지면 marker flag(yjs*Set) 대신 이 값으로 판단한다(지워진 Secret Storage를 marker가 가리지 않게).
+	 * 미지정(undefined)이면 marker 휴리스틱을 쓴다(순수 호출/테스트 호환).
+	 */
+	realtimeCredPresent?: boolean;
+}
+
 /**
  * 설정의 위험/모순 상태를 코드로 반환(순수 함수, i18n은 UI에서). 초대/배포 전 막는 데 쓴다.
  * error=데이터 무결성 위험(중복 식별자), warn=권장 위반(겹침/URL/실시간 누락).
  */
-export function validateSettings(s: CoVaultSettings): SettingsIssue[] {
+export function validateSettings(s: CoVaultSettings, opts?: ValidateOptions): SettingsIssue[] {
 	const issues: SettingsIssue[] = [];
 
 	if (s.role === "manager") {
@@ -75,9 +84,14 @@ export function validateSettings(s: CoVaultSettings): SettingsIssue[] {
 
 	if (s.realtimeEnabled) {
 		if (!s.yjsServerUrl) issues.push({ level: "warn", code: "rt-no-url" });
-		// 비밀값은 평문 또는 Secret Storage(yjs*Set 마커)로 설정될 수 있다.
-		else if (!s.yjsToken && !s.yjsSecret && !s.yjsTokenSet && !s.yjsSecretSet)
-			issues.push({ level: "warn", code: "rt-no-token" });
+		else {
+			// UI가 런타임 자격증명 존재 여부를 넘기면 그것을 신뢰한다(Secret Storage가 비었는데 marker만 남은 경우 대비).
+			// 미지정이면 평문/marker 휴리스틱으로 판단.
+			const hasCred =
+				opts?.realtimeCredPresent ??
+				!!(s.yjsToken || s.yjsSecret || s.yjsTokenSet || s.yjsSecretSet);
+			if (!hasCred) issues.push({ level: "warn", code: "rt-no-token" });
+		}
 	}
 
 	return issues;
