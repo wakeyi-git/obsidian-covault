@@ -11,6 +11,10 @@ export interface InvitePayload {
 	remoteDb: string;
 	username: string;
 	password: string;
+	/** 발급 시각(Unix epoch 초). 선택 — 구버전 초대 호환. */
+	iat?: number;
+	/** 만료 시각(Unix epoch 초). 있으면 이후 적용 차단. 선택 — 무만료/구버전 호환. */
+	exp?: number;
 }
 
 export const INVITE_ACTION = "covault-invite";
@@ -49,6 +53,14 @@ export function parseInvite(input: string): InvitePayload | null {
 /** 초대 딥링크 URI. 학생이 폰 카메라로 QR을 찍으면 Obsidian이 열린다. */
 export function buildInviteUri(payload: InvitePayload): string {
 	return `obsidian://${INVITE_ACTION}?d=${encodeURIComponent(encodeInvite(payload))}`;
+}
+
+/**
+ * 초대 만료 여부(순수). `exp`가 있고 `nowSec`가 그 이후면 true. `exp` 없으면(구버전/무만료) 항상 false.
+ * 만료된 초대는 적용을 차단해 장기 유효 비밀번호가 든 오래된 QR/딥링크 사용을 줄인다(보고서 P2 완화).
+ */
+export function isInviteExpired(payload: InvitePayload, nowSec: number): boolean {
+	return typeof payload.exp === "number" && nowSec > payload.exp;
 }
 
 /** 랜덤 비밀번호 생성(영숫자). */

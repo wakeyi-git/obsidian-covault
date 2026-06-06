@@ -123,6 +123,12 @@ export interface CoVaultSettings {
 	/** 공간 토큰 만료(일). 0/미설정=무만료. 주기적 재배포로 폐기하려면 값을 둔다. */
 	yjsTokenTtlDays?: number;
 
+	/**
+	 * 초대 코드 만료(일). 0=무만료. 발급 시 payload에 exp를 넣어, 만료된 QR/딥링크 적용을 차단한다.
+	 * 장기 유효 비밀번호가 든 오래된 초대 노출을 줄인다(보고서 P2 완화).
+	 */
+	inviteTtlDays?: number;
+
 	/** 실시간 세션 중 CouchDB 스냅샷 주기(초). 0=끔. 기술문서 §19.2. 교사 설정 → rtconfig로 전파. */
 	realtimeSnapshotSec: number;
 
@@ -177,6 +183,7 @@ export const DEFAULT_SETTINGS: CoVaultSettings = {
 	conflictPolicy: "preserve-local",
 	deletePolicy: "archive",
 	deleteReconcileMax: 0,
+	inviteTtlDays: 14,
 	versionHistory: true,
 	versionMaxCount: 10,
 	versionMaxAgeDays: 30,

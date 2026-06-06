@@ -59,12 +59,22 @@ export class CouchAdmin {
 		return null;
 	}
 
-	/** admin 연결/권한 확인 (서버 루트 + _users 접근). */
+	/**
+	 * admin 연결/권한 확인. 서버 루트 도달 + 실제 프로비저닝 권한(`_users` 접근)을 확인한다.
+	 * `GET /` 만으로는 기본 인증이 맞아도 `_users`/`_security` 권한 부족을 못 잡아 초대/배포 단계에서
+	 * 뒤늦게 실패하므로, `_users` DB 조회로 server-admin 권한을 미리 검증한다(비권한이면 403).
+	 */
 	async checkAdmin(): Promise<{ ok: boolean; error?: string }> {
 		const root = await this.req("GET", "/");
 		if (root.status === 401 || root.status === 403)
 			return { ok: false, error: t("couch.authentication_error_http", { status: root.status }) };
 		if (root.status >= 400) return { ok: false, error: t("couch.server_error_http", { status: root.status }) };
+
+		// _users 접근(서버 관리자 전용) — 학생 계정 생성 권한의 대리 검증.
+		const users = await this.req("GET", "/_users");
+		if (users.status === 401 || users.status === 403)
+			return { ok: false, error: t("couch.admin_provisioning_forbidden", { status: users.status }) };
+		if (users.status >= 400) return { ok: false, error: t("couch.server_error_http", { status: users.status }) };
 		return { ok: true };
 	}
 

@@ -2,7 +2,7 @@
  * 공유 공간(room)별 실시간 토큰 — HMAC-SHA256 서명. 기술문서 §19.3.
  *
  * 토큰 = `<payloadB64url>.<sigB64url>` 형태로, payload는 `{c:workspaceId, s:spaceId, e?:exp(sec)}`.
- * Yjs 서버(docs/server.js)가 같은 시크릿으로 서명을 검증하고, 접속한 room이 `class_<c>/share/<s>/`로
+ * Yjs 서버(docs/server.js)가 같은 시크릿으로 서명을 검증하고, 접속한 room이 `<workspaceId>/share/<spaceId>/`로
  * 시작하는지 확인한다. 따라서 한 학생의 토큰이 유출돼도 **그 공간 room에만** 접근할 수 있다(학급 전체가
  * 아니라). 무상태 서버라 단일 공간 즉시 폐기는 불가 — 전체 회전은 시크릿 교체, 만료는 exp로 처리.
  */

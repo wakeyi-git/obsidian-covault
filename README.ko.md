@@ -180,7 +180,7 @@ Yjs 서버를 띄우는 방법은 **[`server/README.ko.md` → Yjs 실시간 서
 
 **실시간 토큰 보안** — 서버에 `YJS_SECRET`을 설정하고 플러그인 설정의 **'Yjs 공간 시크릿(HMAC)'** 에 같은 값을
 넣으면, 운영자가 공간을 배포할 때마다 **공동 공간별 서명 토큰**이 발급되어 구성원에게 전달됩니다. 토큰 payload에
-`classId`·`spaceId`(+선택 만료)가 들어가고 서버가 접속 room이 `class_<c>/share/<s>/`로 시작하는지 검증하므로,
+`workspaceId`·`spaceId`(+선택 만료)가 들어가고 서버가 접속 room이 `<workspaceId>/share/<spaceId>/`로 시작하는지 검증하므로,
 한 토큰이 유출돼도 **그 공간 room에만** 접근할 수 있습니다(워크스페이스 전체 X). 시크릿/멤버 변경 시 재배포로 토큰이
 갱신되고, **'공간 토큰 만료(일)'** 로 TTL을 둘 수 있습니다. 운영자의 토큰·시크릿은 Obsidian Secret Storage에
 저장됩니다. (시크릿 없이 단일 `YJS_TOKEN`만 쓰는 레거시 모드도 지원하지만 공간 격리가 없습니다.)

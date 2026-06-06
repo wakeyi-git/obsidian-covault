@@ -183,6 +183,20 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					b.setButtonText(t("common.run_test")).setCta().onClick(() => this.runAsync(b, () => this.host.testConnection())),
 				),
 		);
+		admin.addSetting((set) =>
+			set
+				.setName(t("settings.invite_expiry_days"))
+				.setDesc(t("settings.invite_expiry_days_desc"))
+				.addText((txt) => {
+					txt.setPlaceholder("0").setValue(String(s.inviteTtlDays ?? 0));
+					txt.inputEl.type = "number";
+					txt.onChange(async (v) => {
+						const n = Number(v);
+						s.inviteTtlDays = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+						await this.host.saveSettings();
+					});
+				}),
+		);
 
 		// 학생 목록 (카드)
 		const members = this.group(

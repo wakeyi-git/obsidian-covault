@@ -185,8 +185,8 @@ To run the Yjs server, see **[`server/README.md` → Yjs realtime server](server
 
 **Realtime token security** — set `YJS_SECRET` on the server and the same value in the plugin's **'Yjs space secret (HMAC)'**;
 then each time the manager deploys a space, a **per-shared-space signed token** is issued and delivered to members. The
-token payload carries `classId`·`spaceId` (+ optional expiry) and the server verifies that the connecting room starts with
-`class_<c>/share/<s>/`, so a leaked token only grants access to **that space's room** (not the whole workspace). Changing the
+token payload carries `workspaceId`·`spaceId` (+ optional expiry) and the server verifies that the connecting room starts with
+`<workspaceId>/share/<spaceId>/`, so a leaked token only grants access to **that space's room** (not the whole workspace). Changing the
 secret/members and redeploying refreshes tokens, and **'Space token expiry (days)'** sets a TTL. The manager's tokens/secret
 are stored in Obsidian Secret Storage. (A legacy mode with a single `YJS_TOKEN` and no secret is also supported, but has no per-space isolation.)
 The token is sent over WSS (not exposed in transit); keep it out of reverse-proxy/CDN/monitoring access logs by masking query strings (see [`server/README.md`](server/README.md)).

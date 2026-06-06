@@ -37,7 +37,7 @@ import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "
 import { testConnection } from "./core/sync/connectionTest";
 import { runDiagnostics } from "./core/sync/diagnostics";
 import { CouchAdmin } from "./core/couch/CouchAdmin";
-import { InvitePayload, INVITE_ACTION, genPassword, parseInvite } from "./core/invite/invite";
+import { InvitePayload, INVITE_ACTION, genPassword, parseInvite, isInviteExpired } from "./core/invite/invite";
 import { exportSettings, importSettings } from "./settings/portable";
 import { ResetModal } from "./ui/ResetModal";
 import { initI18n, t } from "./i18n";
@@ -318,6 +318,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		this.requestApply(); // 새 학생 링크를 자동으로 동기화에 반영
 		this.logger.ok(t("command.provisioning_complete_account_db_permissions", { id: member.memberId }), true);
 
+		const iat = Math.floor(Date.now() / 1000);
+		const ttlDays = s.inviteTtlDays ?? 0;
 		const payload: InvitePayload = {
 			v: 1,
 			couchdbUrl: s.couchdbUrl,
@@ -327,6 +329,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			remoteDb: member.remoteDb,
 			username: member.username,
 			password: memberPw,
+			iat,
+			...(ttlDays > 0 ? { exp: iat + ttlDays * 86400 } : {}),
 		};
 		new InviteModal(this.app, payload).open();
 		return true;
@@ -428,7 +432,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/**
 	 * 개인 mirror 실시간 토큰 발급/회수(교사). realtime 허용 + yjsSecret 있을 때만 발급, 아니면 비운다.
-	 * spaceId=mirror-<memberId>이라 서버의 share 룸 prefix(class_<c>/share/<s>/) 검증을 그대로 통과한다.
+	 * spaceId=mirror-<memberId>이라 서버의 share 룸 prefix(<workspaceId>/share/<spaceId>/) 검증을 그대로 통과한다.
 	 */
 	private async mintMirrorToken(member: MemberConfig): Promise<void> {
 		const s = this.settings;
@@ -505,6 +509,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			this.logger.error(t("command.failed_to_parse_invite_code"));
 			return;
 		}
+		// 만료된 초대는 적용하지 않는다 — 새 초대를 요청하도록 안내(설정을 건드리지 않음).
+		if (isInviteExpired(payload, Math.floor(Date.now() / 1000))) {
+			new Notice(t("command.invite_expired_request_new"));
+			this.logger.error(t("command.invite_expired_request_new"));
+			return;
+		}
 		await this.mode?.stop();
 		this.mode = null;
 
@@ -555,10 +565,16 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	// --- 연결 테스트 (설정 버튼) — 항상 최신 설정으로, 역할별 DB 전체 검사 ---
 	async testConnection(): Promise<void> {
 		await this.activatePanel("log");
+		const s = this.settings;
+		// 관리자: 구성원 DB가 없어도 먼저 프로비저닝 권한(_users)을 검증한다(첫 구성원 추가 전에도 의미 있는 결과).
+		if (s.role === "manager") {
+			const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
+			const chk = await admin.checkAdmin();
+			if (chk.ok) this.logger.ok(t("command.admin_provisioning_access_ok"), true);
+			else this.logger.error(chk.error ?? t("command.admin_provisioning_access_failed"), true);
+		}
 		const dbs =
-			this.settings.role === "manager"
-				? this.settings.members.map((s) => s.remoteDb).filter((d) => d)
-				: [this.settings.remoteDb];
+			s.role === "manager" ? s.members.map((m) => m.remoteDb).filter((d) => d) : [s.remoteDb];
 		if (dbs.length === 0) {
 			this.logger.warn(t("command.no_mirror_db_to_test_manager"), true);
 			return;

@@ -2,8 +2,8 @@
  * 실시간 room/공간 매칭의 순수 로직(obsidian 비의존, 단위 테스트 가능). 기술문서 §19.
  *
  * 핵심: 교사(folder="학생A")와 학생(folder=""=vault 전체)이 같은 dbPath를 산출해 **같은 room**을 공유한다.
- * mirror 공간은 spaceId=`mirror-<memberId>`로, 공유 공간과 같은 `class_<c>/share/<s>/` 네임스페이스를 쓴다
- * (Yjs 서버 prefix 검증 무변경 통과).
+ * mirror 공간은 spaceId=`mirror-<memberId>`로, 공유 공간과 같은 `<workspaceId>/share/<spaceId>/` 네임스페이스를 쓴다
+ * (Yjs 서버 prefix 검증 무변경 통과). room prefix는 workspaceId 그대로 사용(이중 `ws_` prefix 없음).
  */
 
 /** folder 기준 상대경로(dbPath). folder=""면 전체 경로. 경로가 folder 아래가 아니면 null. */
@@ -18,7 +18,7 @@ export function relUnder(localPath: string, folder: string): string | null {
 export function roomName(workspaceId: string, spaceId: string, localPath: string, folder: string): string | null {
 	const dbPath = relUnder(localPath, folder);
 	if (dbPath === null) return null;
-	return `ws_${workspaceId}/share/${spaceId}/${dbPath}`;
+	return `${workspaceId}/share/${spaceId}/${dbPath}`;
 }
 
 /**

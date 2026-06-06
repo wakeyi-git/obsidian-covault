@@ -261,7 +261,7 @@ LAN에서 점검: `http://<host>:1234` → `Yjs WebSocket server OK`. (`YJS_SECR
 1. **포트 1234를 직접 노출하지 마세요.** 항상 **HTTPS 리버스 프록시(`wss://`)** 뒤에 두고 WebSocket
    `Upgrade`/`Connection` 헤더를 전달합니다.
 2. **`YJS_SECRET` 일치.** 서버 환경변수와 플러그인의 *Yjs 공간 시크릿(HMAC)* 은 **같은 값**이어야 합니다. 그러면
-   유출된 공간 토큰도 해당 공간 room만 접근 가능(서버가 room이 `class_<c>/share/<s>/`로 시작하는지 검증).
+   유출된 공간 토큰도 해당 공간 room만 접근 가능(서버가 room이 `<workspaceId>/share/<spaceId>/`로 시작하는지 검증).
 3. **토큰을 로그에 남기지 마세요.** 토큰은 `?token=` 쿼리로 전달되므로 프록시/CDN/모니터링의 쿼리 로깅을
    마스킹/비활성화(시놀로지 DSM: [`yjs/disable-yjs-accesslog.sh`](yjs/disable-yjs-accesslog.sh); Caddy:
    `log { output discard }`; nginx: `access_log off` 또는 `$args` 제거 포맷). 토큰은 WSS로 전송되어 전송 중 노출은
@@ -292,7 +292,7 @@ LAN에서 점검: `http://<host>:1234` → `Yjs WebSocket server OK`. (`YJS_SECR
 (scale-to-zero 아님)** 이고 WebSocket을 통과시키는지 확인하세요; 아니면 유휴 세션이 끊깁니다. TLS·도메인은 자동.
 
 **④ ⚠️ 매니지드 Yjs SaaS (PartyKit, Liveblocks, Hocuspocus Cloud, y-sweet) — 그대로 대체 불가.** 이들은 이 서버의
-공간별 HMAC `?token=` 검증이나 `class_<c>/share/<s>/` room 검사를 구현하지 않으므로, 플러그인의 공간 격리 보안 모델이
+공간별 HMAC `?token=` 검증이나 `<workspaceId>/share/<spaceId>/` room 검사를 구현하지 않으므로, 플러그인의 공간 격리 보안 모델이
 적용되지 않습니다(토큰이 의도보다 넓은 접근을 허용). 이 서버를 그대로 운영하세요 — 인증 방식을 다른 백엔드에 이식하는 것은
 가능하지만 설정이 아니라 수동 작업입니다.
 

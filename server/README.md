@@ -269,7 +269,7 @@ members automatically.
    `Upgrade`/`Connection` headers.
 2. **`YJS_SECRET` parity.** The server env var and the plugin's *Yjs space secret (HMAC)* must be the **same value**. A
    leaked per-space token then only grants that one space's room (the server checks the room starts with
-   `class_<c>/share/<s>/`).
+   `<workspaceId>/share/<spaceId>/`).
 3. **Keep tokens out of logs.** The token rides as a `?token=` query, so mask/disable query logging on the proxy / CDN /
    monitoring (Synology DSM: [`yjs/disable-yjs-accesslog.sh`](yjs/disable-yjs-accesslog.sh); Caddy: `log { output
    discard }`; nginx: `access_log off` or a `$args`-stripping format). Tokens travel over WSS so they aren't exposed in
@@ -301,7 +301,7 @@ plan is **always-on (no scale-to-zero)** and passes WebSockets through; otherwis
 domain are automatic.
 
 **④ ⚠️ Managed Yjs SaaS (PartyKit, Liveblocks, Hocuspocus Cloud, y-sweet) — not a drop-in.** These don't implement this
-server's per-space HMAC `?token=` verification or the `class_<c>/share/<s>/` room check, so the plugin's
+server's per-space HMAC `?token=` verification or the `<workspaceId>/share/<spaceId>/` room check, so the plugin's
 space-isolation security model wouldn't apply (a token would grant more than intended). Stick to running this server —
 porting the auth scheme onto another backend is possible but it's manual work, not configuration.
 
