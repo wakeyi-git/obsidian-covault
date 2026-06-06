@@ -139,18 +139,18 @@ DSM 7.2+ with **Container Manager** (older DSM: "Docker"). All clicking, no term
 
 **1. Download the image.** Container Manager → **Registry** → search `couchdb` → download, tag `3` (or `latest`).
 
-**2. Create the container.** Container Manager → **Container** → **Create** → image `couchdb:3` → Next, and in the
-settings:
+**2. Create the container.** Container Manager → **Container** → **Create** → image `couchdb:latest` → Next, and in the
+settings (the sections match the DSM UI order):
 - **Enable auto-restart.**
-- **Storage / Volume:** add a folder, e.g. `docker/couchdb` on the NAS, and mount it to **`/opt/couchdb/data`**.
-- **Port:** map local **5984** → container **5984**.
-- **Environment:** add `COUCHDB_USER=admin` and `COUCHDB_PASSWORD=<a strong password>`.
+- **Port Settings:** map local **5984** → container **5984**.
+- **Volume Settings:** add a folder, e.g. `docker/couchdb/data` on the NAS, and mount it to **`/opt/couchdb/data`**.
+- **Environment:** add the variables `COUCHDB_USER=admin` and `COUCHDB_PASSWORD=<a strong password>`.
 
 Start the container.
 
 **3. Initialize system databases.** Open `http://<nas-lan-ip>:5984/_utils` (Fauxton) in a browser, log in as admin →
-it will offer to set up a single node, or run the same `curl … /_cluster_setup …` from Walkthrough A step 4 against
-`http://<nas-lan-ip>:5984`.
+**Setup** → it will offer to set up a single node, or run the same `curl … /_cluster_setup …` from Walkthrough A step 4
+against `http://<nas-lan-ip>:5984`.
 
 **4. Get a hostname + certificate.**
 - **DDNS:** Control Panel → External Access → **DDNS** → add a `*.synology.me` hostname (free).

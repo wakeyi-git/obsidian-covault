@@ -137,16 +137,16 @@ couch.example.com {
 
 **1. 이미지 다운로드.** Container Manager → **레지스트리** → `couchdb` 검색 → 다운로드, 태그 `3`(또는 `latest`).
 
-**2. 컨테이너 생성.** Container Manager → **컨테이너** → **생성** → 이미지 `couchdb:3` → 다음, 설정에서:
+**2. 컨테이너 생성.** Container Manager → **컨테이너** → **생성** → 이미지 `couchdb:latest` → 다음, 설정에서:
 - **자동 재시작 활성화.**
-- **저장소/볼륨:** NAS에 폴더(예: `docker/couchdb`)를 추가하고 **`/opt/couchdb/data`** 에 마운트.
-- **포트:** 로컬 **5984** → 컨테이너 **5984**.
-- **환경변수:** `COUCHDB_USER=admin`, `COUCHDB_PASSWORD=<강력한 비밀번호>` 추가.
+- **포트 설정:** 로컬 **5984** → 컨테이너 **5984**.
+- **볼륨 설정:** NAS에 폴더(예: `docker/couchdb/data`)를 추가하고 **`/opt/couchdb/data`** 에 마운트.
+- **환경:** `COUCHDB_USER=admin`, `COUCHDB_PASSWORD=<강력한 비밀번호>` 변수 추가.
 
 컨테이너를 시작합니다.
 
-**3. 시스템 데이터베이스 초기화.** 브라우저에서 `http://<NAS-LAN-IP>:5984/_utils`(Fauxton)를 열고 admin으로 로그인 →
-단일 노드 설정을 안내하거나, 따라하기 A 4단계의 `curl … /_cluster_setup …` 을 `http://<NAS-LAN-IP>:5984` 대상으로
+**3. 시스템 데이터베이스 초기화.** 브라우저에서 `http://<NAS-LAN-IP>:5984/_utils`(Fauxton)를 열고 admin으로 로그인 → 설정
+ → 단일 노드 설정을 안내하거나, 따라하기 A 4단계의 `curl … /_cluster_setup …` 을 `http://<NAS-LAN-IP>:5984` 대상으로
 실행합니다.
 
 **4. 호스트명 + 인증서.**
