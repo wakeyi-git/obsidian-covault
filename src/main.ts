@@ -1,6 +1,8 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
-import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc } from "./core/model/types";
+import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId } from "./core/model/types";
+import { ensureParentFolders } from "./core/vault/folders";
+import { noticeFilePath } from "./core/classroom/notices";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
 import { Logger } from "./core/log/Logger";
 import { CoreServices } from "./core/CoreServices";
@@ -30,7 +32,7 @@ import {
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
-import { ensureHomeroomSpace, findHomeroom } from "./core/classroom/homeroom";
+import { ensureHomeroomSpace, findHomeroom, HOMEROOM_FOLDER } from "./core/classroom/homeroom";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
@@ -444,6 +446,43 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		this.settings.sharedSpaces = spaces;
 		await this.saveSettings();
 		await this.deployShared(space); // 프로비저닝 + 전원 shares 갱신 + 모드 재시작
+	}
+
+	/** PanelHost: 알림장 게시(교사). 본문 마크다운 파일을 학급 폴더에 만들고 NoticeDoc 메타를 학급 공유에 기록. */
+	async postNotice(title: string, body: string): Promise<boolean> {
+		if (this.settings.role !== "manager") {
+			this.logger.warn(t("command.available_in_manager_mode_only"), true);
+			return false;
+		}
+		if (!this.homeroomReady()) {
+			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
+			return false;
+		}
+		const ts = Date.now();
+		const path = noticeFilePath(HOMEROOM_FOLDER, ts, title);
+		await ensureParentFolders(this.app, path);
+		if (this.app.vault.getAbstractFileByPath(path)) {
+			this.logger.warn(t("dashboard.notice_file_exists"), true);
+			return false;
+		}
+		await this.app.vault.create(path, `# ${title}\n\n${body}\n`);
+		const uid = `${ts.toString(36)}`;
+		const doc: NoticeDoc = {
+			_id: noticeId(uid),
+			type: "notice",
+			schemaVersion: 1,
+			workspaceId: this.settings.workspaceId,
+			uid,
+			title,
+			filePath: path,
+			postedAtMs: ts,
+			allowResponses: true,
+			createdBy: this.settings.userId,
+			createdByRole: "manager",
+		};
+		const ok = await this.classroom.put(doc);
+		if (ok) this.logger.ok(t("dashboard.notice_posted", { title }), true);
+		return ok;
 	}
 
 	/**

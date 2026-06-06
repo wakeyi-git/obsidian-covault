@@ -37,6 +37,8 @@ export interface PanelHost {
 	homeroomReady(): boolean;
 	/** 학급(homeroom) 공유 공간 생성+배포(교사 전용). */
 	ensureHomeroom(): Promise<void>;
+	/** 알림장 게시(교사): 본문 파일 생성 + NoticeDoc 기록. */
+	postNotice(title: string, body: string): Promise<boolean>;
 	getDashboardRows(): Promise<DashboardRow[]>;
 	openConflictModal(): void;
 	fullSync(dir: "both" | "up" | "down"): Promise<void>;

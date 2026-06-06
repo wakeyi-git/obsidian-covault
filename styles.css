@@ -921,3 +921,83 @@
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 }
+
+.covault-dash-card.is-clickable {
+	cursor: pointer;
+}
+.covault-dash-card.is-clickable:hover {
+	border-color: var(--interactive-accent);
+}
+
+.covault-dash-modhead {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 10px;
+}
+.covault-dash-modtitle {
+	font-weight: 700;
+	flex: 1;
+}
+
+.covault-dash-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.covault-dash-empty {
+	color: var(--text-muted);
+	padding: 12px 0;
+}
+.covault-dash-card-row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+}
+.covault-dash-label {
+	font-size: 12px;
+	color: var(--text-muted);
+	margin: 8px 0 4px;
+}
+
+.covault-dash-comments {
+	margin-top: 6px;
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.covault-dash-comment {
+	font-size: 12px;
+}
+
+.covault-dash-reply {
+	display: flex;
+	gap: 4px;
+	margin-top: 6px;
+}
+.covault-dash-reply-input {
+	flex: 1;
+	min-width: 0;
+}
+
+.covault-timetable {
+	border-collapse: collapse;
+	width: 100%;
+	font-size: 12px;
+}
+.covault-timetable th,
+.covault-timetable td {
+	border: 1px solid var(--background-modifier-border);
+	padding: 2px 4px;
+	text-align: center;
+}
+.covault-timetable td input {
+	width: 100%;
+	border: none;
+	background: transparent;
+	text-align: center;
+	font-size: 12px;
+}
