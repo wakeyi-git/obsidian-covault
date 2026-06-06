@@ -18,6 +18,8 @@ function kindLabel(kind: VersionKind): string {
 			return t("version.before_conflict_resolution");
 		case "restore":
 			return t("version.restore");
+		case "submit":
+			return t("version.submission");
 	}
 }
 

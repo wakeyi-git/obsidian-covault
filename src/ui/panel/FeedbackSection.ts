@@ -1,8 +1,9 @@
 import { App, EventRef, MarkdownView, Notice, TFile } from "obsidian";
 import { FeedbackStore } from "../../core/feedback/FeedbackStore";
-import { FeedbackDoc } from "../../core/model/types";
+import { FeedbackDoc, isTextAnchor } from "../../core/model/types";
 import { PanelSection } from "./PanelSection";
 import { promptAddFeedback } from "../FeedbackView";
+import { getExcalidrawApiForFile, focusExcalidrawElements } from "../excalidrawFocus";
 import { t, formatDate } from "../../i18n";
 
 /** 피드백 탭 — 활성 노트의 앵커 댓글(§19.5) + 전체 미해결 피드백함 토글. */
@@ -125,8 +126,11 @@ export class FeedbackSection implements PanelSection {
 
 		if (label) card.createDiv({ cls: "covault-feedback-target", text: label });
 
-		if (doc.anchor.textQuote) {
-			const quote = card.createDiv({ cls: "covault-feedback-quote", text: `“${doc.anchor.textQuote}”` });
+		const anchorText = isTextAnchor(doc.anchor)
+			? doc.anchor.textQuote
+			: doc.anchor.label || t("panel.drawing_element");
+		if (anchorText) {
+			const quote = card.createDiv({ cls: "covault-feedback-quote", text: `“${anchorText}”` });
 			quote.onclick = () => void this.jumpTo(doc, localPath);
 		}
 		card.createDiv({ cls: "covault-feedback-content", text: doc.content });
@@ -142,7 +146,7 @@ export class FeedbackSection implements PanelSection {
 		};
 	}
 
-	/** 해당 노트를 열고 앵커 위치로 스크롤/선택. textQuote 재탐색 후 없으면 오프셋 폴백. */
+	/** 해당 노트를 열고 앵커 위치로 스크롤/선택. 텍스트=오프셋, Excalidraw=요소 선택+확대. */
 	private async jumpTo(doc: FeedbackDoc, localPath: string): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(localPath);
 		if (!(file instanceof TFile)) {
@@ -151,6 +155,16 @@ export class FeedbackSection implements PanelSection {
 		}
 		const leaf = this.app.workspace.getLeaf(false);
 		await leaf.openFile(file, { active: true });
+
+		// Excalidraw 드로잉 앵커: 요소 선택 + 화면 맞춤(플러그인 가용 시).
+		if (!isTextAnchor(doc.anchor)) {
+			const api = getExcalidrawApiForFile(this.app, file);
+			if (!api || !focusExcalidrawElements(api, doc.anchor.elementIds)) {
+				new Notice(t("panel.could_not_focus_drawing_element"));
+			}
+			return;
+		}
+
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView) || !view.editor) return;
 		const editor = view.editor;

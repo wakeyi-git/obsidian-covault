@@ -1,5 +1,6 @@
-import { App, MarkdownView, Modal, Notice, Setting } from "obsidian";
+import { App, MarkdownView, Modal, Notice, Setting, TFile } from "obsidian";
 import { FeedbackStore } from "../core/feedback/FeedbackStore";
+import { getSelectedExcalidrawElements, isExcalidrawFile } from "./excalidrawFocus";
 import { t } from "../i18n";
 
 /**
@@ -25,6 +26,13 @@ export function resolveMarkdownView(app: App, preferredPath?: string | null): Ma
 
 /** 활성 에디터의 선택 영역으로 피드백을 추가하는 공용 흐름(패널 버튼 + 명령에서 재사용). */
 export function promptAddFeedback(app: App, store: FeedbackStore, preferredPath?: string | null): void {
+	// Excalidraw 드로잉이 활성이면 선택 요소에 앵커(텍스트 에디터 대신).
+	const activeFile = app.workspace.getActiveFile();
+	if (activeFile && isExcalidrawFile(activeFile.path) && (!preferredPath || preferredPath === activeFile.path)) {
+		promptAddDrawingFeedback(app, store, activeFile);
+		return;
+	}
+
 	const view = resolveMarkdownView(app, preferredPath);
 	if (!view || !view.file) {
 		new Notice(t("feedback.covault_open_a_note_to"));
@@ -45,6 +53,28 @@ export function promptAddFeedback(app: App, store: FeedbackStore, preferredPath?
 	const end = start + sel.length;
 	new FeedbackInputModal(app, sel, async (content) => {
 		const ok = await store.add(path, { textQuote: sel, start, end }, content);
+		if (ok) new Notice(t("feedback.covault_feedback_added"));
+	}).open();
+}
+
+/** Excalidraw 드로잉의 선택 요소에 피드백을 추가하는 흐름. */
+function promptAddDrawingFeedback(app: App, store: FeedbackStore, file: TFile): void {
+	if (!store.canAnnotate(file.path)) {
+		new Notice(t("feedback.covault_this_note_is_not"));
+		return;
+	}
+	const sel = getSelectedExcalidrawElements(app, file);
+	if (!sel) {
+		new Notice(t("feedback.covault_select_a_drawing_element"));
+		return;
+	}
+	const quote = sel.label || t("panel.drawing_element");
+	new FeedbackInputModal(app, quote, async (content) => {
+		const ok = await store.add(
+			file.path,
+			{ kind: "excalidraw", elementIds: sel.ids, point: sel.point, label: sel.label },
+			content,
+		);
 		if (ok) new Notice(t("feedback.covault_feedback_added"));
 	}).open();
 }

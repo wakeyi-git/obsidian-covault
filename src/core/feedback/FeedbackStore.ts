@@ -1,12 +1,6 @@
 import { CoreServices } from "../CoreServices";
 import { MirrorSync } from "../sync/MirrorSync";
-import { FeedbackDoc, feedbackId, FEEDBACK_ID_PREFIX } from "../model/types";
-
-export interface FeedbackAnchor {
-	textQuote: string;
-	start: number;
-	end: number;
-}
+import { FeedbackDoc, FeedbackAnchor, feedbackId, FEEDBACK_ID_PREFIX } from "../model/types";
 
 /** 전체 미해결 피드백함 항목(노트 경로·학생 포함). */
 export interface FeedbackItem {
