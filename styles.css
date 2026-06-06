@@ -957,6 +957,16 @@
 	padding-bottom: 12px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
+.covault-dash-weeknav {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 4px 0 8px;
+}
+.covault-dash-weeklabel {
+	font-weight: 600;
+	flex: 1;
+}
 .covault-dash-empty {
 	color: var(--text-muted);
 	padding: 12px 0;

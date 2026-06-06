@@ -161,6 +161,7 @@
 		"sum_graded": "채점 {done}/{total}",
 		"sum_cells": "{n}칸 입력",
 		"not_set": "미설정",
+		"this_week": "이번 주",
 		"open_lesson": "수업 안내 열기",
 		"add_lesson": "이 칸에 수업 안내 추가",
 		"period_suffix": "교시",

@@ -194,6 +194,8 @@ export interface NoticeDoc extends PouchDocBase {
 	allowResponses?: boolean; // 양방향 응답 허용(기본 true)
 	/** 게시 종류. "notice"(알림장, 기본) | "lesson"(수업 안내). 같은 메커니즘, 폴더/뷰만 분리. */
 	category?: "notice" | "lesson";
+	/** 수업 안내가 속한 주(週) 시작 키(YYYY-MM-DD). 주간 수업 안내 필터용(lesson 전용). */
+	weekKey?: string;
 	createdBy: string;
 	createdByRole: "member" | "manager";
 	deleted?: boolean;
@@ -233,11 +235,12 @@ export function responsePrefix(targetId: string): string {
 	return `${RESPONSE_ID_PREFIX}${targetId}:`;
 }
 
-/** 주간 시간표(학급 공유 DB의 단일 문서). 수업안내는 `_학급/수업/<date>.md` 파일 + notice류 메타로 처리. */
+/** 주간 시간표(학급 공유 DB, 주(週)별 문서). 주 시작(월요일) 날짜키로 분리. */
 export interface TimetableDoc extends PouchDocBase {
 	type: "timetable";
 	schemaVersion: number;
 	workspaceId: string;
+	weekKey: string; // 주 시작(월요일) YYYY-MM-DD
 	days: string[]; // 요일 라벨(예: ["월","화",...])
 	periods: string[]; // 교시 라벨(예: ["1","2",...])
 	cells: Record<string, string>; // "<dayIndex>:<periodIndex>" → 과목/내용
@@ -247,7 +250,10 @@ export interface TimetableDoc extends PouchDocBase {
 	updatedBy: string;
 }
 
-export const TIMETABLE_DOC_ID = "timetable";
+export const TIMETABLE_ID_PREFIX = "timetable:";
+export function timetableId(weekKey: string): string {
+	return `${TIMETABLE_ID_PREFIX}${weekKey}`;
+}
 
 /** 루브릭(채점 기준표): 기준 × 수준 × 배점. */
 export interface RubricLevel {

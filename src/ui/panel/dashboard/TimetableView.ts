@@ -1,17 +1,17 @@
-import { PanelHost, panelButton } from "../PanelSection";
-import { TimetableDoc, TIMETABLE_DOC_ID } from "../../../core/model/types";
+import { PanelHost } from "../PanelSection";
+import { TimetableDoc, NoticeDoc, timetableId, noticePrefix } from "../../../core/model/types";
+import { weekStart } from "../../../core/classroom/week";
 import { t } from "../../../i18n";
 
 const DEFAULT_DAYS = ["월", "화", "수", "목", "금"];
 const DEFAULT_PERIODS = ["1", "2", "3", "4", "5", "6"];
 
-/** 시간표 — 주간 그리드(요일×교시). 교사 편집 / 학생 읽기전용. 수업 안내 뷰 상단에 임베드(onBack 없음). */
+/** 시간표 — 주간 그리드(요일×교시). 주(週)별 문서. 수업 안내 뷰에 임베드되며 주는 NoticesView가 제어. */
 export class TimetableView {
 	private container: HTMLElement | null = null;
 	private doc: TimetableDoc | null = null;
 
-	/** onBack 없으면 임베드 모드(뒤로 버튼 미표시). */
-	constructor(private host: PanelHost, private onBack?: () => void) {}
+	constructor(private host: PanelHost, private weekKey: string = weekStart(Date.now())) {}
 
 	render(container: HTMLElement): void {
 		this.container = container;
@@ -27,26 +27,29 @@ export class TimetableView {
 		if (!c) return;
 		c.empty();
 
-		const head = c.createDiv({ cls: "covault-dash-modhead" });
-		if (this.onBack) panelButton(head, t("dashboard.back"), () => this.onBack!());
-		head.createSpan({ cls: "covault-dash-modtitle", text: t("dashboard.timetable") });
-
 		const store = this.host.classroomStore;
 		if (!store.ready()) {
 			c.createDiv({ cls: "covault-dash-empty", text: t("dashboard.homeroom_not_ready") });
 			return;
 		}
 
-		this.doc = (await store.get<TimetableDoc>(TIMETABLE_DOC_ID)) ?? this.defaultDoc();
-		this.renderGrid(c);
+		this.doc = (await store.get<TimetableDoc>(timetableId(this.weekKey))) ?? this.defaultDoc();
+		// 삭제된 수업 안내를 가리키는 칸은 미연결로 취급(+ 버튼 복구) — 살아있는 lesson uid만 유효.
+		const valid = new Set(
+			(await store.listByPrefix<NoticeDoc>(noticePrefix()))
+				.filter((n) => !n.deleted && (n.category ?? "notice") === "lesson")
+				.map((n) => n.uid),
+		);
+		this.renderGrid(c, valid);
 	}
 
 	private defaultDoc(): TimetableDoc {
 		return {
-			_id: TIMETABLE_DOC_ID,
+			_id: timetableId(this.weekKey),
 			type: "timetable",
 			schemaVersion: 1,
 			workspaceId: this.host.settings.workspaceId,
+			weekKey: this.weekKey,
 			days: [...DEFAULT_DAYS],
 			periods: [...DEFAULT_PERIODS],
 			cells: {},
@@ -55,7 +58,7 @@ export class TimetableView {
 		};
 	}
 
-	private renderGrid(c: HTMLElement): void {
+	private renderGrid(c: HTMLElement, validLessons: Set<string>): void {
 		const doc = this.doc;
 		if (!doc) return;
 		const wrap = c.createDiv({ cls: "covault-timetable-wrap" });
@@ -73,7 +76,9 @@ export class TimetableView {
 			doc.days.forEach((d, di) => {
 				const key = `${di}:${pi}`;
 				const td = row.createEl("td");
-				const lessonUid = doc.lessons?.[key];
+				const rawUid = doc.lessons?.[key];
+				// 삭제된 수업을 가리키면 미연결 처리(+ 버튼 복구).
+				const lessonUid = rawUid && validLessons.has(rawUid) ? rawUid : undefined;
 				if (this.manager) {
 					const cell = td.createDiv({ cls: "covault-tt-cell" });
 					const input = cell.createEl("input", { attr: { type: "text" } });
@@ -109,7 +114,7 @@ export class TimetableView {
 		if (!this.doc) return;
 		const subject = this.doc.cells[key]?.trim();
 		const title = subject ? `${subject} (${day} ${period}${t("dashboard.period_suffix")})` : `${day} ${period}${t("dashboard.period_suffix")}`;
-		const uid = await this.host.createLesson(title);
+		const uid = await this.host.createLesson(title, this.weekKey);
 		if (!uid) return;
 		const lessons = { ...(this.doc.lessons ?? {}), [key]: uid };
 		this.doc = { ...this.doc, lessons, updatedAtMs: Date.now(), updatedBy: this.host.settings.userId };

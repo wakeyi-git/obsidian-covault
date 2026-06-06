@@ -474,8 +474,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		new SetupWizardModal(this.app, this).open();
 	}
 
-	/** 게시 본문 파일 + NoticeDoc 생성(교사). 성공 시 uid, 실패 시 null. */
-	private async createPost(title: string, body: string, category: "notice" | "lesson"): Promise<string | null> {
+	/** 게시 본문 파일 + NoticeDoc 생성(교사). 성공 시 uid, 실패 시 null. weekKey는 수업 안내 주간 태그. */
+	private async createPost(title: string, body: string, category: "notice" | "lesson", weekKey?: string): Promise<string | null> {
 		if (this.settings.role !== "manager") {
 			this.logger.warn(t("command.available_in_manager_mode_only"), true);
 			return null;
@@ -509,6 +509,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			postedAtMs: ts,
 			allowResponses: true,
 			category,
+			weekKey: category === "lesson" ? weekKey : undefined,
 			createdBy: this.settings.userId,
 			createdByRole: "manager",
 		};
@@ -519,13 +520,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	/** PanelHost: 게시(교사). 본문 마크다운 파일을 학급 폴더에 만들고 NoticeDoc 메타를 학급 공유에 기록. */
-	async postNotice(title: string, body: string, category: "notice" | "lesson" = "notice"): Promise<boolean> {
-		return (await this.createPost(title, body, category)) != null;
+	async postNotice(title: string, body: string, category: "notice" | "lesson" = "notice", weekKey?: string): Promise<boolean> {
+		return (await this.createPost(title, body, category, weekKey)) != null;
 	}
 
-	/** PanelHost: 수업 안내 생성(교사). 성공 시 uid 반환(시간표 칸 연결용). */
-	async createLesson(title: string): Promise<string | null> {
-		return this.createPost(title, "", "lesson");
+	/** PanelHost: 수업 안내 생성(교사). 성공 시 uid 반환(시간표 칸 연결용). weekKey=해당 주간 태그. */
+	async createLesson(title: string, weekKey?: string): Promise<string | null> {
+		return this.createPost(title, "", "lesson", weekKey);
 	}
 
 	/** PanelHost: 수업 안내(uid) 열기. 본문 파일을 열고, 학생이면 읽음 처리. */

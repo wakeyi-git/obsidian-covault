@@ -35,10 +35,10 @@ export interface PanelHost {
 	classroomStore: ClassroomStore;
 	/** 학급 공동 공간이 지정·배포·수신되어 사용 가능한지. */
 	homeroomReady(): boolean;
-	/** 게시(교사): 본문 파일 생성 + NoticeDoc 기록. category=알림장/수업. */
-	postNotice(title: string, body: string, category?: "notice" | "lesson"): Promise<boolean>;
-	/** 수업 안내 생성(교사) → uid 반환(시간표 칸 연결용). */
-	createLesson(title: string): Promise<string | null>;
+	/** 게시(교사): 본문 파일 생성 + NoticeDoc 기록. category=알림장/수업, weekKey=수업 주간 태그. */
+	postNotice(title: string, body: string, category?: "notice" | "lesson", weekKey?: string): Promise<boolean>;
+	/** 수업 안내 생성(교사) → uid 반환(시간표 칸 연결용). weekKey=해당 주간 태그. */
+	createLesson(title: string, weekKey?: string): Promise<string | null>;
 	/** 수업 안내(uid) 열기(+학생 읽음 처리). */
 	openLesson(uid: string): Promise<void>;
 	// 과제(assignments)

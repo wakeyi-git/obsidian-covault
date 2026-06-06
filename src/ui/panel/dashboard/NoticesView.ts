@@ -8,14 +8,16 @@ import {
 	responseId,
 } from "../../../core/model/types";
 import { sortNotices, summarizeResponses } from "../../../core/classroom/notices";
+import { weekStart, addWeeks, weekRangeLabel } from "../../../core/classroom/week";
 import { NoticeComposeModal } from "../../NoticeComposeModal";
 import { TimetableView } from "./TimetableView";
 import { t, formatDate } from "../../../i18n";
 
-/** 알림장/수업안내 모듈 — 목록 + (교사)게시/집계 + (학생)읽음·댓글. category로 분리. 수업안내는 상단에 시간표 임베드. */
+/** 알림장/수업안내 모듈 — 목록 + (교사)게시/집계 + (학생)읽음·댓글. category로 분리. 수업안내는 주간 시간표 임베드 + 주간 필터. */
 export class NoticesView {
 	private container: HTMLElement | null = null;
 	private timetable: TimetableView | null = null;
+	private weekKey = weekStart(Date.now());
 
 	constructor(private host: PanelHost, private onBack: () => void, private category: "notice" | "lesson" = "notice") {}
 
@@ -70,15 +72,25 @@ export class NoticesView {
 			return;
 		}
 
-		// 수업 안내 상단에 주간 시간표를 임베드(시간표 패널 통합).
+		// 수업 안내: 주간 네비게이션 + 상단 주간 시간표 임베드(시간표 패널 통합).
 		if (this.isLesson) {
+			const nav = c.createDiv({ cls: "covault-dash-weeknav" });
+			panelButton(nav, "‹", () => this.shiftWeek(-1));
+			nav.createSpan({ cls: "covault-dash-weeklabel", text: weekRangeLabel(this.weekKey) });
+			panelButton(nav, "›", () => this.shiftWeek(1));
+			panelButton(nav, t("dashboard.this_week"), () => {
+				this.weekKey = weekStart(Date.now());
+				void this.reload();
+			});
 			const ttBox = c.createDiv({ cls: "covault-dash-timetable-embed" });
-			this.timetable = new TimetableView(this.host);
+			this.timetable = new TimetableView(this.host, this.weekKey);
 			this.timetable.render(ttBox);
 		}
 
 		const all = sortNotices(await store.listByPrefix<NoticeDoc>(noticePrefix()));
-		const notices = all.filter((n) => (n.category ?? "notice") === this.category);
+		const notices = all.filter(
+			(n) => (n.category ?? "notice") === this.category && (!this.isLesson || n.weekKey === this.weekKey),
+		);
 		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
 		if (notices.length === 0) {
 			c.createDiv({ cls: "covault-dash-empty", text: this.label(t("dashboard.no_notices"), t("dashboard.no_lessons")) });
@@ -91,8 +103,13 @@ export class NoticesView {
 		for (const n of notices) this.renderNotice(list, n, byTarget.get(n._id) ?? []);
 	}
 
+	private shiftWeek(n: number): void {
+		this.weekKey = addWeeks(this.weekKey, n);
+		void this.reload();
+	}
+
 	private async post(title: string, body: string): Promise<void> {
-		const ok = await this.host.postNotice(title, body, this.category);
+		const ok = await this.host.postNotice(title, body, this.category, this.isLesson ? this.weekKey : undefined);
 		if (ok) await this.reload();
 	}
 
