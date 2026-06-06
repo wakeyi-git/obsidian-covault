@@ -59,7 +59,10 @@ export interface PanelHost {
 	openVaultPath(path: string): Promise<void>;
 	// 루틴(체크리스트)
 	listRoutines(): Promise<RoutineDoc[]>;
-	createRoutine(input: { title: string; items: string[]; recurrence: "daily" | "weekly"; weekdays?: number[] }): Promise<boolean>;
+	createRoutine(input: {
+		title: string;
+		items: Array<{ label: string; recurrence: "daily" | "weekly"; weekdays?: number[] }>;
+	}): Promise<boolean>;
 	deleteRoutine(uid: string): Promise<void>;
 	myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null>;
 	myRoutineDays(uid: string): Promise<RoutineStateDoc[]>;

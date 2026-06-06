@@ -316,12 +316,16 @@ export function assignmentStatePrefix(): string {
 	return ASSIGNMENT_STATE_ID_PREFIX;
 }
 
-/** 체크리스트/루틴 정의(학급 공유 DB). */
+/** 체크리스트/루틴 정의(학급 공유 DB). 반복은 항목별로 설정한다. */
+export type RoutineRecurrence = "daily" | "weekly";
 export interface RoutineItem {
 	id: string;
 	label: string;
+	/** 이 항목의 반복. daily=매일, weekly=weekdays 요일에만. */
+	recurrence: RoutineRecurrence;
+	/** recurrence=weekly일 때 적용 요일(0=일..6=토). */
+	weekdays?: number[];
 }
-export type RoutineRecurrence = "daily" | "weekly";
 export interface RoutineDoc extends PouchDocBase {
 	type: "routine";
 	schemaVersion: number;
@@ -329,8 +333,6 @@ export interface RoutineDoc extends PouchDocBase {
 	uid: string;
 	title: string;
 	items: RoutineItem[];
-	recurrence: RoutineRecurrence;
-	weekdays?: number[]; // recurrence=weekly일 때 적용 요일(0=일..6=토)
 	createdBy: string;
 	createdAtMs: number;
 	deleted?: boolean;

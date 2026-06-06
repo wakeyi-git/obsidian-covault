@@ -1105,6 +1105,15 @@
 	color: var(--color-orange);
 	white-space: nowrap;
 }
+.covault-dash-itemrow {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 6px;
+	margin-bottom: 6px;
+}
+.covault-dash-recur {
+	flex: none;
+}
 
 .covault-gradebook-wrap {
 	overflow-x: auto;

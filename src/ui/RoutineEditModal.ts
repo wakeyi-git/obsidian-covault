@@ -1,21 +1,28 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import { t } from "../i18n";
 
-export interface RoutineInput {
-	title: string;
-	items: string[];
+export interface RoutineItemInput {
+	label: string;
 	recurrence: "daily" | "weekly";
 	weekdays?: number[];
+}
+export interface RoutineInput {
+	title: string;
+	items: RoutineItemInput[];
 }
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
-/** 루틴(체크리스트) 생성 모달(교사). */
+interface ItemDraft {
+	label: string;
+	recurrence: "daily" | "weekly";
+	weekdays: Set<number>;
+}
+
+/** 루틴(체크리스트) 생성 모달(교사). 반복은 항목별로 설정. */
 export class RoutineEditModal extends Modal {
 	private title = "";
-	private items: string[] = [""];
-	private recurrence: "daily" | "weekly" = "daily";
-	private weekdays = new Set<number>([1, 2, 3, 4, 5]);
+	private items: ItemDraft[] = [{ label: "", recurrence: "daily", weekdays: new Set([1, 2, 3, 4, 5]) }];
 
 	constructor(app: App, private onSubmit: (input: RoutineInput) => void | Promise<void>) {
 		super(app);
@@ -31,27 +38,8 @@ export class RoutineEditModal extends Modal {
 		});
 
 		contentEl.createDiv({ cls: "covault-dash-label", text: t("dashboard.routine_items") });
-		const itemsBox = contentEl.createDiv({ cls: "covault-dash-rubric" });
+		const itemsBox = contentEl.createDiv();
 		this.renderItems(itemsBox);
-
-		new Setting(contentEl).setName(t("dashboard.recurrence")).addDropdown((d) => {
-			d.addOption("daily", t("dashboard.daily"));
-			d.addOption("weekly", t("dashboard.weekly"));
-			d.setValue("daily").onChange((v) => {
-				this.recurrence = v as "daily" | "weekly";
-				wdRow.style.display = this.recurrence === "weekly" ? "" : "none";
-			});
-		});
-
-		const wdRow = contentEl.createDiv({ cls: "covault-dash-weekdays" });
-		wdRow.style.display = "none";
-		WEEKDAY_KEYS.forEach((k, i) => {
-			const lab = wdRow.createEl("label", { cls: "covault-dash-weekday" });
-			const cb = lab.createEl("input", { attr: { type: "checkbox" } });
-			cb.checked = this.weekdays.has(i);
-			cb.onchange = () => (cb.checked ? this.weekdays.add(i) : this.weekdays.delete(i));
-			lab.createSpan({ text: t(`dashboard.wd_${k}` as never) });
-		});
 
 		new Setting(contentEl)
 			.addButton((b) => b.setButtonText(t("common.cancel")).onClick(() => this.close()))
@@ -61,7 +49,13 @@ export class RoutineEditModal extends Modal {
 					.setCta()
 					.onClick(async () => {
 						const title = this.title.trim();
-						const items = this.items.map((i) => i.trim()).filter(Boolean);
+						const items = this.items
+							.filter((it) => it.label.trim())
+							.map((it) => ({
+								label: it.label.trim(),
+								recurrence: it.recurrence,
+								weekdays: it.recurrence === "weekly" ? [...it.weekdays].sort() : undefined,
+							}));
 						if (!title) {
 							new Notice(t("dashboard.enter_a_title"));
 							return;
@@ -71,33 +65,48 @@ export class RoutineEditModal extends Modal {
 							return;
 						}
 						this.close();
-						await this.onSubmit({
-							title,
-							items,
-							recurrence: this.recurrence,
-							weekdays: this.recurrence === "weekly" ? [...this.weekdays].sort() : undefined,
-						});
+						await this.onSubmit({ title, items });
 					}),
 			);
 	}
 
 	private renderItems(box: HTMLElement): void {
 		box.empty();
-		this.items.forEach((val, i) => {
-			const row = box.createDiv({ cls: "covault-dash-rubric-row" });
-			const ti = row.createEl("input", { attr: { type: "text", placeholder: t("dashboard.routine_item_placeholder") } });
-			ti.value = val;
-			ti.oninput = () => (this.items[i] = ti.value);
-			const del = row.createEl("button", { cls: "mod-warning", text: "✕" });
+		this.items.forEach((it, i) => {
+			const card = box.createDiv({ cls: "covault-dash-itemrow" });
+			const top = card.createDiv({ cls: "covault-dash-rubric-row" });
+			const ti = top.createEl("input", { attr: { type: "text", placeholder: t("dashboard.routine_item_placeholder") } });
+			ti.value = it.label;
+			ti.oninput = () => (it.label = ti.value);
+			const sel = top.createEl("select", { cls: "covault-dash-recur" });
+			sel.createEl("option", { value: "daily", text: t("dashboard.daily") });
+			sel.createEl("option", { value: "weekly", text: t("dashboard.weekly") });
+			sel.value = it.recurrence;
+			const del = top.createEl("button", { cls: "mod-warning", text: "✕" });
 			del.onclick = () => {
 				this.items.splice(i, 1);
-				if (this.items.length === 0) this.items.push("");
+				if (this.items.length === 0) this.items.push({ label: "", recurrence: "daily", weekdays: new Set([1, 2, 3, 4, 5]) });
 				this.renderItems(box);
+			};
+
+			// 요일 선택(weekly일 때만 표시)
+			const wd = card.createDiv({ cls: "covault-dash-weekdays" });
+			wd.style.display = it.recurrence === "weekly" ? "" : "none";
+			WEEKDAY_KEYS.forEach((k, di) => {
+				const lab = wd.createEl("label", { cls: "covault-dash-weekday" });
+				const cb = lab.createEl("input", { attr: { type: "checkbox" } });
+				cb.checked = it.weekdays.has(di);
+				cb.onchange = () => (cb.checked ? it.weekdays.add(di) : it.weekdays.delete(di));
+				lab.createSpan({ text: t(`dashboard.wd_${k}` as never) });
+			});
+			sel.onchange = () => {
+				it.recurrence = sel.value as "daily" | "weekly";
+				wd.style.display = it.recurrence === "weekly" ? "" : "none";
 			};
 		});
 		const add = box.createEl("button", { text: t("dashboard.add_item") });
 		add.onclick = () => {
-			this.items.push("");
+			this.items.push({ label: "", recurrence: "daily", weekdays: new Set([1, 2, 3, 4, 5]) });
 			this.renderItems(box);
 		};
 	}

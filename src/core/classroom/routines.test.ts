@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { dayStr, routineAppliesOn, completion, completionPct, computeStreak } from "./routines";
-import { RoutineDoc, RoutineStateDoc } from "../model/types";
+import { dayStr, itemAppliesOn, itemsOn, routineAppliesOn, completion, completionPct, computeStreak } from "./routines";
+import { RoutineDoc, RoutineItem, RoutineStateDoc } from "../model/types";
 
 describe("dayStr", () => {
 	it("로컬 YYYY-MM-DD", () => {
@@ -8,64 +8,86 @@ describe("dayStr", () => {
 	});
 });
 
-describe("routineAppliesOn", () => {
-	it("daily는 항상, weekly는 요일 매칭", () => {
-		const ts = new Date(2026, 5, 8, 9, 0).getTime(); // 2026-06-08 = 월요일(getDay=1)
-		expect(routineAppliesOn({ recurrence: "daily" }, ts)).toBe(true);
-		expect(routineAppliesOn({ recurrence: "weekly", weekdays: [1] }, ts)).toBe(true);
-		expect(routineAppliesOn({ recurrence: "weekly", weekdays: [2, 3] }, ts)).toBe(false);
-		expect(routineAppliesOn({ recurrence: "weekly" }, ts)).toBe(false);
+const MON = new Date(2026, 5, 8, 9, 0).getTime(); // 2026-06-08 월(getDay=1)
+const TUE = new Date(2026, 5, 9, 9, 0).getTime(); // 화(getDay=2)
+
+describe("itemAppliesOn / itemsOn / routineAppliesOn", () => {
+	const daily: RoutineItem = { id: "i0", label: "매일", recurrence: "daily" };
+	const monOnly: RoutineItem = { id: "i1", label: "월", recurrence: "weekly", weekdays: [1] };
+	const routine = { items: [daily, monOnly] };
+
+	it("항목별 적용 판정", () => {
+		expect(itemAppliesOn(daily, TUE)).toBe(true);
+		expect(itemAppliesOn(monOnly, MON)).toBe(true);
+		expect(itemAppliesOn(monOnly, TUE)).toBe(false);
+	});
+	it("그날 적용 항목만", () => {
+		expect(itemsOn(routine, MON).map((i) => i.id)).toEqual(["i0", "i1"]);
+		expect(itemsOn(routine, TUE).map((i) => i.id)).toEqual(["i0"]);
+	});
+	it("적용 항목이 있으면 루틴 표시", () => {
+		expect(routineAppliesOn(routine, TUE)).toBe(true);
+		expect(routineAppliesOn({ items: [monOnly] }, TUE)).toBe(false);
 	});
 });
 
-function routine(items: string[]): Pick<RoutineDoc, "items"> {
-	return { items: items.map((label, i) => ({ id: `i${i}`, label })) };
-}
-function st(checked: string[]): RoutineStateDoc {
+function st(day: string, checked: string[]): RoutineStateDoc {
 	return {
-		_id: "routine-state:r1:m:2026-06-08",
+		_id: `routine-state:r1:m:${day}`,
 		type: "routine-state",
 		schemaVersion: 1,
 		workspaceId: "ws",
 		routineUid: "r1",
 		memberId: "m",
-		day: "2026-06-08",
+		day,
 		checked,
 		updatedAtMs: 0,
 	};
 }
 
-describe("completion / completionPct", () => {
-	it("체크 개수/전체(없는 id 무시)", () => {
-		const r = routine(["a", "b", "c", "d"]);
-		expect(completion(r, null)).toEqual({ done: 0, total: 4 });
-		expect(completion(r, st(["i0", "i2", "i99"]))).toEqual({ done: 2, total: 4 });
-		expect(completionPct({ done: 2, total: 4 })).toBe(50);
-		expect(completionPct({ done: 0, total: 0 })).toBe(0);
+describe("completion", () => {
+	const routine: Pick<RoutineDoc, "items"> = {
+		items: [
+			{ id: "i0", label: "매일", recurrence: "daily" },
+			{ id: "i1", label: "월", recurrence: "weekly", weekdays: [1] },
+		],
+	};
+	it("적용 항목만 분모로 계산", () => {
+		// 화요일: 적용 항목은 i0뿐
+		expect(completion(routine, st(dayStr(TUE), ["i0"]), TUE)).toEqual({ done: 1, total: 1 });
+		// 월요일: i0,i1 둘 다 적용 — i0만 체크
+		expect(completion(routine, st(dayStr(MON), ["i0"]), MON)).toEqual({ done: 1, total: 2 });
+		expect(completionPct({ done: 1, total: 2 })).toBe(50);
 	});
 });
 
-describe("computeStreak", () => {
+describe("computeStreak (항목별 반복)", () => {
 	const DAY = 86_400_000;
-	const today = new Date(2026, 5, 10, 12, 0).getTime(); // 2026-06-10
-	const d = (offset: number) => dayStr(today - offset * DAY);
+	const today = MON; // 월
+	const d = (off: number) => dayStr(today - off * DAY);
+	const routine: Pick<RoutineDoc, "items"> = {
+		items: [
+			{ id: "i0", label: "매일", recurrence: "daily" },
+			{ id: "i1", label: "월", recurrence: "weekly", weekdays: [1] },
+		],
+	};
 
-	it("daily: 오늘 포함 연속 완료", () => {
-		const done = new Set([d(0), d(1), d(2)]);
-		expect(computeStreak({ recurrence: "daily" }, done, today)).toBe(3);
+	it("그날 적용 항목 전부 완료해야 streak 인정", () => {
+		// 오늘(월): i0,i1 적용. 둘 다 체크. 어제(일): i0만 적용, 체크. 그제(토): i0 적용, 체크.
+		const states = new Map([
+			[d(0), st(d(0), ["i0", "i1"])],
+			[d(1), st(d(1), ["i0"])],
+			[d(2), st(d(2), ["i0"])],
+		]);
+		expect(computeStreak(routine, states, today)).toBe(3);
 	});
-	it("daily: 오늘 미완료여도 어제까지 streak 유지", () => {
-		const done = new Set([d(1), d(2), d(3)]);
-		expect(computeStreak({ recurrence: "daily" }, done, today)).toBe(3);
-	});
-	it("daily: 중간에 끊기면 거기서 중단", () => {
-		const done = new Set([d(0), d(1), d(3), d(4)]);
-		expect(computeStreak({ recurrence: "daily" }, done, today)).toBe(2);
-	});
-	it("weekly: 적용 안 되는 요일은 건너뜀(끊김 아님)", () => {
-		// 적용 요일을 오늘 요일만으로 한정 → 지난주 같은 요일과 연속
-		const wd = new Date(today).getDay();
-		const done = new Set([d(0), d(7), d(14)]);
-		expect(computeStreak({ recurrence: "weekly", weekdays: [wd] }, done, today)).toBe(3);
+	it("월요일에 i1 미완료면 그날에서 끊김", () => {
+		const states = new Map([
+			[d(0), st(d(0), ["i0"])], // 오늘 월: i1 미완료 → 오늘은 미완료지만 i===0이라 건너뜀
+			[d(1), st(d(1), ["i0"])], // 어제 일: 완료
+			[d(7), st(d(7), ["i0", "i1"])], // 지난 월
+		]);
+		// 오늘 건너뜀 → 어제(완료) → ... d(2)~d(6)는 daily만 적용인데 상태 없음 → 미완료로 끊김
+		expect(computeStreak(routine, states, today)).toBe(1);
 	});
 });

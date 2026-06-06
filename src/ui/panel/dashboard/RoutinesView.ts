@@ -1,6 +1,6 @@
 import { PanelHost, panelButton } from "../PanelSection";
 import { RoutineDoc } from "../../../core/model/types";
-import { dayStr, routineAppliesOn, completion, completionPct, computeStreak } from "../../../core/classroom/routines";
+import { dayStr, routineAppliesOn, itemsOn, completion, completionPct, computeStreak } from "../../../core/classroom/routines";
 import { RoutineEditModal } from "../../RoutineEditModal";
 import { t } from "../../../i18n";
 
@@ -66,10 +66,11 @@ export class RoutinesView {
 				await this.host.deleteRoutine(r.uid);
 				await this.reload();
 			}, { warning: true });
+			const now = Date.now();
 			const states = await this.host.listRoutineStates(r.uid, this.day);
 			const byMember = new Map(states.map((s) => [s.memberId, s]));
 			for (const m of members) {
-				const comp = completion(r, byMember.get(m.memberId));
+				const comp = completion(r, byMember.get(m.memberId), now);
 				const line = card.createDiv({ cls: "covault-dash-matrix-row" });
 				line.createSpan({ cls: "covault-dash-matrix-name", text: m.memberName });
 				line.createSpan({ cls: "covault-dash-score", text: `${comp.done}/${comp.total} (${completionPct(comp)}%)` });
@@ -87,23 +88,17 @@ export class RoutinesView {
 		const list = c.createDiv({ cls: "covault-dash-list" });
 		for (const r of routines) {
 			const days = await this.host.myRoutineDays(r.uid);
-			const state = days.find((d) => d.day === this.day) ?? null;
+			const statesByDay = new Map(days.map((d) => [d.day, d]));
+			const state = statesByDay.get(this.day) ?? null;
 			const checked = new Set(state?.checked ?? []);
-			const comp = completion(r, state);
-			// 연속 완료(streak): 완전 완료한 날짜 집합으로 계산.
-			const completedDays = new Set(
-				days.filter((d) => {
-					const cc = completion(r, d);
-					return cc.total > 0 && cc.done === cc.total;
-				}).map((d) => d.day),
-			);
-			const streak = computeStreak(r, completedDays, now);
+			const streak = computeStreak(r, statesByDay, now);
+			const todayItems = itemsOn(r, now); // 오늘 해당되는 항목만 표시/계산
 			const card = list.createDiv({ cls: "covault-dash-card" });
 			const top = card.createDiv({ cls: "covault-dash-card-row" });
 			top.createSpan({ cls: "covault-dash-card-title", text: r.title });
 			if (streak > 0) top.createSpan({ cls: "covault-dash-streak", text: t("dashboard.streak", { n: streak }) });
-			const pct = top.createSpan({ cls: "covault-dash-score", text: `${completionPct(comp)}%` });
-			for (const item of r.items) {
+			const pct = top.createSpan({ cls: "covault-dash-score", text: `${completionPct(completion(r, state, now))}%` });
+			for (const item of todayItems) {
 				const lab = card.createDiv({ cls: "covault-dash-check" });
 				const cb = lab.createEl("input", { attr: { type: "checkbox" } });
 				cb.checked = checked.has(item.id);
@@ -112,7 +107,8 @@ export class RoutinesView {
 					await this.host.toggleRoutineItem(r.uid, this.day, item.id, cb.checked);
 					if (cb.checked) checked.add(item.id);
 					else checked.delete(item.id);
-					pct.setText(`${completionPct(completion(r, { checked: [...checked] } as never))}%`);
+					const done = todayItems.filter((it) => checked.has(it.id)).length;
+					pct.setText(`${completionPct({ done, total: todayItems.length })}%`);
 				};
 			}
 		}

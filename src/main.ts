@@ -693,8 +693,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return docs.filter((d) => !d.deleted).sort((a, b) => a.createdAtMs - b.createdAtMs);
 	}
 
-	/** PanelHost: 루틴 생성(교사, 학급 공유에 기록). */
-	async createRoutine(input: { title: string; items: string[]; recurrence: "daily" | "weekly"; weekdays?: number[] }): Promise<boolean> {
+	/** PanelHost: 루틴 생성(교사, 학급 공유에 기록). 반복은 항목별. */
+	async createRoutine(input: {
+		title: string;
+		items: Array<{ label: string; recurrence: "daily" | "weekly"; weekdays?: number[] }>;
+	}): Promise<boolean> {
 		const s = this.settings;
 		if (s.role !== "manager") {
 			this.logger.warn(t("command.available_in_manager_mode_only"), true);
@@ -712,9 +715,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			workspaceId: s.workspaceId,
 			uid,
 			title: input.title,
-			items: input.items.map((label, i) => ({ id: `i${i}`, label })),
-			recurrence: input.recurrence,
-			weekdays: input.recurrence === "weekly" ? input.weekdays : undefined,
+			items: input.items.map((it, i) => ({
+				id: `i${i}`,
+				label: it.label,
+				recurrence: it.recurrence,
+				weekdays: it.recurrence === "weekly" ? it.weekdays : undefined,
+			})),
 			createdBy: s.userId,
 			createdAtMs: Date.now(),
 		};
