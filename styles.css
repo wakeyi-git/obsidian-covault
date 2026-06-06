@@ -1006,6 +1006,13 @@
 .covault-timetable {
 	border-collapse: collapse;
 	font-size: 12px;
+	width: 100%;
+	table-layout: fixed;
+}
+/* 교시 번호 열은 좁게, 요일 열은 균등 분배 */
+.covault-timetable th:first-child,
+.covault-timetable td:first-child {
+	width: 24px;
 }
 .covault-timetable th,
 .covault-timetable td {
@@ -1019,7 +1026,9 @@
 	gap: 1px;
 }
 .covault-tt-cell input {
-	width: 58px;
+	flex: 1;
+	min-width: 0;
+	width: auto;
 	border: none;
 	background: transparent;
 	text-align: center;
