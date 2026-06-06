@@ -62,8 +62,9 @@ export class TimetableView {
 		headRow.createEl("th", { text: "" });
 		for (const d of doc.days) headRow.createEl("th", { text: d });
 
-		// Tab 이동을 "같은 요일의 다음 교시"(열 우선) 순서로 만들기 위해 입력들을 열 우선으로 모은다.
-		const colMajor: HTMLInputElement[] = new Array(doc.days.length * doc.periods.length);
+		// 입력 칸은 DOM상 행 우선(교시 행마다 요일 칸)으로 생성되지만, Tab 순서는 "같은 요일의 다음 교시"
+		// (열 우선)가 되도록 양의 tabindex를 부여한다. 한 요일(열)을 위→아래로 채운 뒤 다음 요일로 넘어간다.
+		const periods = doc.periods.length;
 		doc.periods.forEach((p, pi) => {
 			const row = table.createEl("tr");
 			row.createEl("th", { text: p });
@@ -73,24 +74,10 @@ export class TimetableView {
 				if (this.manager) {
 					const input = td.createEl("input", { attr: { type: "text" } });
 					input.value = doc.cells[key] ?? "";
+					input.tabIndex = di * periods + pi + 1; // 열 우선 순서(요일 di, 교시 pi)
 					input.onchange = () => void this.setCell(key, input.value);
-					colMajor[di * doc.periods.length + pi] = input;
 				} else {
 					td.setText(doc.cells[key] ?? "");
-				}
-			});
-		});
-
-		// Tab=다음 교시(아래), Shift+Tab=이전 교시. 한 요일을 위→아래로 채운 뒤 다음 요일로.
-		colMajor.forEach((input, idx) => {
-			if (!input) return;
-			input.addEventListener("keydown", (e) => {
-				if (e.key !== "Tab") return;
-				const next = colMajor[e.shiftKey ? idx - 1 : idx + 1];
-				if (next) {
-					e.preventDefault();
-					next.focus();
-					next.select();
 				}
 			});
 		});
