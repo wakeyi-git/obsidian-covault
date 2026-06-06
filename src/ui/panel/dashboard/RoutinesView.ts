@@ -62,7 +62,8 @@ export class RoutinesView {
 			const card = list.createDiv({ cls: "covault-dash-card" });
 			const top = card.createDiv({ cls: "covault-dash-card-row" });
 			top.createSpan({ cls: "covault-dash-card-title", text: r.title });
-			panelButton(top, t("dashboard.edit"), () =>
+			const actions = top.createDiv({ cls: "covault-dash-rowactions" });
+			panelButton(actions, t("dashboard.edit"), () =>
 				new RoutineEditModal(
 					this.host.app,
 					async (input) => {
@@ -72,7 +73,7 @@ export class RoutinesView {
 					{ title: r.title, items: r.items },
 				).open(),
 			);
-			panelButton(top, t("common.delete"), async () => {
+			panelButton(actions, t("common.delete"), async () => {
 				await this.host.deleteRoutine(r.uid);
 				await this.reload();
 			}, { warning: true });

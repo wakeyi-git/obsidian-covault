@@ -962,6 +962,11 @@
 	justify-content: space-between;
 	gap: 8px;
 }
+.covault-dash-rowactions {
+	display: flex;
+	gap: 4px;
+	flex: none;
+}
 .covault-dash-label {
 	font-size: 12px;
 	color: var(--text-muted);
