@@ -10,11 +10,11 @@ export class LogSection implements PanelSection {
 	constructor(private logger: Logger) {}
 
 	render(container: HTMLElement): void {
-		const toolbar = container.createDiv({ cls: "class-sync-log-toolbar" });
+		const toolbar = container.createDiv({ cls: "covault-log-toolbar" });
 		const clearBtn = toolbar.createEl("button", { text: t("panel.clear") });
 		clearBtn.onclick = () => this.logger.clear();
 
-		this.logEl = container.createDiv({ cls: "class-sync-log-view" });
+		this.logEl = container.createDiv({ cls: "covault-log-view" });
 		for (const entry of this.logger.getEntries()) this.append(entry);
 
 		this.unsubscribe = this.logger.subscribe((entry) => {

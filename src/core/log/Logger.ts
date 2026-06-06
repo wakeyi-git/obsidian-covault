@@ -27,7 +27,7 @@ export class Logger {
 		}
 
 		// 콘솔에는 오류/경고만 출력(정보 로그는 인앱 로그 뷰에만 — 콘솔 스팸 방지).
-		const tag = `[class-sync]`;
+		const tag = `[covault]`;
 		if (level === "error") console.error(tag, message);
 		else if (level === "warn") console.warn(tag, message);
 

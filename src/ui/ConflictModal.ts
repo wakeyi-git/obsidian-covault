@@ -27,7 +27,7 @@ export class ConflictModal extends Modal {
 	}
 
 	async onOpen(): Promise<void> {
-		this.modalEl.addClass("class-sync-conflict-modal");
+		this.modalEl.addClass("covault-conflict-modal");
 		await this.render();
 	}
 
@@ -57,13 +57,13 @@ export class ConflictModal extends Modal {
 		});
 
 		for (const row of rows) {
-			const card = contentEl.createDiv({ cls: "class-sync-conflict-card" });
+			const card = contentEl.createDiv({ cls: "covault-conflict-card" });
 			const isAsset = row.info.kind === "asset";
 			new Setting(card)
 				.setName(`${isAsset ? "📎 " : ""}${row.info.dbPath}`)
 				.setDesc(
 					t("conflict.student_remote_edit", {
-						studentId: row.info.studentId,
+						memberId: row.info.memberId,
 						by: row.info.remoteMeta.by,
 						role: row.info.remoteMeta.role,
 						at: row.info.remoteMeta.at,
@@ -75,7 +75,7 @@ export class ConflictModal extends Modal {
 			else this.renderDiff(card, row.info);
 
 			const actions = new Setting(card)
-				.setClass("class-sync-conflict-actions")
+				.setClass("covault-conflict-actions")
 				.addButton((b) =>
 					b.setButtonText(isAsset ? t("mode.open_remote_copy") : t("conflict.compare_open")).onClick(() => this.host.openConflictFiles(row)),
 				)
@@ -95,7 +95,7 @@ export class ConflictModal extends Modal {
 	private renderAssetInfo(card: HTMLElement, info: ConflictInfo): void {
 		const kb = info.size != null ? `${(info.size / 1024).toFixed(1)} KB` : t("mode.size_unknown");
 		card.createDiv({
-			cls: "class-sync-conflict-assetmeta",
+			cls: "covault-conflict-assetmeta",
 			text: t("mode.attachment_keep_local_apply_remote_keep", {
 				mime: info.mime || t("mode.format_unknown"),
 				size: kb,
@@ -110,9 +110,9 @@ export class ConflictModal extends Modal {
 		const lines = lineDiff(local, remote, { ignoreWhitespace: this.ignoreWhitespace });
 		const stats = diffStats(lines);
 
-		const bar = card.createDiv({ cls: "class-sync-diff-bar" });
-		bar.createSpan({ cls: "class-sync-diff-stat", text: t("mode.local_only_remote_only", stats) });
-		const ws = bar.createEl("label", { cls: "class-sync-diff-ws" });
+		const bar = card.createDiv({ cls: "covault-diff-bar" });
+		bar.createSpan({ cls: "covault-diff-stat", text: t("mode.local_only_remote_only", stats) });
+		const ws = bar.createEl("label", { cls: "covault-diff-ws" });
 		const cb = ws.createEl("input", { type: "checkbox" });
 		cb.checked = this.ignoreWhitespace;
 		ws.createSpan({ text: t("mode.ignore_whitespace") });
@@ -121,10 +121,10 @@ export class ConflictModal extends Modal {
 			void this.render();
 		};
 
-		const pre = card.createEl("pre", { cls: "class-sync-diff" });
+		const pre = card.createEl("pre", { cls: "covault-diff" });
 		for (const l of lines) {
 			const sign = l.type === "add" ? "＋" : l.type === "remove" ? "−" : " ";
-			pre.createDiv({ cls: `class-sync-diff-line is-${l.type}`, text: `${sign} ${l.text}` });
+			pre.createDiv({ cls: `covault-diff-line is-${l.type}`, text: `${sign} ${l.text}` });
 		}
 	}
 

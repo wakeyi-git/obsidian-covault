@@ -10,7 +10,7 @@ import { VersionHistorySection } from "./panel/VersionHistorySection";
 import { LogSection } from "./panel/LogSection";
 import { t } from "../i18n";
 
-export const PANEL_VIEW_TYPE = "class-sync-panel";
+export const PANEL_VIEW_TYPE = "covault-panel";
 
 function tabLabel(tab: PanelTab): string {
 	switch (tab) {
@@ -37,7 +37,7 @@ function tabLabel(tab: PanelTab): string {
  * Class Sync 통합 사이드 패널. 탭(피드백·배포·동기화 상태·관리·로그)으로 기존 3개 뷰 + 명령 기능을 모은다.
  * 배포 탭은 교사 전용. 탭 전환 시 이전 섹션을 dispose하고 새 섹션을 render한다.
  */
-export class ClassSyncPanelView extends ItemView {
+export class CoVaultPanelView extends ItemView {
 	private current: PanelSection | null = null;
 	private activeTab: PanelTab = "sync";
 	private tabBar: HTMLElement | null = null;
@@ -58,7 +58,7 @@ export class ClassSyncPanelView extends ItemView {
 	}
 
 	private tabs(): PanelTab[] {
-		const teacher = this.host.settings.role === "teacher";
+		const teacher = this.host.settings.role === "manager";
 		return teacher
 			? ["setup", "feedback", "deploy", "sync", "manage", "recovery", "history", "log"]
 			: ["feedback", "sync", "manage", "recovery", "history", "log"];
@@ -67,9 +67,9 @@ export class ClassSyncPanelView extends ItemView {
 	async onOpen(): Promise<void> {
 		const c = this.contentEl;
 		c.empty();
-		c.addClass("class-sync-panel");
-		this.tabBar = c.createDiv({ cls: "class-sync-panel-tabs" });
-		this.body = c.createDiv({ cls: "class-sync-panel-body" });
+		c.addClass("covault-panel");
+		this.tabBar = c.createDiv({ cls: "covault-panel-tabs" });
+		this.body = c.createDiv({ cls: "covault-panel-body" });
 		if (!this.tabs().includes(this.activeTab)) this.activeTab = "sync";
 		this.renderTabBar();
 		this.renderSection();
@@ -100,7 +100,7 @@ export class ClassSyncPanelView extends ItemView {
 		this.tabBar.empty();
 		for (const tab of this.tabs()) {
 			const el = this.tabBar.createDiv({
-				cls: `class-sync-panel-tab${tab === this.activeTab ? " is-active" : ""}`,
+				cls: `covault-panel-tab${tab === this.activeTab ? " is-active" : ""}`,
 				text: tabLabel(tab),
 			});
 			el.onclick = () => {

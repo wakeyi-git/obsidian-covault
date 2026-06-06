@@ -24,8 +24,8 @@ export interface DeletedItem {
 	deletedBy?: string;
 	deletedByRole?: string;
 	remoteDb: string;
-	studentId: string;
-	studentName: string;
+	memberId: string;
+	memberName: string;
 	recoverable: boolean;
 }
 
@@ -70,8 +70,8 @@ export class RestoreManager {
 			deletedBy: doc.deletedBy,
 			deletedByRole: doc.deletedByRole,
 			remoteDb: ctx.remoteDb,
-			studentId: ctx.studentId,
-			studentName: ctx.studentName,
+			memberId: ctx.memberId,
+			memberName: ctx.memberName,
 			recoverable,
 		};
 	}

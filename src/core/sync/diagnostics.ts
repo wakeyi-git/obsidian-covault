@@ -21,7 +21,7 @@ export async function runDiagnostics(core: CoreServices, targets: DiagTarget[]):
 		t("diagnostics.settings_role_class_url_autosync_attachments",
 			{
 				role: s.role,
-				classId: s.classId,
+				workspaceId: s.workspaceId,
 				url: s.couchdbUrl ? t("common.set") : t("common.none"),
 				autoSync: String(s.autoSync),
 				syncAssets: String(s.syncAssets),

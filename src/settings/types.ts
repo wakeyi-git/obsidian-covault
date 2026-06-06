@@ -1,4 +1,4 @@
-export type Role = "student" | "teacher";
+export type Role = "member" | "manager";
 
 export type ConflictPolicy = "preserve-local";
 
@@ -11,7 +11,7 @@ export interface SharedSpace {
 	name: string; // 표시명 (모둠1)
 	remoteDb: string; // share_<id>
 	folder: string; // 각 vault 내 폴더명
-	members: string[]; // studentId[]
+	members: string[]; // memberId[]
 	provisioned?: boolean;
 	/** 이 공간에서 실시간 공동 편집을 쓸지(미설정/true=사용, false=끔). 끄면 토큰을 발급하지 않는다. 기술문서 §19. */
 	realtime?: boolean;
@@ -24,12 +24,12 @@ export interface SharedSpace {
 }
 
 /** 교사가 관리하는 학생 1명. 기술문서 §12.1. */
-export interface StudentConfig {
-	studentId: string;
-	studentName: string;
-	remoteDb: string; // 기본 mirror_<studentId>
+export interface MemberConfig {
+	memberId: string;
+	memberName: string;
+	remoteDb: string; // 기본 mirror_<memberId>
 	localRoot: string; // 교사 vault 내 학생 폴더 (예: 학생A)
-	username: string; // 학생 CouchDB 계정명. 기본 studentId
+	username: string; // 학생 CouchDB 계정명. 기본 memberId
 	password?: string; // 프로비저닝 시 생성 (교사 기기 한정 비밀)
 	provisioned?: boolean; // CouchDB 계정/DB/권한 생성 완료 여부
 	/** 개인 mirror 폴더에서 교사↔이 학생 1:1 실시간 공동 편집 허용(기본 off). 기술문서 §19. */
@@ -40,37 +40,37 @@ export interface StudentConfig {
 
 /**
  * Class Sync 설정. 기술문서 §5.1 / §11.1 / §12.1.
- * 학생 모드는 localRoot 1건(개인 vault), 교사 모드는 students[] 다중 링크 + sharedSpaces[]로 동작한다.
+ * 학생 모드는 localRoot 1건(개인 vault), 교사 모드는 members[] 다중 링크 + sharedSpaces[]로 동작한다.
  */
-export interface ClassSyncSettings {
+export interface CoVaultSettings {
 	/** 최초 1회 역할 선택 완료 여부. true면 역할이 잠긴다(기술문서 §5.4 보강). */
 	setupComplete: boolean;
 	/** 교사 온보딩 마법사 완료/닫기 여부. true면 역할 선택 후 마법사를 자동으로 띄우지 않는다. */
 	teacherOnboardingDone?: boolean;
 
 	role: Role;
-	classId: string;
+	workspaceId: string;
 	userId: string;
 	displayName: string;
 	deviceId: string;
 
 	couchdbUrl: string;
-	/** Teacher: 관리자 계정 / Student: 초대로 받은 학생 계정. */
+	/** Manager: 관리자 계정 / Member: 초대로 받은 학생 계정. */
 	username: string;
 	password: string;
-	/** Student 전용: 자기 mirror DB. Teacher는 students[]가 구동. */
+	/** Member 전용: 자기 mirror DB. Manager는 members[]가 구동. */
 	remoteDb: string;
 
 	/**
-	 * Student Mode: vault root 기준 동기화 root ("" = vault 전체)
-	 * Teacher Mode는 미사용(students[].localRoot 사용)
+	 * Member Mode: vault root 기준 동기화 root ("" = vault 전체)
+	 * Manager Mode는 미사용(members[].localRoot 사용)
 	 */
 	localRoot: string;
 
-	/** Teacher Mode: 관리 학생 목록. 기술문서 §12.1. */
-	students: StudentConfig[];
+	/** Manager Mode: 관리 학생 목록. 기술문서 §12.1. */
+	members: MemberConfig[];
 
-	/** Teacher Mode: 공유 공간 목록(모둠/학급 공유). */
+	/** Manager Mode: 공유 공간 목록(모둠/학급 공유). */
 	sharedSpaces: SharedSpace[];
 
 	/** 동기화 root 밖으로 취급해 제외할 폴더 (기술문서 §11.1). */
@@ -146,22 +146,22 @@ export interface ClassSyncSettings {
 	versionMaxAgeDays?: number;
 }
 
-export const DEFAULT_SETTINGS: ClassSyncSettings = {
+export const DEFAULT_SETTINGS: CoVaultSettings = {
 	setupComplete: false,
 
-	role: "student",
-	classId: "class_2026_1",
-	userId: "student_a",
-	displayName: "학생A",
+	role: "member",
+	workspaceId: "ws_2026_1",
+	userId: "member_a",
+	displayName: "구성원A",
 	deviceId: generateDeviceId(),
 
 	couchdbUrl: "",
 	username: "",
 	password: "",
-	remoteDb: "mirror_student_a",
+	remoteDb: "mirror_member_a",
 
 	localRoot: "",
-	students: [],
+	members: [],
 	sharedSpaces: [],
 
 	excludeFolders: [".obsidian", ".trash"],

@@ -532,7 +532,7 @@ export class RealtimeManager {
 
 	/** 파일의 room 이름(모든 멤버가 동일해야 함). mirror 공간도 spaceId(mirror-<id>)로 같은 share 네임스페이스를 쓴다. */
 	private roomFor(localPath: string, space: { id: string; folder: string }): string | null {
-		return roomName(this.settings.classId, space.id, localPath, space.folder);
+		return roomName(this.settings.workspaceId, space.id, localPath, space.folder);
 	}
 
 	/**

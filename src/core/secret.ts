@@ -6,23 +6,23 @@ import { App, SecretStorage } from "obsidian";
  * 모바일 등 secretStorage 미지원 환경을 대비해 항상 런타임 가드 + 평문 폴백을 둔다.
  */
 
-export const YJS_SECRET_ID = "class-sync-yjs-secret";
-export const YJS_TOKEN_ID = "class-sync-yjs-token";
+export const YJS_SECRET_ID = "covault-yjs-secret";
+export const YJS_TOKEN_ID = "covault-yjs-token";
 /** 활성 CouchDB 계정 비밀번호(교사 admin / 학생 본인). replication·프로비저닝에 사용. */
-export const COUCH_PASSWORD_ID = "class-sync-couch-password";
+export const COUCH_PASSWORD_ID = "covault-couch-password";
 
 /** 학생별 비밀번호 Secret Storage 키(교사 보유분). id는 소문자-영숫자-대시로 정규화. */
-export function studentPasswordId(studentId: string): string {
-	const safe = studentId.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
-	return `class-sync-student-pw-${safe}`;
+export function memberPasswordId(memberId: string): string {
+	const safe = memberId.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+	return `covault-member-pw-${safe}`;
 }
 
-export function getStudentPassword(app: App, studentId: string, fallback: string | undefined): string {
-	return getSecretValue(app, studentPasswordId(studentId), fallback);
+export function getMemberPassword(app: App, memberId: string, fallback: string | undefined): string {
+	return getSecretValue(app, memberPasswordId(memberId), fallback);
 }
 
-export function setStudentPassword(app: App, studentId: string, password: string): boolean {
-	return setSecretValue(app, studentPasswordId(studentId), password);
+export function setMemberPassword(app: App, memberId: string, password: string): boolean {
+	return setSecretValue(app, memberPasswordId(memberId), password);
 }
 
 function store(app: App): SecretStorage | undefined {

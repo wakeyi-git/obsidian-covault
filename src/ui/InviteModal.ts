@@ -23,7 +23,7 @@ export class InviteModal extends Modal {
 		const code = encodeInvite(this.payload);
 
 		contentEl.createEl("h2", {
-			text: t("invite.invite_student", { name: this.payload.studentName || this.payload.studentId }),
+			text: t("invite.invite_student", { name: this.payload.memberName || this.payload.memberId }),
 		});
 		contentEl.createEl("p", {
 			text: t("invite.when_the_student_scans_the_qr",
@@ -31,7 +31,7 @@ export class InviteModal extends Modal {
 		});
 
 		// QR (obsidian:// 딥링크)
-		const qrWrap = contentEl.createDiv({ cls: "class-sync-qr" });
+		const qrWrap = contentEl.createDiv({ cls: "covault-qr" });
 		try {
 			const qr = qrcode(0, "L");
 			qr.addData(uri);
@@ -63,13 +63,13 @@ export class InviteModal extends Modal {
 				b.setButtonText(t("invite.copy_deep_link")).onClick(() => this.copy(uri, t("invite.invite_deep_link_copied"))),
 			);
 
-		const codeEl = contentEl.createEl("textarea", { cls: "class-sync-invite-code" });
+		const codeEl = contentEl.createEl("textarea", { cls: "covault-invite-code" });
 		codeEl.value = code;
 		codeEl.readOnly = true;
 		codeEl.rows = 3;
 
 		contentEl.createEl("p", {
-			cls: "class-sync-invite-warn",
+			cls: "covault-invite-warn",
 			text: t("invite.this_invite_contains_the_student_s"),
 		});
 		contentEl.createEl("p", {

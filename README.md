@@ -1,31 +1,31 @@
-# Class Sync for Obsidian
+# CoVault for Obsidian
 
 > **English** · [한국어](README.ko.md)
 
-An Obsidian plugin that two-way syncs a teacher's **per-student folders** with each student's **personal vault**.
+An Obsidian plugin that two-way syncs a manager's **per-member folders** with each member's **personal vault**.
 It uses self-hosted **CouchDB** (e.g. on a Synology NAS) as the central server, with **PouchDB** on the client.
 
 ```
-TeacherVault/
-├─ Student A/  ⇄  mirror_student_a  ⇄  Student A Vault/
-├─ Student B/  ⇄  mirror_student_b  ⇄  Student B Vault/
-└─ Student C/  ⇄  mirror_student_c  ⇄  Student C Vault/
+ManagerVault/
+├─ Member A/  ⇄  mirror_member_a  ⇄  Member A Vault/
+├─ Member B/  ⇄  mirror_member_b  ⇄  Member B Vault/
+└─ Member C/  ⇄  mirror_member_c  ⇄  Member C Vault/
 ```
 
-You ship a single plugin; on first run each user picks the **Student Mode** or **Teacher Mode** role.
-Students write notes in their own vault as usual, while the teacher manages per-student folders from one vault.
+You ship a single plugin; on first run each user picks the **Member Mode** or **Manager Mode** role.
+Members write notes in their own vault as usual, while the manager manages per-member folders from one vault.
 
 Highlights:
 - **Offline-first** — local PouchDB ↔ remote CouchDB live replication. Changes queue while offline and propagate on reconnect.
-- **QR/code invites** — inviting a student auto-provisions a least-privilege account that can **only access their own mirror DB** (no admin credentials). If an invite leaks, the teacher can **'Reissue password'** to immediately invalidate the old invite.
-- **Server-enforced isolation** — per-student data is isolated on the server by per-database permissions (`_security`).
+- **QR/code invites** — inviting a member auto-provisions a least-privilege account that can **only access their own mirror DB** (no admin credentials). If an invite leaks, the manager can **'Reissue password'** to immediately invalidate the old invite.
+- **Server-enforced isolation** — per-member data is isolated on the server by per-database permissions (`_security`).
 - **Markdown + attachments** — not only notes but images, PDFs, etc. are synced (PouchDB attachments).
 - **Conflict preservation** — on simultaneous edits the local copy is kept and you compare/choose in the conflict UI. For both markdown and attachments the remote copy is preserved under `_충돌/` (Conflicts).
-- **Shared folders** — a group/class shares one folder (dedicated DB + member permissions), auto-propagated to students by teacher deploy.
+- **Shared folders** — a group/workspace shares one folder (dedicated DB + member permissions), auto-propagated to members by manager deploy.
 - **Realtime co-editing** — character-level co-editing of shared-folder notes via Yjs. For **both markdown and Excalidraw**, cursors/names + a **participant chip** (always shown at the bottom-right) reveal who is co-editing — even on tablets/phones without a mouse (image sync; the Excalidraw plugin is required). A separate WebSocket server is needed.
-- **Realtime security** — realtime tokens are issued as **per-shared-space HMAC-signed tokens**, so a leaked token only grants access to **that space's room** (not the whole class). The server refuses to start with a known placeholder secret, and the teacher's tokens/secret are kept in **Obsidian Secret Storage** (not plaintext in `data.json`).
-- **Feedback layer** — leave comments anchored to text without editing the body (on shared and personal notes). The teacher can review scattered feedback at once with the **all-unresolved feedback inbox**. Periodic in-session snapshots are also supported.
-- **Operational UX** — teacher **onboarding wizard** ('Get started' checklist), **bulk student import** (paste/CSV), **deploy preview (dry-run) + per-student result & retry-failed**, an **action-oriented dashboard** (action cards + narrow-screen card layout), and inline settings validation (duplicate ID / URL / folder-overlap warnings).
+- **Realtime security** — realtime tokens are issued as **per-shared-space HMAC-signed tokens**, so a leaked token only grants access to **that space's room** (not the whole workspace). The server refuses to start with a known placeholder secret, and the manager's tokens/secret are kept in **Obsidian Secret Storage** (not plaintext in `data.json`).
+- **Feedback layer** — leave comments anchored to text without editing the body (on shared and personal notes). The manager can review scattered feedback at once with the **all-unresolved feedback inbox**. Periodic in-session snapshots are also supported.
+- **Operational UX** — manager **onboarding wizard** ('Get started' checklist), **bulk member import** (paste/CSV), **deploy preview (dry-run) + per-member result & retry-failed**, an **action-oriented dashboard** (action cards + narrow-screen card layout), and inline settings validation (duplicate ID / URL / folder-overlap warnings).
 - **Operational convenience** — settings export/import (credentials excluded), full diagnostics (server · read/write permissions · realtime), mobile power-saving (pause background sync · pre-check large files), and a configurable max-delete-reconcile limit.
 
 ### Requirements
@@ -38,9 +38,9 @@ Highlights:
 
 ## Screenshots
 
-| Teacher settings | QR invite |
+| Manager settings | QR invite |
 |---|---|
-| ![Teacher settings](assets/teacher-settings.png) | ![QR invite modal](assets/qr-invite.png) |
+| ![Manager settings](assets/manager-settings.png) | ![QR invite modal](assets/qr-invite.png) |
 
 | Realtime co-editing | Feedback panel |
 |---|---|
@@ -53,17 +53,17 @@ Highlights:
 | Phase | Content | State |
 |---|---|---|
 | **0** | Technical-validation POC (connect · put/get · changes · guard · mobile) | ✅ Verified on Mac·iOS |
-| **1** | Single-student two-way mirror + rename/delete/purge + offline conflict (preserve-local) | ✅ Verified |
-| **2** | Multi-student Teacher Mode + secure invite (QR) + auto-provisioning | ✅ Verified |
-| **3** | Conflict-resolution UI (view/choose/keep) + student status dashboard | ✅ Verified |
-| **4** | Teacher convenience — copy files/folders to students + template variables | ✅ Verified |
+| **1** | Single-member two-way mirror + rename/delete/purge + offline conflict (preserve-local) | ✅ Verified |
+| **2** | Multi-member Manager Mode + secure invite (QR) + auto-provisioning | ✅ Verified |
+| **3** | Conflict-resolution UI (view/choose/keep) + member status dashboard | ✅ Verified |
+| **4** | Manager convenience — copy files/folders to members + template variables | ✅ Verified |
 | **5** | Attachment (image/PDF) sync | ✅ |
-| **6a** | Shared folders (group/class sharing, file-level) | ✅ |
+| **6a** | Shared folders (group/workspace sharing, file-level) | ✅ |
 | **6b** | Yjs character-level realtime co-editing | ✅ |
 | **6c** | Feedback layer (anchored comments) + periodic in-session CouchDB snapshots | ✅ |
 | **Stabilization** | Settings export/import · full diagnostics (read/write permissions) · mobile power-saving (background pause · large-file pre-check · debounce) | ✅ |
 | **Security/consistency hardening** | Per-space HMAC realtime tokens · invite password reissue (revoke) · manifest-based offline delete reconcile (bulk-delete threshold) · attachment conflict preservation · unit tests + CI gate | ✅ |
-| **Operational UX** | Teacher onboarding wizard · bulk student import · deploy preview/result report · action-oriented dashboard (action cards · narrow card layout) · all-unresolved feedback inbox · simplified student home · shared-space operational badges | ✅ |
+| **Operational UX** | Manager onboarding wizard · bulk member import · deploy preview/result report · action-oriented dashboard (action cards · narrow card layout) · all-unresolved feedback inbox · simplified member home · shared-space operational badges | ✅ |
 | **Realtime chips · security** | Markdown & Excalidraw participant chips (unified name/color) · Yjs token/secret in Secret Storage · faster startup (onLayoutReady) · plugin-guideline compliance (Vault.process, etc.) | ✅ |
 
 ---
@@ -71,19 +71,19 @@ Highlights:
 ## Install
 
 ### ① Community plugin (after review)
-Settings → Community plugins → Browse, search **Class Sync**, install and enable.
+Settings → Community plugins → Browse, search **CoVault**, install and enable.
 
 ### ② Manual install (release assets)
-From [Releases](https://github.com/wakeyi-git/obsidian-class-sync/releases), download the latest
-**`main.js` · `manifest.json` · `styles.css`**, put them in `<vault>/.obsidian/plugins/class-sync/`, and enable.
+From [Releases](https://github.com/wakeyi-git/obsidian-covault/releases), download the latest
+**`main.js` · `manifest.json` · `styles.css`**, put them in `<vault>/.obsidian/plugins/covault/`, and enable.
 
 ### ③ BRAT (beta testing)
-In the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin, add the repository `wakeyi-git/obsidian-class-sync`.
+In the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin, add the repository `wakeyi-git/obsidian-covault`.
 
 ### Development build
 ```bash
-git clone https://github.com/wakeyi-git/obsidian-class-sync.git
-cd obsidian-class-sync
+git clone https://github.com/wakeyi-git/obsidian-covault.git
+cd obsidian-covault
 npm install
 npm run build      # produces main.js (use npm run dev to watch during development)
 ```
@@ -96,10 +96,10 @@ Copy the three outputs to the path in ② above.
 
 ## Server setup
 
-Class Sync uses **two independent servers** — **CouchDB** (file sync, required) and a **Yjs WebSocket server**
+CoVault uses **two independent servers** — **CouchDB** (file sync, required) and a **Yjs WebSocket server**
 (realtime co-editing, optional). They **never talk to each other** (the plugin is the only client of both), so they can
-share one box or run on entirely different providers; the only hard requirement is that **every client (teacher + all
-students) reaches each one over HTTPS/WSS**.
+share one box or run on entirely different providers; the only hard requirement is that **every client (manager + all
+members) reaches each one over HTTPS/WSS**.
 
 Full setup lives in **[`server/README.md`](server/README.md)** — Docker commands, hosting options
 (NAS / Raspberry Pi / VPS / PaaS / Cloudant), the architecture and constraints, and the realtime server's security
@@ -112,31 +112,31 @@ Full setup lives in **[`server/README.md`](server/README.md)** — Docker comman
 
 On first run the role-selection screen appears. The role locks once chosen; to change it use 'Reset role' in settings.
 
-### Teacher (Teacher Mode)
+### Manager (Manager Mode)
 1. Settings → enter the **admin account** (CouchDB URL / admin username·password) — stored on this device only.
-2. In the **student list**, `+ Add student` (or `Paste roster` for bulk) → enter name and student ID (Mirror DB/folder auto-fill if blank).
-3. Click **Invite** on a student card → the plugin auto-creates the account/DB/permissions and shows a **QR + invite code**.
-4. Run **Test connection** to verify access to all student DBs, then **Apply settings** to start syncing.
+2. In the **member list**, `+ Add member` (or `Paste roster` for bulk) → enter name and member ID (Mirror DB/folder auto-fill if blank).
+3. Click **Invite** on a member card → the plugin auto-creates the account/DB/permissions and shows a **QR + invite code**.
+4. Run **Test connection** to verify access to all member DBs, then **Apply settings** to start syncing.
 
-> Teachers can follow the **'Get started' tab (onboarding wizard)** in the panel: server connection → class info → add students → invite → first sync, in order.
+> Managers can follow the **'Get started' tab (onboarding wizard)** in the panel: server connection → workspace info → add members → invite → first sync, in order.
 
-### Student (Student Mode)
-- **Scan the teacher's QR with the phone's default camera** → Obsidian opens and configures automatically, or
-- **Paste the invite code** (first-run screen or Student settings).
-- The student connects with a dedicated account that can only access their own mirror DB.
+### Member (Member Mode)
+- **Scan the manager's QR with the phone's default camera** → Obsidian opens and configures automatically, or
+- **Paste the invite code** (first-run screen or Member settings).
+- The member connects with a dedicated account that can only access their own mirror DB.
 
-### Commands (`Cmd/Ctrl+P` → `Class Sync:`)
+### Commands (`Cmd/Ctrl+P` → `CoVault:`)
 | Command | Action |
 |---|---|
-| Full sync / Upload only / Download only | Manual reconcile (Teacher: all students) |
+| Full sync / Upload only / Download only | Manual reconcile (Manager: all members) |
 | Test connection/permissions | Verify CouchDB connection and permissions |
 | Run full diagnostics | Check server reachability + DB read/write permissions + realtime status at once |
 | Add feedback / Open feedback panel | Anchored comment on a selection; list/jump/resolve in the panel (also via 💬 ribbon) |
 | Toggle auto-sync | Toggle realtime watching/subscription |
 | Reset local cache | Delete local PouchDB and re-fetch from server |
 | Open conflicts | Compare/resolve conflicts (keep local · apply remote · keep both) |
-| Open dashboard | Per-student sync status table (also via 👥 ribbon) |
-| Copy to students (open deploy tab) | Pick a path (file/folder) in the deploy tab and deploy to students — substitutes `{{studentName}}`, etc. |
+| Open dashboard | Per-member sync status table (also via 👥 ribbon) |
+| Copy to members (open deploy tab) | Pick a path (file/folder) in the deploy tab and deploy to members — substitutes `{{memberName}}`, etc. |
 | Open log panel | View the sync log (also via 🔄 ribbon) |
 
 Deleted files move to the **archive folder (`_삭제됨/`, configurable)**; deleting from that folder permanently purges from the DB.
@@ -152,27 +152,27 @@ toggle and *Max attachment size (MB)* in settings (mobile protection). Attachmen
 list and can be resolved (keep local / apply remote / keep both). There is no binary content diff — the file name, size,
 and MIME type are shown and the remote copy is preserved in `_충돌/`.
 
-### Teacher deploy
-Keep originals outside student folders (e.g. in `Templates/`), then in the **deploy tab** pick a path (quick buttons:
-current file / current folder; an empty target path uses the original name) and deploy to selected/all students.
-Use **Preview (dry-run)** to see each student's target and action first; after running, per-student results
-(written/skipped/failed) and a **retry-failed** action remain in the panel. The variables `{{studentName}}` `{{studentId}}`
-`{{classId}}` `{{date}}` are substituted per student, and existing files are handled with a skip (default) / overwrite / rename policy.
+### Manager deploy
+Keep originals outside member folders (e.g. in `Templates/`), then in the **deploy tab** pick a path (quick buttons:
+current file / current folder; an empty target path uses the original name) and deploy to selected/all members.
+Use **Preview (dry-run)** to see each member's target and action first; after running, per-member results
+(written/skipped/failed) and a **retry-failed** action remain in the panel. The variables `{{memberName}}` `{{memberId}}`
+`{{workspaceId}}` `{{date}}` are substituted per member, and existing files are handled with a skip (default) / overwrite / rename policy.
 
 ### Shared folders
-Under *Shared spaces* in teacher settings, create a group/class space, pick member students, and **Deploy** — a dedicated
-DB (`share_*`) and permissions are created and auto-propagated to students. The same folder appears in each member's vault
+Under *Shared spaces* in manager settings, create a group/workspace space, pick member members, and **Deploy** — a dedicated
+DB (`share_*`) and permissions are created and auto-propagated to members. The same folder appears in each member's vault
 so they can see and edit each other's files. To avoid overlapping the personal mirror, shared folders are auto-excluded
 from personal sync. Simultaneous edits of the same file are resolved via the conflict UI. Each shared-space card shows an
 operational badge (not deployed / deployed / members changed — redeploy needed).
 
 ### Realtime co-editing
-> **Optional / advanced.** The core of Class Sync is CouchDB **file sync**, which works fully without realtime.
+> **Optional / advanced.** The core of CoVault is CouchDB **file sync**, which works fully without realtime.
 > Get file sync working first, then enable realtime only when needed.
 
 Co-edit shared-folder notes character-by-character (Yjs). A separate **Yjs WebSocket server** (independent of CouchDB
-file sync) is required; once the teacher enters the server URL and space secret in settings and deploys a shared space,
-it propagates to students automatically. Opening a shared-folder note in edit mode connects a realtime session and shows
+file sync) is required; once the manager enters the server URL and space secret in settings and deploys a shared space,
+it propagates to members automatically. Opening a shared-folder note in edit mode connects a realtime session and shows
 each other's cursors/names. While editing, Yjs is authoritative; when the note closes, a snapshot is saved to CouchDB so
 offline members get it (someone who joins the session later also receives the latest shared content immediately).
 Enabling **In-session snapshot interval (sec)** in settings also persists the body to CouchDB periodically before
@@ -184,10 +184,10 @@ and the pointer follows your swipe immediately.
 To run the Yjs server, see **[`server/README.md` → Yjs realtime server](server/README.md#yjs-realtime-server-optional)** (runtime files in [`server/yjs/`](server/yjs/)).
 
 **Realtime token security** — set `YJS_SECRET` on the server and the same value in the plugin's **'Yjs space secret (HMAC)'**;
-then each time the teacher deploys a space, a **per-shared-space signed token** is issued and delivered to students. The
+then each time the manager deploys a space, a **per-shared-space signed token** is issued and delivered to members. The
 token payload carries `classId`·`spaceId` (+ optional expiry) and the server verifies that the connecting room starts with
-`class_<c>/share/<s>/`, so a leaked token only grants access to **that space's room** (not the whole class). Changing the
-secret/members and redeploying refreshes tokens, and **'Space token expiry (days)'** sets a TTL. The teacher's tokens/secret
+`class_<c>/share/<s>/`, so a leaked token only grants access to **that space's room** (not the whole workspace). Changing the
+secret/members and redeploying refreshes tokens, and **'Space token expiry (days)'** sets a TTL. The manager's tokens/secret
 are stored in Obsidian Secret Storage. (A legacy mode with a single `YJS_TOKEN` and no secret is also supported, but has no per-space isolation.)
 The token is sent over WSS (not exposed in transit); keep it out of reverse-proxy/CDN/monitoring access logs by masking query strings (see [`server/README.md`](server/README.md)).
 
@@ -201,9 +201,9 @@ user's zoom/scroll is independent while shapes/cursors are shared in scene coord
 **Anchor-based comments** that leave feedback without editing the body (design §19.5). Select text in a note and run
 "Add feedback" to save the quote and position; it appears as a list in the **feedback panel** and clicking jumps to that
 location. You can resolve/delete. The panel's **'Show all unresolved'** toggle shows unresolved feedback across all notes
-at once (with student/note labels + jump-to). Feedback documents are stored in the DB the target note belongs to (personal
+at once (with member/note labels + jump-to). Feedback documents are stored in the DB the target note belongs to (personal
 mirror or shared) and propagate via the existing sync; they are metadata, not files, so nothing is written to the vault.
-Works on both shared-folder notes and regular student mirror notes.
+Works on both shared-folder notes and regular member mirror notes.
 
 ---
 
@@ -212,12 +212,12 @@ Works on both shared-folder notes and regular student mirror notes.
 ```
 src/
 ├─ main.ts                     # Entry point, role setup, invite deep-link handler, commands
-├─ settings/                   # Settings types + settings tab (student-card UI) + validation/roster parsing
+├─ settings/                   # Settings types + settings tab (member-card UI) + validation/roster parsing
 ├─ core/
 │  ├─ couch/
 │  │  ├─ PouchService.ts       # Local PouchDB + live sync (retry) + changes
 │  │  ├─ obsidianFetch.ts      # requestUrl-based fetch shim (mobile CORS bypass)
-│  │  └─ CouchAdmin.ts         # Student account/DB/_security provisioning (admin)
+│  │  └─ CouchAdmin.ts         # Member account/DB/_security provisioning (admin)
 │  ├─ invite/invite.ts         # Invite payload encoding + obsidian:// deep link
 │  ├─ realtime/                # Yjs realtime (RealtimeManager · editorBinding · excalidrawBinding · presenceChips · spaceToken = per-space HMAC token)
 │  ├─ feedback/FeedbackStore.ts # Feedback layer (anchored comments) store/query/sync
@@ -232,35 +232,35 @@ src/
 │  │  ├─ FullSync.ts           # Full reconcile (up/down/both) + manifest-based offline delete reconcile
 │  │  ├─ LinkManifest.ts       # Per-link held baseline (_local) — safe delete reconcile / bulk-delete threshold
 │  │  ├─ ConflictManager.ts    # Conflict remote-copy create/resolve/keep-my-edit
-│  │  ├─ MirrorSync.ts         # The student↔DB link engine tying the above together + state
+│  │  ├─ MirrorSync.ts         # The member↔DB link engine tying the above together + state
 │  │  └─ connectionTest.ts     # Connection/permission test
 │  ├─ path/  hash/  log/       # Path mapping · contentHash · logger
 │  └─ model/types.ts           # Document model (note / asset / tombstone)
-├─ modes/                      # ClassSyncMode / StudentMode / TeacherMode / teacher/BulkCopy
-└─ ui/                         # Unified panel (Get started · Feedback · Deploy · Sync · Manage · Log) · RoleSetupModal · InviteModal · ConfirmModal · ResetModal · BackupModal · StudentBulkImportModal
+├─ modes/                      # CoVaultMode / MemberMode / ManagerMode / manager/BulkCopy
+└─ ui/                         # Unified panel (Get started · Feedback · Deploy · Sync · Manage · Log) · RoleSetupModal · InviteModal · ConfirmModal · ResetModal · BackupModal · MemberBulkImportModal
 ```
 
 **Sync structure (offline-first)**
 ```
 Vault  ◄──(LocalWatcher / LocalApplier)──►  local PouchDB  ◄──(live sync, retry)──►  remote CouchDB
 ```
-The teacher keeps one `MirrorSync` per student to sync many students at once.
+The manager keeps one `MirrorSync` per member to sync many members at once.
 
 ---
 
 ## Security notes
 
-- **Invite codes** contain the student's private password (for a one-time classroom onboarding, base64-encoded). They have
-  no built-in expiry, but if a leak is suspected the teacher can rotate the password via **'Reissue password'** on the
-  student card, **immediately invalidating the old invite**.
+- **Invite codes** contain the member's private password (for a one-time organization onboarding, base64-encoded). They have
+  no built-in expiry, but if a leak is suspected the manager can rotate the password via **'Reissue password'** on the
+  member card, **immediately invalidating the old invite**.
 - **Realtime tokens** are issued as per-space **HMAC-signed tokens**, so a leak only grants access to that space's room
   (`classId`·`spaceId` binding + optional expiry). The server refuses to start with a placeholder/too-short secret like
   `CHANGE_ME`, and tokens travel over WSS so they aren't exposed in transit (mask query tokens in server/proxy logs).
-- **Yjs token and space secret** (teacher) are stored in **Obsidian Secret Storage** (a per-vault store), not left in
+- **Yjs token and space secret** (manager) are stored in **Obsidian Secret Storage** (a per-vault store), not left in
   plaintext in `data.json`. Existing plaintext values are migrated automatically on upgrade.
-- **Settings export** excludes credentials — admin password, student passwords, `yjsToken`, `yjsSecret`, space tokens, and device-specific values.
-- The teacher's admin credentials are stored only on the teacher's device; students never handle admin permissions.
-- Inter-student data is isolated on the server by CouchDB `_security` (403 when accessing another student's DB).
+- **Settings export** excludes credentials — admin password, member passwords, `yjsToken`, `yjsSecret`, space tokens, and device-specific values.
+- The manager's admin credentials are stored only on the manager's device; members never handle admin permissions.
+- Inter-member data is isolated on the server by CouchDB `_security` (403 when accessing another member's DB).
 - **Offline delete reconcile** uses a per-device manifest baseline (content verification + rev/hash comparison) and a
   **bulk-delete threshold** to prevent mass-tombstone accidents from a misconfigured folder. If `localRoot` changes, the
   baseline is invalidated and delete reconcile is skipped.

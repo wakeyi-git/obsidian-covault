@@ -1,19 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { validateSettings } from "./validateSettings";
-import { ClassSyncSettings } from "./types";
+import { CoVaultSettings } from "./types";
 
-function s(over: Partial<ClassSyncSettings> = {}): ClassSyncSettings {
+function s(over: Partial<CoVaultSettings> = {}): CoVaultSettings {
 	return {
-		role: "teacher",
+		role: "manager",
 		couchdbUrl: "https://nas.example.com",
 		realtimeEnabled: false,
 		yjsServerUrl: "",
 		yjsToken: "",
 		yjsSecret: "",
-		students: [],
+		members: [],
 		sharedSpaces: [],
 		...over,
-	} as ClassSyncSettings;
+	} as CoVaultSettings;
 }
 const codes = (x: ReturnType<typeof validateSettings>) => x.map((i) => i.code);
 
@@ -22,23 +22,23 @@ describe("validateSettings", () => {
 		expect(validateSettings(s())).toEqual([]);
 	});
 
-	it("중복 studentId/username/remoteDb를 error로 잡는다", () => {
+	it("중복 memberId/username/remoteDb를 error로 잡는다", () => {
 		const out = validateSettings(
 			s({
-				students: [
-					{ studentId: "a", username: "a", remoteDb: "mirror_a", localRoot: "A" },
-					{ studentId: "a", username: "a", remoteDb: "mirror_a", localRoot: "B" },
+				members: [
+					{ memberId: "a", username: "a", remoteDb: "mirror_a", localRoot: "A" },
+					{ memberId: "a", username: "a", remoteDb: "mirror_a", localRoot: "B" },
 				] as any,
 			}),
 		);
-		expect(codes(out)).toEqual(expect.arrayContaining(["dup-studentId", "dup-username", "dup-remoteDb"]));
+		expect(codes(out)).toEqual(expect.arrayContaining(["dup-memberId", "dup-username", "dup-remoteDb"]));
 		expect(out.every((i) => (i.code.startsWith("dup") ? i.level === "error" : true))).toBe(true);
 	});
 
 	it("학생↔공유 폴더 겹침을 warn으로 잡는다", () => {
 		const out = validateSettings(
 			s({
-				students: [{ studentId: "a", localRoot: "반1" } as any],
+				members: [{ memberId: "a", localRoot: "반1" } as any],
 				sharedSpaces: [{ id: "g1", folder: "반1/모둠" } as any],
 			}),
 		);
@@ -63,7 +63,7 @@ describe("validateSettings", () => {
 	});
 
 	it("학생 모드에서는 중복/폴더 검사 안 함", () => {
-		const out = validateSettings(s({ role: "student" }));
+		const out = validateSettings(s({ role: "member" }));
 		expect(out).toEqual([]);
 	});
 });

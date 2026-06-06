@@ -1,19 +1,19 @@
 /**
  * 학생 초대 페이로드. 기술문서 §22.4 (setup URI).
- * 학생 Student Mode를 자동 설정하는 데 필요한 최소 정보 + 학생 전용 자격증명.
+ * 학생 Member Mode를 자동 설정하는 데 필요한 최소 정보 + 학생 전용 자격증명.
  */
 export interface InvitePayload {
 	v: 1;
 	couchdbUrl: string;
-	classId: string;
-	studentId: string;
-	studentName: string;
+	workspaceId: string;
+	memberId: string;
+	memberName: string;
 	remoteDb: string;
 	username: string;
 	password: string;
 }
 
-export const INVITE_ACTION = "class-sync-invite";
+export const INVITE_ACTION = "covault-invite";
 
 /** base64url 인코딩(UTF-8 안전). */
 function toBase64Url(s: string): string {
@@ -34,7 +34,7 @@ export function encodeInvite(payload: InvitePayload): string {
 /** 코드 또는 obsidian:// URI → 페이로드(검증). 실패 시 null. */
 export function parseInvite(input: string): InvitePayload | null {
 	let code = input.trim();
-	// obsidian://class-sync-invite?d=... 형태면 d 추출
+	// obsidian://covault-invite?d=... 형태면 d 추출
 	const m = code.match(/[?&]d=([^&]+)/);
 	if (m) code = decodeURIComponent(m[1]);
 	try {

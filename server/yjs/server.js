@@ -54,8 +54,8 @@ function verifyHmac(room, token) {
     return false;
   }
   if (!payload || typeof payload.c !== "string" || typeof payload.s !== "string") return false;
-  // room이 이 토큰이 허용하는 공간(class_<c>/share/<s>/...)에 속하는지 확인 → 공간 간 격리.
-  const prefix = `class_${payload.c}/share/${payload.s}/`;
+  // room이 이 토큰이 허용하는 공간(ws_<c>/share/<s>/...)에 속하는지 확인 → 공간 간 격리.
+  const prefix = `ws_${payload.c}/share/${payload.s}/`;
   if (!room.startsWith(prefix)) return false;
   if (typeof payload.e === "number" && Math.floor(Date.now() / 1000) > payload.e) return false;
   return true;

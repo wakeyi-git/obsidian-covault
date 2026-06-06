@@ -18,9 +18,9 @@ export class FeedbackSection implements PanelSection {
 	constructor(private app: App, private store: FeedbackStore) {}
 
 	render(container: HTMLElement): void {
-		container.addClass("class-sync-feedback");
+		container.addClass("covault-feedback");
 
-		const toolbar = container.createDiv({ cls: "class-sync-feedback-toolbar" });
+		const toolbar = container.createDiv({ cls: "covault-feedback-toolbar" });
 		const addBtn = toolbar.createEl("button", { text: t("panel.add_feedback") });
 		addBtn.onclick = () => promptAddFeedback(this.app, this.store, this.currentPath);
 		const toggle = toolbar.createEl("button", {
@@ -33,7 +33,7 @@ export class FeedbackSection implements PanelSection {
 			void this.renderList();
 		};
 
-		this.listEl = container.createDiv({ cls: "class-sync-feedback-list" });
+		this.listEl = container.createDiv({ cls: "covault-feedback-list" });
 
 		this.refs.push(this.app.workspace.on("active-leaf-change", () => this.onLeafChange()));
 		this.refs.push(this.app.workspace.on("file-open", () => this.onLeafChange()));
@@ -70,7 +70,7 @@ export class FeedbackSection implements PanelSection {
 		const writeEmpty = (text: string): void => {
 			if (seq !== this.renderSeq || !this.listEl) return;
 			this.listEl.empty();
-			this.listEl.createDiv({ cls: "class-sync-feedback-empty", text });
+			this.listEl.createDiv({ cls: "covault-feedback-empty", text });
 			this.renderedPath = this.currentPath;
 		};
 
@@ -89,7 +89,7 @@ export class FeedbackSection implements PanelSection {
 		this.renderedPath = this.currentPath;
 		if (items.length === 0) {
 			this.listEl.createDiv({
-				cls: "class-sync-feedback-empty",
+				cls: "covault-feedback-empty",
 				text: t("panel.no_feedback_yet_select_text_in"),
 			});
 			return;
@@ -104,34 +104,34 @@ export class FeedbackSection implements PanelSection {
 		this.listEl.empty();
 		this.renderedPath = "*all*";
 		if (items.length === 0) {
-			this.listEl.createDiv({ cls: "class-sync-feedback-empty", text: t("panel.no_unresolved_feedback") });
+			this.listEl.createDiv({ cls: "covault-feedback-empty", text: t("panel.no_unresolved_feedback") });
 			return;
 		}
 		for (const it of items) {
 			const note = it.localPath.split("/").pop() || it.localPath;
-			this.renderCard(it.doc, it.localPath, t("panel.msg", { student: it.studentName, note }));
+			this.renderCard(it.doc, it.localPath, t("panel.msg", { student: it.memberName, note }));
 		}
 	}
 
 	private renderCard(doc: FeedbackDoc, localPath: string, label?: string): void {
 		if (!this.listEl) return;
-		const card = this.listEl.createDiv({ cls: `class-sync-feedback-card${doc.resolved ? " is-resolved" : ""}` });
+		const card = this.listEl.createDiv({ cls: `covault-feedback-card${doc.resolved ? " is-resolved" : ""}` });
 
-		const head = card.createDiv({ cls: "class-sync-feedback-head" });
-		const who = doc.createdByRole === "teacher" ? t("common.teacher") : t("common.student");
-		head.createSpan({ cls: "class-sync-feedback-author", text: t("panel.msg_2", { who, by: doc.createdBy }) });
-		head.createSpan({ cls: "class-sync-feedback-time", text: formatDate(new Date(doc.createdAt)) });
-		if (doc.resolved) head.createSpan({ cls: "class-sync-feedback-badge", text: t("panel.resolved") });
+		const head = card.createDiv({ cls: "covault-feedback-head" });
+		const who = doc.createdByRole === "manager" ? t("common.teacher") : t("common.student");
+		head.createSpan({ cls: "covault-feedback-author", text: t("panel.msg_2", { who, by: doc.createdBy }) });
+		head.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(doc.createdAt)) });
+		if (doc.resolved) head.createSpan({ cls: "covault-feedback-badge", text: t("panel.resolved") });
 
-		if (label) card.createDiv({ cls: "class-sync-feedback-target", text: label });
+		if (label) card.createDiv({ cls: "covault-feedback-target", text: label });
 
 		if (doc.anchor.textQuote) {
-			const quote = card.createDiv({ cls: "class-sync-feedback-quote", text: `“${doc.anchor.textQuote}”` });
+			const quote = card.createDiv({ cls: "covault-feedback-quote", text: `“${doc.anchor.textQuote}”` });
 			quote.onclick = () => void this.jumpTo(doc, localPath);
 		}
-		card.createDiv({ cls: "class-sync-feedback-content", text: doc.content });
+		card.createDiv({ cls: "covault-feedback-content", text: doc.content });
 
-		const actions = card.createDiv({ cls: "class-sync-feedback-actions" });
+		const actions = card.createDiv({ cls: "covault-feedback-actions" });
 		actions.createEl("button", { text: t("panel.go_to_location") }).onclick = () => void this.jumpTo(doc, localPath);
 		actions.createEl("button", { text: doc.resolved ? t("panel.reopen") : t("panel.resolve") }).onclick = async () => {
 			await this.store.setResolved(localPath, doc, !doc.resolved);

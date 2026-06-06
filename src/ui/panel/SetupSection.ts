@@ -23,7 +23,7 @@ export class SetupSection implements PanelSection {
 
 	render(container: HTMLElement): void {
 		this.container = container;
-		container.addClass("class-sync-panel-section");
+		container.addClass("covault-panel-section");
 		this.draw();
 		this.timer = window.setInterval(() => this.draw(), 2000);
 	}
@@ -36,8 +36,8 @@ export class SetupSection implements PanelSection {
 
 	private steps(): Step[] {
 		const s = this.host.settings;
-		const studentsWithId = s.students.filter((st) => st.studentId);
-		const provisioned = s.students.filter((st) => st.provisioned).length;
+		const membersWithId = s.members.filter((st) => st.memberId);
+		const provisioned = s.members.filter((st) => st.provisioned).length;
 		const synced = Object.keys(s.lastSeqByDb ?? {}).length > 0;
 		// 비밀번호는 Secret Storage로 이전돼 s.password가 비어 있을 수 있으므로 해석된 값을 본다.
 		const hasPassword = !!getSecretValue(this.host.app, COUCH_PASSWORD_ID, s.password);
@@ -54,14 +54,14 @@ export class SetupSection implements PanelSection {
 			{
 				title: t("panel.2_class_info"),
 				desc: t("panel.set_the_class_id_and_teacher"),
-				done: !!s.classId,
+				done: !!s.workspaceId,
 				actions: [{ label: t("panel.open_settings"), run: () => this.host.openSettings() }],
 			},
 			{
 				title: t("panel.3_add_students"),
 				desc: t("panel.add_students_add_student_in_the"),
-				done: studentsWithId.length > 0,
-				actions: [{ label: t("panel.open_settings"), run: () => this.host.openSettings(), cta: studentsWithId.length === 0 }],
+				done: membersWithId.length > 0,
+				actions: [{ label: t("panel.open_settings"), run: () => this.host.openSettings(), cta: membersWithId.length === 0 }],
 			},
 			{
 				title: t("panel.4_invite_students"),
@@ -88,9 +88,9 @@ export class SetupSection implements PanelSection {
 		const steps = this.steps();
 		const doneCount = steps.filter((x) => x.done).length;
 
-		c.createDiv({ cls: "class-sync-panel-label", text: t("panel.teacher_setup") });
+		c.createDiv({ cls: "covault-panel-label", text: t("panel.teacher_setup") });
 		c.createDiv({
-			cls: "class-sync-panel-hint",
+			cls: "covault-panel-hint",
 			text: t("panel.steps_done_follow_them_in_order", {
 				done: doneCount,
 				total: steps.length,
@@ -98,19 +98,19 @@ export class SetupSection implements PanelSection {
 		});
 
 		for (const step of steps) {
-			const card = c.createDiv({ cls: `class-sync-setup-step${step.done ? " is-done" : ""}` });
-			const head = card.createDiv({ cls: "class-sync-setup-head" });
-			head.createSpan({ cls: "class-sync-setup-check", text: step.done ? "✓" : "○" });
-			head.createSpan({ cls: "class-sync-setup-title", text: step.title });
-			card.createDiv({ cls: "class-sync-panel-hint", text: step.desc });
+			const card = c.createDiv({ cls: `covault-setup-step${step.done ? " is-done" : ""}` });
+			const head = card.createDiv({ cls: "covault-setup-head" });
+			head.createSpan({ cls: "covault-setup-check", text: step.done ? "✓" : "○" });
+			head.createSpan({ cls: "covault-setup-title", text: step.title });
+			card.createDiv({ cls: "covault-panel-hint", text: step.desc });
 			if (!step.done) {
-				const actions = card.createDiv({ cls: "class-sync-panel-actions" });
+				const actions = card.createDiv({ cls: "covault-panel-actions" });
 				for (const a of step.actions) panelButton(actions, a.label, a.run, { cta: a.cta });
 			}
 		}
 
 		// 완료/닫기
-		const footer = c.createDiv({ cls: "class-sync-panel-actions" });
+		const footer = c.createDiv({ cls: "covault-panel-actions" });
 		panelButton(
 			footer,
 			doneCount === steps.length ? t("panel.finish_dashboard") : t("panel.do_it_later_dashboard"),

@@ -10,7 +10,7 @@ export type ResolveChoice = "local" | "remote" | "both" | "both-remote";
 export interface ConflictInfo {
 	kind: "note" | "asset";
 	remoteDb: string;
-	studentId: string;
+	memberId: string;
 	dbPath: string;
 	localPath: string;
 	conflictPath: string; // _충돌/... 원격본 경로
@@ -67,7 +67,7 @@ export class ConflictManager {
 			out.push({
 				kind: "note",
 				remoteDb: ctx.remoteDb,
-				studentId: ctx.studentId,
+				memberId: ctx.memberId,
 				dbPath,
 				localPath,
 				conflictPath: ctx.conflictLocalPath(dbPath),
@@ -90,7 +90,7 @@ export class ConflictManager {
 			out.push({
 				kind: "asset",
 				remoteDb: ctx.remoteDb,
-				studentId: ctx.studentId,
+				memberId: ctx.memberId,
 				dbPath,
 				localPath: ctx.toLocalPath(dbPath),
 				conflictPath: ctx.conflictLocalPath(dbPath),

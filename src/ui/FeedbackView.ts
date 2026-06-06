@@ -59,9 +59,9 @@ class FeedbackInputModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.createEl("h3", { text: t("feedback.add_feedback") });
-		contentEl.createDiv({ cls: "class-sync-feedback-quote", text: `“${this.quote}”` });
+		contentEl.createDiv({ cls: "covault-feedback-quote", text: `“${this.quote}”` });
 
-		const ta = contentEl.createEl("textarea", { cls: "class-sync-feedback-input" });
+		const ta = contentEl.createEl("textarea", { cls: "covault-feedback-input" });
 		ta.rows = 4;
 		ta.placeholder = t("feedback.enter_your_feedback");
 		ta.oninput = () => (this.value = ta.value);

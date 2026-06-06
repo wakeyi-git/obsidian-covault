@@ -29,12 +29,12 @@ export class RoleSetupModal extends Modal {
 		new Setting(contentEl)
 			.setName(t("role.student_mode"))
 			.setDesc(t("role.syncs_the_teacher_s_student_folder"))
-			.addButton((b) => b.setButtonText(t("role.choose_student")).setCta().onClick(() => this.choose("student")));
+			.addButton((b) => b.setButtonText(t("role.choose_student")).setCta().onClick(() => this.choose("member")));
 
 		new Setting(contentEl)
 			.setName(t("role.teacher_mode"))
 			.setDesc(t("role.syncs_this_vault_s_student_folders"))
-			.addButton((b) => b.setButtonText(t("role.choose_teacher")).onClick(() => this.choose("teacher")));
+			.addButton((b) => b.setButtonText(t("role.choose_teacher")).onClick(() => this.choose("manager")));
 
 		contentEl.createEl("h3", { text: t("role.student_set_up_directly_with_an") });
 		contentEl.createEl("p", {

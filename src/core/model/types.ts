@@ -8,8 +8,8 @@ export interface PouchDocBase {
 export interface NoteDoc extends PouchDocBase {
 	type: "note";
 	schemaVersion: number;
-	classId: string;
-	studentId: string;
+	workspaceId: string;
+	memberId: string;
 	path: string; // 학생 vault 기준 상대 경로 (DB path)
 	content: string;
 	contentHash: string;
@@ -17,14 +17,14 @@ export interface NoteDoc extends PouchDocBase {
 	deleted: boolean;
 	version: number;
 	lastModifiedBy: string;
-	lastModifiedRole: "student" | "teacher";
+	lastModifiedRole: "member" | "manager";
 	lastModifiedDeviceId: string;
 	updatedAt: string;
 
 	// tombstone 메타데이터 (deleted=true일 때, 기술문서 §8.3)
 	deletedAt?: string;
 	deletedBy?: string;
-	deletedByRole?: "student" | "teacher";
+	deletedByRole?: "member" | "manager";
 	deleteMode?: "archive" | "propagate-delete" | "ignore-delete";
 }
 
@@ -36,8 +36,8 @@ export function noteId(dbPath: string): string {
 export interface AssetDoc extends PouchDocBase {
 	type: "asset";
 	schemaVersion: number;
-	classId: string;
-	studentId: string;
+	workspaceId: string;
+	memberId: string;
 	path: string; // 학생 vault 기준 상대 경로 (DB path)
 	mime: string;
 	size: number;
@@ -46,14 +46,14 @@ export interface AssetDoc extends PouchDocBase {
 	deleted: boolean;
 	version: number;
 	lastModifiedBy: string;
-	lastModifiedRole: "student" | "teacher";
+	lastModifiedRole: "member" | "manager";
 	lastModifiedDeviceId: string;
 	updatedAt: string;
 
 	// tombstone (deleted=true일 때)
 	deletedAt?: string;
 	deletedBy?: string;
-	deletedByRole?: "student" | "teacher";
+	deletedByRole?: "member" | "manager";
 	deleteMode?: "archive" | "propagate-delete" | "ignore-delete";
 }
 
@@ -67,8 +67,8 @@ export type VersionKind = "modify" | "delete" | "conflict" | "restore";
 export interface VersionDoc extends PouchDocBase {
 	type: "version";
 	schemaVersion: number;
-	classId: string;
-	studentId: string;
+	workspaceId: string;
+	memberId: string;
 	path: string; // dbPath
 	versionOf: number; // 스냅샷이 담은 note.version
 	content: string;
@@ -77,7 +77,7 @@ export interface VersionDoc extends PouchDocBase {
 	createdAt: string; // ISO
 	createdAtMs: number;
 	createdBy: string;
-	role: "student" | "teacher";
+	role: "member" | "manager";
 	deviceId: string;
 }
 
@@ -133,13 +133,13 @@ export const RTCONFIG_DOC_ID = "rtconfig";
 export interface FeedbackDoc extends PouchDocBase {
 	type: "feedback";
 	schemaVersion: number;
-	classId: string;
-	studentId: string; // 대상 노트가 속한 링크의 studentId(공유 공간은 spaceId 대용)
+	workspaceId: string;
+	memberId: string; // 대상 노트가 속한 링크의 memberId(공유 공간은 spaceId 대용)
 	targetPath: string; // 대상 노트의 dbPath (해당 DB 기준 상대경로)
 	content: string;
 	anchor: { textQuote: string; start: number; end: number };
 	createdBy: string; // userId
-	createdByRole: "student" | "teacher";
+	createdByRole: "member" | "manager";
 	createdAt: string;
 	updatedAt: string;
 	resolved: boolean;

@@ -1,5 +1,5 @@
 import { App } from "obsidian";
-import { ClassSyncSettings } from "../settings/types";
+import { CoVaultSettings } from "../settings/types";
 import { Logger } from "./log/Logger";
 import { RemoteApplyGuard } from "./guard/RemoteApplyGuard";
 import { PouchService } from "./couch/PouchService";
@@ -32,7 +32,7 @@ export class CoreServices {
 
 	constructor(
 		public readonly app: App,
-		public settings: ClassSyncSettings,
+		public settings: CoVaultSettings,
 		public readonly logger: Logger,
 	) {
 		this.guard = new RemoteApplyGuard(Math.max(5000, settings.debounceMs + 3000));

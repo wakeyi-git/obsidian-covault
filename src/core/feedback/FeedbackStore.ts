@@ -12,7 +12,7 @@ export interface FeedbackAnchor {
 export interface FeedbackItem {
 	doc: FeedbackDoc;
 	localPath: string;
-	studentName: string;
+	memberName: string;
 }
 
 /**
@@ -79,7 +79,7 @@ export class FeedbackStore {
 				out.push({
 					doc: d,
 					localPath: sync.ctx.toLocalPath(d.targetPath),
-					studentName: sync.studentName || sync.studentId,
+					memberName: sync.memberName || sync.memberId,
 				});
 			}
 		}
@@ -100,8 +100,8 @@ export class FeedbackStore {
 			_id: feedbackId(dbPath, uid),
 			type: "feedback",
 			schemaVersion: 1,
-			classId: s.classId,
-			studentId: sync.studentId,
+			workspaceId: s.workspaceId,
+			memberId: sync.memberId,
 			targetPath: dbPath,
 			content,
 			anchor,

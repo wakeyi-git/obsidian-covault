@@ -1,19 +1,19 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
-import { ClassSyncSettings, DEFAULT_SETTINGS, Role, StudentConfig, SharedSpace } from "./settings/types";
+import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc } from "./core/model/types";
-import { ClassSyncSettingTab, SettingsHost } from "./settings/SettingsTab";
+import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
 import { Logger } from "./core/log/Logger";
 import { CoreServices } from "./core/CoreServices";
-import { ClassSyncMode } from "./modes/ClassSyncMode";
-import { StudentMode } from "./modes/student/StudentMode";
-import { TeacherMode } from "./modes/teacher/TeacherMode";
+import { CoVaultMode } from "./modes/CoVaultMode";
+import { MemberMode } from "./modes/member/MemberMode";
+import { ManagerMode } from "./modes/manager/ManagerMode";
 import { TFile, TFolder } from "obsidian";
 import { RoleSetupModal } from "./ui/RoleSetupModal";
 import { InviteModal } from "./ui/InviteModal";
 import { ConflictModal, ConflictRow, ConflictHost } from "./ui/ConflictModal";
 import { VersionHistoryModal } from "./ui/VersionHistoryModal";
 import { ResolveChoice } from "./core/sync/ConflictManager";
-import { BulkCopy, CopyOptions, CopyResult, CopyPlan } from "./modes/teacher/BulkCopy";
+import { BulkCopy, CopyOptions, CopyResult, CopyPlan } from "./modes/manager/BulkCopy";
 import { RealtimeManager } from "./core/realtime/RealtimeManager";
 import { mintSpaceToken } from "./core/realtime/spaceToken";
 import { isValidCouchName } from "./core/path/path";
@@ -24,13 +24,13 @@ import {
 	YJS_SECRET_ID,
 	YJS_TOKEN_ID,
 	COUCH_PASSWORD_ID,
-	getStudentPassword,
-	setStudentPassword,
+	getMemberPassword,
+	setMemberPassword,
 } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { promptAddFeedback } from "./ui/FeedbackView";
-import { ClassSyncPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
+import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
 import { PanelHost, PanelTab, DashboardRow, DeleteModifyRow, PurgeRow } from "./ui/panel/PanelSection";
 import { MirrorSync } from "./core/sync/MirrorSync";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "./core/sync/RestoreManager";
@@ -48,11 +48,11 @@ import { initI18n, t } from "./i18n";
  * 역할은 최초 1회 선택 후 잠긴다(기술문서 §5.4 보강). 실행 시 저장된 last_seq부터 증분 재개하고,
  * 전체 동기화는 최초 1회와 수동 명령에서만 수행한다.
  */
-export default class ClassSyncPlugin extends Plugin implements SettingsHost, ConflictHost, PanelHost {
-	settings!: ClassSyncSettings;
+export default class CoVaultPlugin extends Plugin implements SettingsHost, ConflictHost, PanelHost {
+	settings!: CoVaultSettings;
 	logger = new Logger();
 	private core!: CoreServices;
-	private mode: ClassSyncMode | null = null;
+	private mode: CoVaultMode | null = null;
 	private realtime!: RealtimeManager;
 	private rtStatus!: HTMLElement;
 	private feedback!: FeedbackStore;
@@ -98,12 +98,12 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		// 백그라운드(앱/창 비활성) 시 원격 동기화 일시정지 → 배터리/네트워크 절감(기술문서 §24.6)
 		this.registerDomEvent(document, "visibilitychange", () => this.onVisibilityChange());
 
-		this.registerView(PANEL_VIEW_TYPE, (leaf: WorkspaceLeaf) => new ClassSyncPanelView(leaf, this));
-		this.addSettingTab(new ClassSyncSettingTab(this.app, this));
+		this.registerView(PANEL_VIEW_TYPE, (leaf: WorkspaceLeaf) => new CoVaultPanelView(leaf, this));
+		this.addSettingTab(new CoVaultSettingTab(this.app, this));
 		this.addRibbonIcon("graduation-cap", t("command.open_class_sync_panel"), () => this.activatePanel());
 		this.registerCommands();
 
-		// 학생 초대 딥링크: 폰 카메라로 QR 스캔 → obsidian://class-sync-invite?d=... → 자동 설정
+		// 학생 초대 딥링크: 폰 카메라로 QR 스캔 → obsidian://covault-invite?d=... → 자동 설정
 		this.registerObsidianProtocolHandler(INVITE_ACTION, (params) => {
 			void this.ingestInvite(params.d ?? "");
 		});
@@ -133,7 +133,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 
 	/** 교사의 평문 Yjs 비밀값을 Secret Storage로 1회 이전하고 data.json에서 제거(평문 노출 방지). */
 	private migrateSecrets(): void {
-		if (this.settings.role !== "teacher" || !hasSecretStorage(this.app)) return;
+		if (this.settings.role !== "manager" || !hasSecretStorage(this.app)) return;
 		let changed = false;
 		if (this.settings.yjsSecret) {
 			setSecretValue(this.app, YJS_SECRET_ID, this.settings.yjsSecret);
@@ -162,8 +162,8 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 				changed = true;
 			}
 		}
-		for (const st of s.students) {
-			if (st.password && st.studentId && setStudentPassword(this.app, st.studentId, st.password)) {
+		for (const st of s.members) {
+			if (st.password && st.memberId && setMemberPassword(this.app, st.memberId, st.password)) {
 				st.password = undefined;
 				changed = true;
 			}
@@ -181,8 +181,8 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 	}
 
 	// --- 모드 시작/정지 ---
-	private createMode(role: Role): ClassSyncMode {
-		return role === "teacher" ? new TeacherMode(this.core) : new StudentMode(this.core);
+	private createMode(role: Role): CoVaultMode {
+		return role === "manager" ? new ManagerMode(this.core) : new MemberMode(this.core);
 	}
 
 	private async startMode(): Promise<void> {
@@ -200,20 +200,20 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 			async (role) => {
 				this.settings.role = role;
 				this.settings.setupComplete = true;
-				if (role === "teacher") {
-					this.settings.userId = "teacher";
+				if (role === "manager") {
+					this.settings.userId = "manager";
 					if (this.settings.displayName === t("common.student_a")) this.settings.displayName = t("common.teacher");
 				}
 				await this.saveSettings();
 				this.logger.ok(
-					role === "teacher"
+					role === "manager"
 						? t("panel.teacher_mode_set_up_follow_the")
 						: t("command.student_mode_setup_complete_connect_using"),
 					true,
 				);
 				await this.startMode();
 				// 교사는 온보딩 마법사를 자동으로 띄운다(이미 완료/닫았으면 생략).
-				if (role === "teacher" && !this.settings.teacherOnboardingDone) await this.activatePanel("setup");
+				if (role === "manager" && !this.settings.teacherOnboardingDone) await this.activatePanel("setup");
 			},
 			(code) => void this.ingestInvite(code),
 		).open();
@@ -235,8 +235,8 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 	private collectLocalDbs(): string[] {
 		const s = this.settings;
 		const dbs =
-			s.role === "teacher"
-				? s.students.map((st) => st.remoteDb)
+			s.role === "manager"
+				? s.members.map((st) => st.remoteDb)
 				: [s.remoteDb];
 		dbs.push(...s.sharedSpaces.map((sp) => sp.remoteDb));
 		return [...new Set(dbs.filter((d) => d))];
@@ -269,9 +269,9 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		this.logger.ok(t("command.local_cache_reset_re_syncing_from"), true);
 	}
 
-	// --- 학생 프로비저닝 + 초대 (Teacher) ---
+	// --- 학생 프로비저닝 + 초대 (Manager) ---
 	/** 성공(프로비저닝+초대 표시) 시 true. 실패 시 false(호출자가 로컬 상태를 되돌릴 수 있게). */
-	async inviteStudent(student: StudentConfig): Promise<boolean> {
+	async inviteMember(student: MemberConfig): Promise<boolean> {
 		await this.activatePanel("log");
 		const s = this.settings;
 		const adminPw = this.couchPassword();
@@ -279,26 +279,26 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 			this.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
 			return false;
 		}
-		if (!student.studentId) {
+		if (!student.memberId) {
 			this.logger.warn(t("command.enter_a_student_id"), true);
 			return false;
 		}
 		// 기본값 보정
-		if (!student.username) student.username = student.studentId;
-		if (!student.remoteDb) student.remoteDb = `mirror_${student.studentId}`;
-		if (!student.localRoot) student.localRoot = student.studentName || student.studentId;
+		if (!student.username) student.username = student.memberId;
+		if (!student.remoteDb) student.remoteDb = `mirror_${student.memberId}`;
+		if (!student.localRoot) student.localRoot = student.memberName || student.memberId;
 		// CouchDB 이름 규칙 위반은 프로비저닝 HTTP 에러 전에 막는다(보고서 P2).
-		if (!isValidCouchName(student.studentId) || !isValidCouchName(student.username) || !isValidCouchName(student.remoteDb)) {
-			this.logger.warn(t("command.invalid_id_or_db_name", { id: student.studentId }), true);
+		if (!isValidCouchName(student.memberId) || !isValidCouchName(student.username) || !isValidCouchName(student.remoteDb)) {
+			this.logger.warn(t("command.invalid_id_or_db_name", { id: student.memberId }), true);
 			return false;
 		}
 		// 학생 비밀번호: Secret Storage 우선 → 평문 폴백 → 없으면 생성.
-		let studentPw = getStudentPassword(this.app, student.studentId, student.password);
+		let studentPw = getMemberPassword(this.app, student.memberId, student.password);
 		if (!studentPw) studentPw = genPassword();
 
-		this.logger.info(t("command.provisioning_student", { id: student.studentId, db: student.remoteDb }));
+		this.logger.info(t("command.provisioning_student", { id: student.memberId, db: student.remoteDb }));
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
-		const res = await admin.provisionStudent({
+		const res = await admin.provisionMember({
 			username: student.username,
 			password: studentPw,
 			remoteDb: student.remoteDb,
@@ -308,22 +308,22 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 			return false;
 		}
 		// 성공 → Secret Storage 보관 + 평문 클리어(미지원 환경은 평문 폴백 유지).
-		if (setStudentPassword(this.app, student.studentId, studentPw)) student.password = undefined;
+		if (setMemberPassword(this.app, student.memberId, studentPw)) student.password = undefined;
 		else student.password = studentPw;
 		student.provisioned = true;
 		// 실시간/공유 설정을 학생 DB에 기록(개인 mirror 실시간 토큰 포함) — 공유 공간 배포 없이도 실시간이 동작.
 		await this.mintMirrorToken(student);
 		await this.saveSettings();
-		await this.writeStudentSync(admin, student);
+		await this.writeMemberSync(admin, student);
 		this.requestApply(); // 새 학생 링크를 자동으로 동기화에 반영
-		this.logger.ok(t("command.provisioning_complete_account_db_permissions", { id: student.studentId }), true);
+		this.logger.ok(t("command.provisioning_complete_account_db_permissions", { id: student.memberId }), true);
 
 		const payload: InvitePayload = {
 			v: 1,
 			couchdbUrl: s.couchdbUrl,
-			classId: s.classId,
-			studentId: student.studentId,
-			studentName: student.studentName,
+			workspaceId: s.workspaceId,
+			memberId: student.memberId,
+			memberName: student.memberName,
 			remoteDb: student.remoteDb,
 			username: student.username,
 			password: studentPw,
@@ -338,31 +338,31 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 	 *
 	 * 서버 갱신이 실패하면 로컬 비밀번호를 이전 값으로 되돌려, 로컬만 새 비밀번호로 바뀐 불일치를 막는다.
 	 */
-	async rotateStudentPassword(student: StudentConfig): Promise<void> {
-		if (this.settings.role !== "teacher") return;
-		if (!student.studentId) {
+	async rotateMemberPassword(student: MemberConfig): Promise<void> {
+		if (this.settings.role !== "manager") return;
+		if (!student.memberId) {
 			this.logger.warn(t("command.enter_a_student_id"), true);
 			return;
 		}
-		const prev = getStudentPassword(this.app, student.studentId, student.password);
+		const prev = getMemberPassword(this.app, student.memberId, student.password);
 		const next = genPassword();
-		// 새 비밀번호를 먼저 보관(inviteStudent가 Secret Storage/평문에서 읽으므로) → 재프로비저닝.
-		if (!setStudentPassword(this.app, student.studentId, next)) student.password = next;
-		this.logger.info(t("invite.reissuing_password_previous_invite_invalidated", { id: student.studentId }), true);
-		const ok = await this.inviteStudent(student); // 재프로비저닝(_users 갱신) + 새 초대 표시
+		// 새 비밀번호를 먼저 보관(inviteMember가 Secret Storage/평문에서 읽으므로) → 재프로비저닝.
+		if (!setMemberPassword(this.app, student.memberId, next)) student.password = next;
+		this.logger.info(t("invite.reissuing_password_previous_invite_invalidated", { id: student.memberId }), true);
+		const ok = await this.inviteMember(student); // 재프로비저닝(_users 갱신) + 새 초대 표시
 		if (!ok) {
 			// 서버 실패 → 이전 비밀번호로 되돌림(이전 초대 유지).
-			if (!setStudentPassword(this.app, student.studentId, prev)) student.password = prev;
+			if (!setMemberPassword(this.app, student.memberId, prev)) student.password = prev;
 			else student.password = undefined;
 			this.logger.warn(t("invite.password_reissue_failed_keeping_the_previous"), true);
 		}
 	}
 
-	// --- 공유 공간 배포 (Teacher) ---
+	// --- 공유 공간 배포 (Manager) ---
 	async deployShared(space: SharedSpace): Promise<void> {
 		await this.activatePanel("log");
 		const s = this.settings;
-		if (s.role !== "teacher") {
+		if (s.role !== "manager") {
 			this.logger.warn(t("command.available_in_teacher_mode_only"), true);
 			return;
 		}
@@ -379,7 +379,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
 		const memberUsers = space.members
-			.map((sid) => s.students.find((st) => st.studentId === sid)?.username)
+			.map((sid) => s.members.find((st) => st.memberId === sid)?.username)
 			.filter((u): u is string => !!u);
 
 		this.logger.info(t("command.deploying_shared_space_members", { name: space.name, db: space.remoteDb, count: memberUsers.length }));
@@ -398,7 +398,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		await this.saveSettings();
 
 		// 모든 학생의 shares + rtconfig 문서 갱신(추가/제거 학생 모두 반영)
-		for (const st of s.students) await this.writeStudentSync(admin, st);
+		for (const st of s.members) await this.writeMemberSync(admin, st);
 
 		this.logger.ok(t("command.shared_space_deployment_complete", { name: space.name }), true);
 		await this.restartMode();
@@ -418,19 +418,19 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 				: undefined;
 		for (const sp of s.sharedSpaces) {
 			if (yjsSecret && sp.realtime !== false) {
-				sp.token = await mintSpaceToken(yjsSecret, { classId: s.classId, spaceId: sp.id, exp: ttl });
+				sp.token = await mintSpaceToken(yjsSecret, { workspaceId: s.workspaceId, spaceId: sp.id, exp: ttl });
 			} else {
 				delete sp.token;
 			}
 		}
-		for (const st of s.students) await this.mintMirrorToken(st);
+		for (const st of s.members) await this.mintMirrorToken(st);
 	}
 
 	/**
 	 * 개인 mirror 실시간 토큰 발급/회수(교사). realtime 허용 + yjsSecret 있을 때만 발급, 아니면 비운다.
-	 * spaceId=mirror-<studentId>이라 서버의 share 룸 prefix(class_<c>/share/<s>/) 검증을 그대로 통과한다.
+	 * spaceId=mirror-<memberId>이라 서버의 share 룸 prefix(class_<c>/share/<s>/) 검증을 그대로 통과한다.
 	 */
-	private async mintMirrorToken(student: StudentConfig): Promise<void> {
+	private async mintMirrorToken(student: MemberConfig): Promise<void> {
 		const s = this.settings;
 		const yjsSecret = getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
 		if (student.realtime && yjsSecret) {
@@ -439,8 +439,8 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 					? Math.floor(Date.now() / 1000) + s.yjsTokenTtlDays * 86400
 					: undefined;
 			student.realtimeToken = await mintSpaceToken(yjsSecret, {
-				classId: s.classId,
-				spaceId: `mirror-${student.studentId}`,
+				workspaceId: s.workspaceId,
+				spaceId: `mirror-${student.memberId}`,
 				exp: ttl,
 			});
 		} else {
@@ -449,17 +449,17 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 	}
 
 	/** 한 학생의 shares + rtconfig 문서 기록(공유 공간 멤버십 + 개인 mirror 실시간 공간). */
-	private async writeStudentSync(admin: CouchAdmin, st: StudentConfig): Promise<void> {
+	private async writeMemberSync(admin: CouchAdmin, st: MemberConfig): Promise<void> {
 		const s = this.settings;
 		const spaces: SharesDoc["spaces"] = s.sharedSpaces
-			.filter((sp) => sp.members.includes(st.studentId))
+			.filter((sp) => sp.members.includes(st.memberId))
 			.map((sp) => ({ id: sp.id, name: sp.name, remoteDb: sp.remoteDb, folder: sp.folder, token: sp.token, kind: "share", realtime: sp.realtime !== false }));
 		// 개인 mirror 1:1 실시간(folder=""=학생 vault 전체). 동기화 링크는 안 만들고 room/token 용도로만.
 		if (st.realtime && st.realtimeToken) {
-			spaces.push({ id: `mirror-${st.studentId}`, name: st.studentName, remoteDb: st.remoteDb, folder: "", token: st.realtimeToken, kind: "mirror", realtime: true });
+			spaces.push({ id: `mirror-${st.memberId}`, name: st.memberName, remoteDb: st.remoteDb, folder: "", token: st.realtimeToken, kind: "mirror", realtime: true });
 		}
 		const r = await admin.putDoc(st.remoteDb, { _id: SHARES_DOC_ID, type: "shares", spaces });
-		if (!r.ok) this.logger.error(t("command.failed_to_write_shares", { id: st.studentId, err: r.error ?? "" }));
+		if (!r.ok) this.logger.error(t("command.failed_to_write_shares", { id: st.memberId, err: r.error ?? "" }));
 		const rc = await admin.putDoc(st.remoteDb, {
 			_id: RTCONFIG_DOC_ID,
 			type: "rtconfig",
@@ -468,7 +468,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 			token: getSecretValue(this.app, YJS_TOKEN_ID, s.yjsToken),
 			snapshotSec: s.realtimeSnapshotSec,
 		});
-		if (!rc.ok) this.logger.error(t("command.failed_to_write_rtconfig", { id: st.studentId, err: rc.error ?? "" }));
+		if (!rc.ok) this.logger.error(t("command.failed_to_write_rtconfig", { id: st.memberId, err: rc.error ?? "" }));
 	}
 
 	/**
@@ -476,22 +476,22 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 	 * 재기록 + 모드 재시작. 공유 공간을 재배포(재프로비저닝)하지 않고 실시간 설정만 전파한다.
 	 */
 	async redeployRealtime(): Promise<void> {
-		if (this.settings.role !== "teacher") return;
+		if (this.settings.role !== "manager") return;
 		const s = this.settings;
 		const adminPw = this.couchPassword();
 		if (!s.couchdbUrl || !s.username || !adminPw) {
 			this.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
 			return;
 		}
-		const wantsRealtime = s.students.some((st) => st.realtime) || s.sharedSpaces.some((sp) => sp.realtime !== false && sp.members.length > 0);
+		const wantsRealtime = s.members.some((st) => st.realtime) || s.sharedSpaces.some((sp) => sp.realtime !== false && sp.members.length > 0);
 		if (s.realtimeEnabled && wantsRealtime && !getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret)) {
 			this.logger.warn(t("command.realtime_needs_yjs_secret"), true);
 		}
 		await this.mintRealtimeTokens();
 		await this.saveSettings();
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
-		for (const st of s.students) {
-			if (st.provisioned && st.remoteDb) await this.writeStudentSync(admin, st);
+		for (const st of s.members) {
+			if (st.provisioned && st.remoteDb) await this.writeMemberSync(admin, st);
 		}
 		this.logger.ok(t("command.realtime_settings_applied"), true);
 		await this.restartMode();
@@ -509,12 +509,12 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		this.mode = null;
 
 		const s = this.settings;
-		s.role = "student";
+		s.role = "member";
 		s.setupComplete = true;
 		s.couchdbUrl = payload.couchdbUrl;
-		s.classId = payload.classId;
-		s.userId = payload.studentId;
-		s.displayName = payload.studentName;
+		s.workspaceId = payload.workspaceId;
+		s.userId = payload.memberId;
+		s.displayName = payload.memberName;
 		s.username = payload.username;
 		// 받은 학생 비밀번호는 Secret Storage에 보관(data.json 평문 회피). 미지원 환경만 평문 폴백.
 		if (setSecretValue(this.app, COUCH_PASSWORD_ID, payload.password)) {
@@ -529,7 +529,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		await this.saveSettings();
 
 		await this.activatePanel("log");
-		this.logger.ok(t("command.invite_applied_starting_sync", { name: payload.studentName, db: payload.remoteDb }), true);
+		this.logger.ok(t("command.invite_applied_starting_sync", { name: payload.memberName, db: payload.remoteDb }), true);
 
 		// 파싱 성공 ≠ 인증 성공. 즉시 인증을 확인해 옛/무효 초대를 명확히 안내한다(네트워크 실패는 startMode가 재시도).
 		try {
@@ -556,8 +556,8 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 	async testConnection(): Promise<void> {
 		await this.activatePanel("log");
 		const dbs =
-			this.settings.role === "teacher"
-				? this.settings.students.map((s) => s.remoteDb).filter((d) => d)
+			this.settings.role === "manager"
+				? this.settings.members.map((s) => s.remoteDb).filter((d) => d)
 				: [this.settings.remoteDb];
 		if (dbs.length === 0) {
 			this.logger.warn(t("command.no_mirror_db_to_test_teacher"), true);
@@ -628,7 +628,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 	async resetServerData(deleteAccounts: boolean): Promise<void> {
 		await this.activatePanel("log");
 		const s = this.settings;
-		if (s.role !== "teacher") {
+		if (s.role !== "manager") {
 			this.logger.warn(t("command.available_in_teacher_mode_only"), true);
 			return;
 		}
@@ -652,7 +652,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		this.mode = null;
 
 		const dbs = [
-			...s.students.map((st) => st.remoteDb).filter((d) => d),
+			...s.members.map((st) => st.remoteDb).filter((d) => d),
 			...s.sharedSpaces.map((sp) => sp.remoteDb).filter((d) => d),
 		];
 		this.logger.info(t("command.starting_server_data_reset_db_s", { count: dbs.length, accounts: deleteAccounts ? t("command.student_accounts") : "" }), true);
@@ -672,7 +672,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		}
 
 		if (deleteAccounts) {
-			for (const st of s.students) {
+			for (const st of s.members) {
 				if (!st.username) continue;
 				const r = await admin.deleteUser(st.username);
 				if (r.ok) this.logger.ok(t("command.account_deleted", { user: st.username }));
@@ -683,12 +683,12 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		// 로컬 상태 초기화
 		if (deleteAccounts) {
 			// 계정까지 삭제 → 학급 명단(학생·공유 공간)도 완전 비움(처음부터 다시 구성)
-			s.students = [];
+			s.members = [];
 			s.sharedSpaces = [];
 			this.core.sharedSpaces = [];
 		} else {
 			// DB만 삭제 → 명단 유지, 프로비저닝 상태만 리셋(재초대로 복구)
-			for (const st of s.students) st.provisioned = false;
+			for (const st of s.members) st.provisioned = false;
 			for (const sp of s.sharedSpaces) sp.provisioned = false;
 		}
 		s.lastSeqByDb = {};
@@ -710,7 +710,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 	refreshUiLanguage(): void {
 		initI18n(this.settings.language);
 		for (const leaf of this.app.workspace.getLeavesOfType(PANEL_VIEW_TYPE)) {
-			if (leaf.view instanceof ClassSyncPanelView) leaf.view.refresh();
+			if (leaf.view instanceof CoVaultPanelView) leaf.view.refresh();
 		}
 	}
 
@@ -729,12 +729,12 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 
 	/** 설정 탭에서 초기화 모달 실행(교사 전용). */
 	openResetModal(): void {
-		if (this.settings.role !== "teacher") {
+		if (this.settings.role !== "manager") {
 			new Notice(t("command.class_sync_available_in_teacher_mode"));
 			return;
 		}
 		const dbCount =
-			this.settings.students.filter((st) => st.remoteDb).length +
+			this.settings.members.filter((st) => st.remoteDb).length +
 			this.settings.sharedSpaces.filter((sp) => sp.remoteDb).length;
 		new ResetModal(this.app, dbCount, (deleteAccounts) => this.resetServerData(deleteAccounts)).open();
 	}
@@ -762,68 +762,68 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 
 	// --- 명령 등록 (패널 버튼과 동일 메서드를 호출) ---
 	private registerCommands(): void {
-		this.addCommand({ id: "class-sync-open-panel", name: t("command.open_panel"), callback: () => this.activatePanel() });
-		this.addCommand({ id: "class-sync-open-log", name: t("command.open_log_panel"), callback: () => this.activatePanel("log") });
+		this.addCommand({ id: "covault-open-panel", name: t("command.open_panel"), callback: () => this.activatePanel() });
+		this.addCommand({ id: "covault-open-log", name: t("command.open_log_panel"), callback: () => this.activatePanel("log") });
 		this.addCommand({
-			id: "class-sync-test-connection",
+			id: "covault-test-connection",
 			name: t("panel.test_connection_permissions"),
 			callback: () => this.testConnection(),
 		});
 		this.addCommand({
-			id: "class-sync-diagnostics",
+			id: "covault-diagnostics",
 			name: t("command.run_full_diagnostics_server_read_write"),
 			callback: () => this.runDiagnostics(),
 		});
-		this.addCommand({ id: "class-sync-full-sync", name: t("panel.full_sync"), callback: () => this.fullSync("both") });
-		this.addCommand({ id: "class-sync-upload-only", name: t("command.upload_only"), callback: () => this.fullSync("up") });
-		this.addCommand({ id: "class-sync-download-only", name: t("command.download_only"), callback: () => this.fullSync("down") });
+		this.addCommand({ id: "covault-full-sync", name: t("panel.full_sync"), callback: () => this.fullSync("both") });
+		this.addCommand({ id: "covault-upload-only", name: t("command.upload_only"), callback: () => this.fullSync("up") });
+		this.addCommand({ id: "covault-download-only", name: t("command.download_only"), callback: () => this.fullSync("down") });
 		this.addCommand({
-			id: "class-sync-toggle-autosync",
+			id: "covault-toggle-autosync",
 			name: t("command.toggle_auto_sync"),
 			callback: () => this.toggleAutoSync(),
 		});
 		this.addCommand({
-			id: "class-sync-reset-local",
+			id: "covault-reset-local",
 			name: t("command.reset_local_cache_re_fetch_from"),
 			callback: () => this.resetLocalCache(),
 		});
 		this.addCommand({
-			id: "class-sync-conflicts",
+			id: "covault-conflicts",
 			name: t("command.open_conflict_list"),
 			callback: () => this.openConflictModal(),
 		});
 		this.addCommand({
-			id: "class-sync-dashboard",
+			id: "covault-dashboard",
 			name: t("command.open_sync_status"),
 			callback: () => this.activatePanel("sync"),
 		});
 		this.addCommand({
-			id: "class-sync-deploy",
+			id: "covault-deploy",
 			name: t("deploy.copy_to_students_open_deploy_tab"),
 			callback: () => this.activatePanel("deploy"),
 		});
 		this.addCommand({
-			id: "class-sync-realtime-status",
+			id: "covault-realtime-status",
 			name: t("panel.check_realtime_status"),
 			callback: () => this.realtimeStatus(),
 		});
 		this.addCommand({
-			id: "class-sync-add-feedback",
+			id: "covault-add-feedback",
 			name: t("command.add_feedback_selection"),
 			callback: () => promptAddFeedback(this.app, this.feedback),
 		});
 		this.addCommand({
-			id: "class-sync-open-feedback",
+			id: "covault-open-feedback",
 			name: t("command.open_feedback_panel"),
 			callback: () => this.activatePanel("feedback"),
 		});
 		this.addCommand({
-			id: "class-sync-refresh-shares",
+			id: "covault-refresh-shares",
 			name: t("panel.refresh_shared_spaces"),
 			callback: () => this.refreshShares(),
 		});
 		this.addCommand({
-			id: "class-sync-version-history",
+			id: "covault-version-history",
 			name: t("version.open_version_history"),
 			checkCallback: (checking: boolean) => {
 				const file = this.app.workspace.getActiveFile();
@@ -866,7 +866,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 	async refreshShares(): Promise<void> {
 		await this.activatePanel("log");
 		const m = this.mode as unknown as { refreshShares?: () => Promise<void> } | null;
-		if (this.settings.role === "student" && m?.refreshShares) await m.refreshShares();
+		if (this.settings.role === "member" && m?.refreshShares) await m.refreshShares();
 		else await this.restartMode();
 	}
 
@@ -894,11 +894,11 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		studentIds: string[],
 	): Promise<CopyPlan & { error?: string }> {
 		const r = this.resolveCopy(sourcePath, opts, studentIds);
-		if ("error" in r) return { students: [], error: r.error };
+		if ("error" in r) return { members: [], error: r.error };
 		try {
 			return await r.bulk.preview(r.src, r.targets, r.opts);
 		} catch (e) {
-			return { students: [], error: e instanceof Error ? e.message : String(e) };
+			return { members: [], error: e instanceof Error ? e.message : String(e) };
 		}
 	}
 
@@ -907,12 +907,12 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		sourcePath: string,
 		opts: CopyOptions,
 		studentIds: string[],
-	): { src: TFile | TFolder; targets: StudentConfig[]; bulk: BulkCopy; opts: CopyOptions } | { error: string } {
-		if (this.settings.role !== "teacher") return { error: t("command.available_in_teacher_mode_only") };
+	): { src: TFile | TFolder; targets: MemberConfig[]; bulk: BulkCopy; opts: CopyOptions } | { error: string } {
+		if (this.settings.role !== "manager") return { error: t("command.available_in_teacher_mode_only") };
 		const src = this.app.vault.getAbstractFileByPath(sourcePath);
 		if (!(src instanceof TFile) && !(src instanceof TFolder))
 			return { error: t("deploy.path_not_found", { path: sourcePath }) };
-		const targets = this.settings.students.filter((st) => studentIds.includes(st.studentId));
+		const targets = this.settings.members.filter((st) => studentIds.includes(st.memberId));
 		if (targets.length === 0) return { error: t("deploy.no_target_students") };
 		// 파일: 대상 경로가 비어 있으면 원본 파일명으로.
 		const finalOpts = src instanceof TFile && !opts.destPath ? { ...opts, destPath: src.name } : opts;
@@ -930,8 +930,8 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 				/* 조회 실패는 0으로 */
 			}
 			rows.push({
-				studentName: sync.studentName,
-				studentId: sync.studentId,
+				memberName: sync.memberName,
+				memberId: sync.memberId,
 				remoteDb: sync.remoteDb,
 				localRoot: sync.localRoot,
 				conflicts,
@@ -975,7 +975,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		for (const sync of this.mode?.getSyncs() ?? []) {
 			try {
 				for (const it of await sync.listDeleteModify()) {
-					out.push({ ...it, remoteDb: sync.remoteDb, studentName: sync.studentName });
+					out.push({ ...it, remoteDb: sync.remoteDb, memberName: sync.memberName });
 				}
 			} catch {
 				/* 조회 실패 링크 건너뜀 */
@@ -994,7 +994,7 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 		for (const sync of this.mode?.getSyncs() ?? []) {
 			try {
 				for (const p of await sync.listRecentPurges()) {
-					out.push({ ...p, remoteDb: sync.remoteDb, studentName: sync.studentName });
+					out.push({ ...p, remoteDb: sync.remoteDb, memberName: sync.memberName });
 				}
 			} catch {
 				/* 조회 실패 링크 건너뜀 */
@@ -1023,11 +1023,11 @@ export default class ClassSyncPlugin extends Plugin implements SettingsHost, Con
 			leaf = right;
 		}
 		await this.app.workspace.revealLeaf(leaf);
-		// Deferred views: revealLeaf가 로드를 트리거하지만 view가 즉시 ClassSyncPanelView로
+		// Deferred views: revealLeaf가 로드를 트리거하지만 view가 즉시 CoVaultPanelView로
 		// 바뀌지 않을 수 있다(차가운 리프). 탭 전환이 필요할 때만 명시적으로 로드를 보장한다.
 		if (tab) {
 			await leaf.loadIfDeferred?.();
-			if (leaf.view instanceof ClassSyncPanelView) leaf.view.setTab(tab);
+			if (leaf.view instanceof CoVaultPanelView) leaf.view.setTab(tab);
 		}
 	}
 

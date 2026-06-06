@@ -16,7 +16,7 @@ export class ExportModal extends Modal {
 			),
 		});
 
-		const ta = contentEl.createEl("textarea", { cls: "class-sync-backup-input" });
+		const ta = contentEl.createEl("textarea", { cls: "covault-backup-input" });
 		ta.rows = 12;
 		ta.value = this.json;
 		ta.readOnly = true;
@@ -57,7 +57,7 @@ export class ImportModal extends Modal {
 			),
 		});
 
-		const ta = contentEl.createEl("textarea", { cls: "class-sync-backup-input" });
+		const ta = contentEl.createEl("textarea", { cls: "covault-backup-input" });
 		ta.rows = 12;
 		ta.placeholder = t("backup.paste_settings_json_here");
 		ta.oninput = () => (this.value = ta.value);

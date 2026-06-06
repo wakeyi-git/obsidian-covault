@@ -1,5 +1,5 @@
 import { App, TFile, TFolder, normalizePath } from "obsidian";
-import { ClassSyncSettings, StudentConfig } from "../../settings/types";
+import { CoVaultSettings, MemberConfig } from "../../settings/types";
 import { ExistingPolicy, CopyAction, decideAction } from "./copyAction";
 
 export { decideAction };
@@ -21,8 +21,8 @@ export interface CopyOptions {
 
 /** 학생 1명의 복사 결과(성공/건너뜀 수 + 오류). */
 export interface CopyDetail {
-	studentId: string;
-	studentName: string;
+	memberId: string;
+	memberName: string;
 	written: number;
 	skipped: number;
 	error?: string;
@@ -39,13 +39,13 @@ export interface PlanEntry {
 	destPath: string;
 	action: CopyAction;
 }
-export interface StudentPlan {
-	studentId: string;
-	studentName: string;
+export interface MemberPlan {
+	memberId: string;
+	memberName: string;
 	entries: PlanEntry[];
 }
 export interface CopyPlan {
-	students: StudentPlan[];
+	members: MemberPlan[];
 	sampleBefore?: string;
 	sampleAfter?: string;
 }
@@ -59,28 +59,28 @@ export interface CopyPlan {
 export class BulkCopy {
 	constructor(
 		private app: App,
-		private settings: ClassSyncSettings,
+		private settings: CoVaultSettings,
 	) {}
 
 	/** 단일 파일을 선택 학생들에게 복사. */
-	async copyFile(file: TFile, students: StudentConfig[], opts: CopyOptions): Promise<CopyResult> {
+	async copyFile(file: TFile, members: MemberConfig[], opts: CopyOptions): Promise<CopyResult> {
 		const content = await this.app.vault.read(file);
-		return this.run(students, [{ rel: opts.destPath, content }], opts);
+		return this.run(members, [{ rel: opts.destPath, content }], opts);
 	}
 
 	/** 폴더 아래 markdown 전체를 선택 학생들에게 복사(폴더 내부 구조 유지, 폴더명은 제외). */
-	async copyFolder(folder: TFolder, students: StudentConfig[], opts: CopyOptions): Promise<CopyResult> {
+	async copyFolder(folder: TFolder, members: MemberConfig[], opts: CopyOptions): Promise<CopyResult> {
 		const files = this.markdownIn(folder);
 		const items: Array<{ rel: string; content: string }> = [];
 		for (const f of files) items.push({ rel: f.path.slice(folder.path.length + 1), content: await this.app.vault.read(f) });
-		return this.run(students, items, opts);
+		return this.run(members, items, opts);
 	}
 
 	/** dry-run: 아무것도 쓰지 않고 학생별 대상 경로·동작 예상 + 치환 샘플을 만든다. */
-	async preview(src: TFile | TFolder, students: StudentConfig[], opts: CopyOptions): Promise<CopyPlan> {
+	async preview(src: TFile | TFolder, members: MemberConfig[], opts: CopyOptions): Promise<CopyPlan> {
 		const rels = src instanceof TFolder ? this.markdownIn(src).map((f) => f.path.slice(src.path.length + 1)) : [opts.destPath];
-		const plan: CopyPlan = { students: [] };
-		for (const st of students) {
+		const plan: CopyPlan = { members: [] };
+		for (const st of members) {
 			const entries: PlanEntry[] = rels.map((rel) => {
 				let destPath = normalizePath(`${st.localRoot}/${rel}`);
 				const existing = this.app.vault.getAbstractFileByPath(destPath) instanceof TFile;
@@ -88,15 +88,15 @@ export class BulkCopy {
 				if (action === "rename") destPath = this.availableName(destPath);
 				return { destPath, action };
 			});
-			plan.students.push({ studentId: st.studentId, studentName: st.studentName, entries });
+			plan.members.push({ memberId: st.memberId, memberName: st.memberName, entries });
 		}
 		// 치환 샘플: 첫 파일 + 첫 학생
-		if (opts.substitute && students[0]) {
+		if (opts.substitute && members[0]) {
 			const first = src instanceof TFolder ? this.markdownIn(src)[0] : src;
 			if (first) {
 				const content = await this.app.vault.read(first);
 				plan.sampleBefore = content.slice(0, 200);
-				plan.sampleAfter = this.substitute(content, students[0]).slice(0, 200);
+				plan.sampleAfter = this.substitute(content, members[0]).slice(0, 200);
 			}
 		}
 		return plan;
@@ -105,16 +105,16 @@ export class BulkCopy {
 	// --- 내부 ---
 
 	private async run(
-		students: StudentConfig[],
+		members: MemberConfig[],
 		items: Array<{ rel: string; content: string }>,
 		opts: CopyOptions,
 	): Promise<CopyResult> {
 		const res: CopyResult = { written: 0, skipped: 0, details: [] };
-		for (const st of students) {
-			const d: CopyDetail = { studentId: st.studentId, studentName: st.studentName, written: 0, skipped: 0 };
+		for (const st of members) {
+			const d: CopyDetail = { memberId: st.memberId, memberName: st.memberName, written: 0, skipped: 0 };
 			try {
 				for (const it of items) {
-					const r = await this.writeForStudent(st, it.rel, it.content, opts);
+					const r = await this.writeForMember(st, it.rel, it.content, opts);
 					if (r === "written") d.written++;
 					else d.skipped++;
 				}
@@ -128,8 +128,8 @@ export class BulkCopy {
 		return res;
 	}
 
-	private async writeForStudent(
-		st: StudentConfig,
+	private async writeForMember(
+		st: MemberConfig,
 		destRel: string,
 		content: string,
 		opts: CopyOptions,
@@ -154,13 +154,13 @@ export class BulkCopy {
 	}
 
 	/** 템플릿 변수 치환. 기술문서 §20.4. */
-	private substitute(content: string, st: StudentConfig): string {
+	private substitute(content: string, st: MemberConfig): string {
 		const s = this.settings;
 		const date = localDate(); // 로컬 시간대 기준 (UTC면 하루 어긋남)
 		return content
-			.replace(/\{\{\s*studentId\s*\}\}/g, st.studentId)
-			.replace(/\{\{\s*studentName\s*\}\}/g, st.studentName || st.studentId)
-			.replace(/\{\{\s*classId\s*\}\}/g, s.classId)
+			.replace(/\{\{\s*memberId\s*\}\}/g, st.memberId)
+			.replace(/\{\{\s*memberName\s*\}\}/g, st.memberName || st.memberId)
+			.replace(/\{\{\s*workspaceId\s*\}\}/g, s.workspaceId)
 			.replace(/\{\{\s*date\s*\}\}/g, date)
 			.replace(/\{\{\s*group\s*\}\}/g, "");
 	}

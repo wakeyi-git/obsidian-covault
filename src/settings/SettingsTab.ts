@@ -1,8 +1,8 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting, SettingGroup } from "obsidian";
-import { ClassSyncSettings, StudentConfig, SharedSpace } from "./types";
+import { CoVaultSettings, MemberConfig, SharedSpace } from "./types";
 import { ExportModal, ImportModal } from "../ui/BackupModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
-import { StudentBulkImportModal } from "../ui/StudentBulkImportModal";
+import { MemberBulkImportModal } from "../ui/MemberBulkImportModal";
 import { validateFolderName, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
 import { sharedSpaceStatus } from "./sharedSpaceStatus";
@@ -22,13 +22,13 @@ declare module "obsidian" {
 /** 검증 이슈 코드 → 사용자 메시지(i18n). validateSettings는 순수(코드만), 문구는 여기서. */
 function issueMessage(i: SettingsIssue): string {
 	switch (i.code) {
-		case "dup-studentId":
+		case "dup-memberId":
 			return t("panel.duplicate_student_id", { value: String(i.params?.value) });
 		case "dup-username":
 			return t("panel.duplicate_account_username", { value: String(i.params?.value) });
 		case "dup-remoteDb":
 			return t("panel.duplicate_mirror_db_name", { value: String(i.params?.value) });
-		case "bad-studentId":
+		case "bad-memberId":
 			return t("panel.invalid_student_id", { value: String(i.params?.value) });
 		case "bad-username":
 			return t("panel.invalid_username", { value: String(i.params?.value) });
@@ -51,14 +51,14 @@ function issueMessage(i: SettingsIssue): string {
 
 /** SettingsTab가 의존하는 플러그인 동작 (순환 import 방지용 인터페이스). */
 export interface SettingsHost extends Plugin {
-	settings: ClassSyncSettings;
+	settings: CoVaultSettings;
 	saveSettings(): Promise<void>;
 	testConnection(): Promise<void>;
 	restartMode(): Promise<void>;
 	requestApply(): void;
 	resetSetup(): Promise<void>;
-	inviteStudent(student: StudentConfig): Promise<boolean>;
-	rotateStudentPassword(student: StudentConfig): Promise<void>;
+	inviteMember(student: MemberConfig): Promise<boolean>;
+	rotateMemberPassword(student: MemberConfig): Promise<void>;
 	ingestInvite(code: string): Promise<void>;
 	deployShared(space: SharedSpace): Promise<void>;
 	redeployRealtime(): Promise<void>;
@@ -72,7 +72,7 @@ export interface SettingsHost extends Plugin {
  * 설정 탭. 섹션을 SettingGroup(.setting-group)으로 묶어 최신 Obsidian 설정 UI 가이드를 따른다.
  * 일반(역할)은 상단에 헤딩 없이 두고, 이후 섹션부터 그룹 헤딩을 붙인다.
  */
-export class ClassSyncSettingTab extends PluginSettingTab {
+export class CoVaultSettingTab extends PluginSettingTab {
 	constructor(app: App, private host: SettingsHost) {
 		super(app, host);
 	}
@@ -87,8 +87,8 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 		this.renderLanguage(s);
 		this.renderIssues(s);
 
-		if (s.role === "teacher") this.renderTeacher(s);
-		else this.renderStudent(s);
+		if (s.role === "manager") this.renderManager(s);
+		else this.renderMember(s);
 
 		this.renderSyncOptions(s);
 		this.renderBackup();
@@ -96,19 +96,19 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 	}
 
 	// --- 설정 검증 경고(상단 지속 표시) ---
-	private renderIssues(s: ClassSyncSettings): void {
+	private renderIssues(s: CoVaultSettings): void {
 		const issues = validateSettings(s);
 		if (issues.length === 0) return;
-		const box = this.containerEl.createDiv({ cls: "class-sync-issues" });
-		box.createDiv({ cls: "class-sync-issues-title", text: t("panel.settings_need_attention", { n: issues.length }) });
+		const box = this.containerEl.createDiv({ cls: "covault-issues" });
+		box.createDiv({ cls: "covault-issues-title", text: t("panel.settings_need_attention", { n: issues.length }) });
 		for (const i of issues) {
-			const row = box.createDiv({ cls: `class-sync-issue is-${i.level}` });
+			const row = box.createDiv({ cls: `covault-issue is-${i.level}` });
 			row.setText((i.level === "error" ? "⛔ " : "⚠ ") + issueMessage(i));
 		}
 	}
 
 	// --- 언어 ---
-	private renderLanguage(s: ClassSyncSettings): void {
+	private renderLanguage(s: CoVaultSettings): void {
 		new Setting(this.containerEl)
 			.setName(t("settings.language"))
 			.setDesc(t("settings.ui_language_auto_follows_the_obsidian"))
@@ -117,7 +117,7 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 				d.addOption("ko", "한국어");
 				d.addOption("en", "English");
 				d.setValue(s.language).onChange(async (v) => {
-					s.language = v as ClassSyncSettings["language"];
+					s.language = v as CoVaultSettings["language"];
 					await this.host.saveSettings();
 					this.host.refreshUiLanguage();
 					this.display();
@@ -126,8 +126,8 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 	}
 
 	// --- 역할 (상단 일반 설정, 헤딩 없음) ---
-	private renderRole(s: ClassSyncSettings): void {
-		const roleLabel = s.role === "teacher" ? t("settings.teacher_mode_teacher") : t("settings.student_mode_student");
+	private renderRole(s: CoVaultSettings): void {
+		const roleLabel = s.role === "manager" ? t("settings.teacher_mode_teacher") : t("settings.student_mode_student");
 		new Setting(this.containerEl)
 			.setName(t("settings.role"))
 			.setDesc(
@@ -138,10 +138,10 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 			.addText((txt) => txt.setValue(s.setupComplete ? roleLabel : t("settings.not_set")).setDisabled(true));
 	}
 
-	// --- Teacher Mode ---
-	private renderTeacher(s: ClassSyncSettings): void {
+	// --- Manager Mode ---
+	private renderManager(s: CoVaultSettings): void {
 		const klass = this.group(t("settings.class"));
-		this.textSetting(klass, t("settings.class_id"), "classId", "class_2026_1");
+		this.textSetting(klass, t("settings.class_id"), "workspaceId", "ws_2026_1");
 		this.textSetting(klass, t("settings.display_name"), "displayName", t("common.teacher"));
 
 		const admin = this.group(t("settings.admin_account"), t("settings.credentials_for_creating_student_accounts_dbs"));
@@ -158,31 +158,31 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 		);
 
 		// 학생 목록 (카드)
-		const students = this.group(
+		const members = this.group(
 			t("settings.students"),
-			s.students.length === 0 ? t("settings.add_your_first_student_with_add") : undefined,
+			s.members.length === 0 ? t("settings.add_your_first_student_with_add") : undefined,
 		);
-		s.students.forEach((st, i) => this.renderStudentCard(students, st, i));
-		students.addSetting((set) =>
+		s.members.forEach((st, i) => this.renderMemberCard(members, st, i));
+		members.addSetting((set) =>
 			set
-				.setClass("class-sync-add-row")
+				.setClass("covault-add-row")
 				.addButton((b) =>
 					b
 						.setButtonText(t("settings.add_student"))
 						.setCta()
 						.onClick(async () => {
-							s.students.push({ studentId: "", studentName: "", remoteDb: "", localRoot: "", username: "" });
+							s.members.push({ memberId: "", memberName: "", remoteDb: "", localRoot: "", username: "" });
 							await this.host.saveSettings();
 							this.display();
 						}),
 				)
 				.addButton((b) =>
 					b.setButtonText(t("settings.paste_roster")).onClick(() =>
-						new StudentBulkImportModal(
+						new MemberBulkImportModal(
 							this.host.app,
-							s.students.map((st) => st.studentId).filter((id) => id),
+							s.members.map((st) => st.memberId).filter((id) => id),
 							async (added) => {
-								s.students.push(...added);
+								s.members.push(...added);
 								await this.host.saveSettings();
 								this.host.requestApply();
 								this.display();
@@ -196,7 +196,7 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 		const shared = this.group(t("settings.shared_spaces_group_class"), t("settings.pick_members_and_deploy_to_create"));
 		s.sharedSpaces.forEach((sp, i) => this.renderSharedCard(shared, sp, i));
 		shared.addSetting((set) =>
-			set.setClass("class-sync-add-row").addButton((b) =>
+			set.setClass("covault-add-row").addButton((b) =>
 				b
 					.setButtonText(t("settings.add_shared_space"))
 					.setCta()
@@ -288,27 +288,27 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 	}
 
 	/** 실시간 대상 선택: 학생 개인 폴더(전체+개별), 공유 공간(개별). 토글 즉시 토큰 재발급 + 전파. */
-	private renderRealtimeTargets(rt: SettingGroup, s: ClassSyncSettings): void {
+	private renderRealtimeTargets(rt: SettingGroup, s: CoVaultSettings): void {
 		// --- 학생 개인 폴더 1:1 실시간(교사↔해당 학생) ---
-		const students = s.students.filter((st) => st.studentId && st.provisioned);
+		const members = s.members.filter((st) => st.memberId && st.provisioned);
 		rt.addSetting((set) => set.setName(t("settings.realtime_per_student")).setDesc(t("settings.realtime_per_student_desc")).setHeading());
-		if (students.length === 0) {
+		if (members.length === 0) {
 			rt.addSetting((set) => set.setDesc(t("settings.realtime_invite_students_first")));
 		} else {
-			const allOn = students.every((st) => st.realtime);
+			const allOn = members.every((st) => st.realtime);
 			rt.addSetting((set) =>
 				set.setName(t("settings.realtime_all_students")).addToggle((tg) =>
 					tg.setValue(allOn).onChange(async (v) => {
-						students.forEach((st) => (st.realtime = v));
+						members.forEach((st) => (st.realtime = v));
 						await this.host.saveSettings();
 						await this.host.redeployRealtime();
 						this.display();
 					}),
 				),
 			);
-			for (const st of students) {
+			for (const st of members) {
 				rt.addSetting((set) =>
-					set.setName(st.studentName || st.studentId).addToggle((tg) =>
+					set.setName(st.memberName || st.memberId).addToggle((tg) =>
 						tg.setValue(!!st.realtime).onChange(async (v) => {
 							st.realtime = v;
 							await this.host.saveSettings();
@@ -340,7 +340,7 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 
 	private renderSharedCard(group: SettingGroup, sp: SharedSpace, index: number): void {
 		const s = this.host.settings;
-		const card = group.listEl.createDiv({ cls: "class-sync-student-card" });
+		const card = group.listEl.createDiv({ cls: "covault-student-card" });
 
 		new Setting(card)
 			.setName(sp.name || t("settings.shared_space", { n: index + 1 }))
@@ -392,10 +392,10 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 		});
 
 		const memberHead = new Setting(card).setName(t("panel.members"));
-		const studentsWithId = s.students.filter((st) => st.studentId);
+		const membersWithId = s.members.filter((st) => st.memberId);
 		memberHead.addButton((b) =>
 			b.setButtonText(t("deploy.select_all")).onClick(async () => {
-				sp.members = studentsWithId.map((st) => st.studentId);
+				sp.members = membersWithId.map((st) => st.memberId);
 				await this.host.saveSettings();
 				this.display();
 			}),
@@ -407,11 +407,11 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 				this.display();
 			}),
 		);
-		for (const st of studentsWithId) {
-			new Setting(card).setName(st.studentName || st.studentId).addToggle((tg) =>
-				tg.setValue(sp.members.includes(st.studentId)).onChange(async (v) => {
-					if (v && !sp.members.includes(st.studentId)) sp.members.push(st.studentId);
-					else if (!v) sp.members = sp.members.filter((m) => m !== st.studentId);
+		for (const st of membersWithId) {
+			new Setting(card).setName(st.memberName || st.memberId).addToggle((tg) =>
+				tg.setValue(sp.members.includes(st.memberId)).onChange(async (v) => {
+					if (v && !sp.members.includes(st.memberId)) sp.members.push(st.memberId);
+					else if (!v) sp.members = sp.members.filter((m) => m !== st.memberId);
 					await this.host.saveSettings();
 					this.display(); // 배지(재배포 필요) 갱신
 				}),
@@ -426,30 +426,30 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 					? t("panel.members_changed_redeploy_needed")
 					: t("panel.deployed");
 		const statusEl = card.createEl("div", {
-			cls: "class-sync-student-status",
+			cls: "covault-student-status",
 			text: t("panel.db", { db: sp.remoteDb, badge }),
 		});
-		if (status === "needs-redeploy") statusEl.addClass("class-sync-dash-conflict");
+		if (status === "needs-redeploy") statusEl.addClass("covault-dash-conflict");
 	}
 
-	private renderStudentCard(group: SettingGroup, st: StudentConfig, index: number): void {
-		const card = group.listEl.createDiv({ cls: "class-sync-student-card" });
+	private renderMemberCard(group: SettingGroup, st: MemberConfig, index: number): void {
+		const card = group.listEl.createDiv({ cls: "covault-student-card" });
 
 		const head = new Setting(card)
-			.setName(st.studentName || st.studentId || t("settings.student", { n: index + 1 }))
+			.setName(st.memberName || st.memberId || t("settings.student", { n: index + 1 }))
 			.setHeading()
 			.addButton((b) =>
 				b
 					.setButtonText(st.provisioned ? t("settings.reissue_invite") : t("settings.invite"))
 					.setCta()
-					.onClick(() => this.runAsync(b, async () => { await this.host.inviteStudent(st); this.display(); })),
+					.onClick(() => this.runAsync(b, async () => { await this.host.inviteMember(st); this.display(); })),
 			);
 		if (st.provisioned) {
 			head.addButton((b) =>
 				b
 					.setButtonText(t("invite.reissue_password"))
 					.setTooltip(t("invite.replaces_the_password_with_a_new"))
-					.onClick(() => this.runAsync(b, async () => { await this.host.rotateStudentPassword(st); this.display(); })),
+					.onClick(() => this.runAsync(b, async () => { await this.host.rotateMemberPassword(st); this.display(); })),
 			);
 		}
 		head
@@ -459,12 +459,12 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 					.setWarning()
 					.onClick(() =>
 						new ConfirmModal(this.host.app, {
-							title: t("panel.delete_student", { name: st.studentName || st.studentId || t("common.student") }),
+							title: t("panel.delete_student", { name: st.memberName || st.memberId || t("common.student") }),
 							message: t("panel.removes_this_student_from_the_list",
 							),
 							warning: true,
 							onConfirm: async () => {
-								this.host.settings.students.splice(index, 1);
+								this.host.settings.members.splice(index, 1);
 								await this.host.saveSettings();
 								this.host.requestApply();
 								this.display();
@@ -473,20 +473,20 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 					),
 			);
 
-		this.studentField(card, t("settings.name"), st, "studentName", t("common.student_a"));
-		this.studentField(card, t("settings.student_id"), st, "studentId", "student_a");
+		this.memberField(card, t("settings.name"), st, "memberName", t("common.student_a"));
+		this.memberField(card, t("settings.student_id"), st, "memberId", "student_a");
 		// 비우면 초대 시점에 학생 ID로 자동 채움 (계정=ID, DB=mirror_<ID>, 폴더=이름/ID)
-		this.studentField(card, t("settings.mirror_db_auto_if_empty"), st, "remoteDb", t("settings.mirror_studentid"));
-		this.studentField(card, t("settings.folder_auto_if_empty"), st, "localRoot", t("settings.name_or_studentid"));
+		this.memberField(card, t("settings.mirror_db_auto_if_empty"), st, "remoteDb", t("settings.mirror_studentid"));
+		this.memberField(card, t("settings.folder_auto_if_empty"), st, "localRoot", t("settings.name_or_studentid"));
 
 		card.createEl("div", {
-			cls: "class-sync-student-status",
+			cls: "covault-student-status",
 			text: st.provisioned ? t("settings.status_provisioned") : t("settings.status_not_provisioned_pressing_invite_creates"),
 		});
 	}
 
-	// --- Student Mode ---
-	private renderStudent(s: ClassSyncSettings): void {
+	// --- Member Mode ---
+	private renderMember(s: CoVaultSettings): void {
 		const invite = this.group(t("settings.connect_via_invite"), t("settings.scan_the_qr_from_your_teacher"));
 		let codeValue = "";
 		invite.addSetting((set) =>
@@ -507,7 +507,7 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 		// 친화적 요약(내부 용어 최소화). 자세한 실시간 상태는 패널 ‘동기화 상태’ 탭에서.
 		const info = this.group(t("panel.my_connection"), t("panel.see_detailed_sync_status_in_the"));
 		this.readonlySetting(info, t("settings.name"), s.displayName || t("settings.not_set"));
-		this.readonlySetting(info, t("settings.class_id"), s.classId || t("settings.not_set"));
+		this.readonlySetting(info, t("settings.class_id"), s.workspaceId || t("settings.not_set"));
 		info.addSetting((set) =>
 			set
 				.setName(t("panel.check_connection"))
@@ -525,7 +525,7 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 	}
 
 	// --- 공통: 동기화 옵션 ---
-	private renderSyncOptions(s: ClassSyncSettings): void {
+	private renderSyncOptions(s: CoVaultSettings): void {
 		const g = this.group(t("settings.sync"));
 
 		g.addSetting((set) =>
@@ -602,7 +602,7 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 						.addOption("ignore-delete", t("settings.ignore_deletion"))
 						.setValue(s.deletePolicy)
 						.onChange(async (v) => {
-							s.deletePolicy = v as ClassSyncSettings["deletePolicy"];
+							s.deletePolicy = v as CoVaultSettings["deletePolicy"];
 							await this.host.saveSettings();
 						}),
 				),
@@ -741,11 +741,11 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 		);
 	}
 
-	private renderApplyAndReset(s: ClassSyncSettings): void {
+	private renderApplyAndReset(s: CoVaultSettings): void {
 		const g = this.group(t("common.reset_2"));
 
 		// 서버 데이터 초기화 — 교사 전용, 파괴적. 백엔드를 처음 상태로.
-		if (s.role === "teacher") {
+		if (s.role === "manager") {
 			g.addSetting((set) =>
 				set
 					.setName(t("settings.reset_server_data"))
@@ -788,7 +788,7 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 		return true;
 	}
 
-	private studentField(card: HTMLElement, name: string, st: StudentConfig, key: keyof StudentConfig, placeholder: string): void {
+	private memberField(card: HTMLElement, name: string, st: MemberConfig, key: keyof MemberConfig, placeholder: string): void {
 		new Setting(card).setName(name).addText((t) => {
 			t.setPlaceholder(placeholder)
 				.setValue(String(st[key] ?? ""))
@@ -806,7 +806,7 @@ export class ClassSyncSettingTab extends PluginSettingTab {
 	private textSetting(
 		group: SettingGroup,
 		name: string,
-		key: keyof ClassSyncSettings,
+		key: keyof CoVaultSettings,
 		placeholder: string,
 		opts?: { applyOnBlur?: boolean },
 	): void {

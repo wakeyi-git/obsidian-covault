@@ -26,8 +26,8 @@ import { t } from "../../i18n";
  *  - 이후: 저장된 local seq부터 증분 적용 + 상시 replication
  */
 export interface MirrorSyncOptions {
-	studentId: string;
-	studentName: string;
+	memberId: string;
+	memberName: string;
 	localRoot: string;
 	remoteDb: string;
 	childRoots?: string[];
@@ -52,8 +52,8 @@ export class MirrorSync {
 		const remoteDb = opts.remoteDb;
 		this.ctx = new MirrorContext(
 			core,
-			opts.studentId,
-			opts.studentName,
+			opts.memberId,
+			opts.memberName,
 			opts.localRoot,
 			remoteDb,
 			opts.pouch ?? core.createPouch(remoteDb),
@@ -70,15 +70,15 @@ export class MirrorSync {
 
 	/** 이 링크의 라벨(학생 식별). */
 	get label(): string {
-		return this.ctx.studentId || this.ctx.remoteDb;
+		return this.ctx.memberId || this.ctx.remoteDb;
 	}
 
 	// 대시보드용 정보 노출
-	get studentId(): string {
-		return this.ctx.studentId;
+	get memberId(): string {
+		return this.ctx.memberId;
 	}
-	get studentName(): string {
-		return this.ctx.studentName;
+	get memberName(): string {
+		return this.ctx.memberName;
 	}
 	get remoteDb(): string {
 		return this.ctx.remoteDb;

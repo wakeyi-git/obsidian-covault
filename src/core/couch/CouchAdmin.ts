@@ -72,7 +72,7 @@ export class CouchAdmin {
 	 * 학생 프로비저닝(멱등). 계정/DB/권한을 보장한다.
 	 * 이미 있는 계정은 비밀번호를 갱신한다(초대 재발급).
 	 */
-	async provisionStudent(opts: {
+	async provisionMember(opts: {
 		username: string;
 		password: string;
 		remoteDb: string;

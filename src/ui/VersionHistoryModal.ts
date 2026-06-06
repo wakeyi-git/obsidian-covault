@@ -2,7 +2,7 @@ import { App, Modal, Notice, Setting } from "obsidian";
 import { VersionDoc, VersionKind } from "../core/model/types";
 import { t, formatDate } from "../i18n";
 
-/** 버전 히스토리가 의존하는 호스트 동작. ClassSyncPlugin이 구현. */
+/** 버전 히스토리가 의존하는 호스트 동작. CoVaultPlugin이 구현. */
 export interface VersionHistoryHost {
 	versionHistoryFor(localPath: string): Promise<VersionDoc[]>;
 	restoreVersion(localPath: string, versionDocId: string, opts: { backupCurrent?: boolean }): Promise<"restored" | "missing">;
@@ -56,10 +56,10 @@ export class VersionHistoryModal extends Modal {
 			return;
 		}
 
-		const list = contentEl.createDiv({ cls: "class-sync-version-list" });
+		const list = contentEl.createDiv({ cls: "covault-version-list" });
 		for (const v of versions) {
-			const card = list.createDiv({ cls: "class-sync-version-card" });
-			const who = v.role === "teacher" ? t("common.teacher") : t("common.student");
+			const card = list.createDiv({ cls: "covault-version-card" });
+			const who = v.role === "manager" ? t("common.teacher") : t("common.student");
 			new Setting(card)
 				.setName(formatDate(v.createdAtMs))
 				.setDesc(t("version.msg", { kind: kindLabel(v.kind), who, by: v.createdBy, device: v.deviceId.slice(0, 6) }))
@@ -73,7 +73,7 @@ export class VersionHistoryModal extends Modal {
 				.addButton((b) => b.setButtonText(t("version.back_up_current_then_restore")).onClick(() => this.restore(v, true)));
 
 			if (this.expanded === v._id) {
-				card.createEl("pre", { cls: "class-sync-version-preview", text: v.content });
+				card.createEl("pre", { cls: "covault-version-preview", text: v.content });
 			}
 		}
 	}

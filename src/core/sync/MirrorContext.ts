@@ -25,7 +25,7 @@ export interface LinkStatus {
  *
  * 경로 매핑, vault 입출력, NoteDoc 빌드, 동기화 상태(syncState)와 changes 체크포인트(lastSeq)를
  * 한곳에서 다룬다. Applier/Watcher/Subscriber/FullSync가 공유한다.
- * Phase 2에서 Teacher는 학생마다 이 컨텍스트를 하나씩 갖는다.
+ * Phase 2에서 Manager는 학생마다 이 컨텍스트를 하나씩 갖는다.
  */
 export class MirrorContext {
 	/** 이 링크의 실시간 상태(대시보드용). 컴포넌트들이 직접 갱신한다. */
@@ -36,8 +36,8 @@ export class MirrorContext {
 
 	constructor(
 		public readonly core: CoreServices,
-		public readonly studentId: string,
-		public readonly studentName: string,
+		public readonly memberId: string,
+		public readonly memberName: string,
 		public readonly localRoot: string,
 		public readonly remoteDb: string,
 		public readonly pouch: PouchService,
@@ -149,7 +149,7 @@ export class MirrorContext {
 
 	/** 충돌 원격본의 상대방 라벨: 교사 입장=학생 이름, 학생 입장=교사. */
 	conflictPeerLabel(): string {
-		if (this.settings.role === "teacher") return this.studentName || this.studentId || t("common.student");
+		if (this.settings.role === "manager") return this.memberName || this.memberId || t("common.student");
 		return t("common.teacher");
 	}
 
@@ -248,8 +248,8 @@ export class MirrorContext {
 			_id: `note:${dbPath}`,
 			type: "note",
 			schemaVersion: 1,
-			classId: s.classId,
-			studentId: this.studentId,
+			workspaceId: s.workspaceId,
+			memberId: this.memberId,
 			path: dbPath,
 			content,
 			contentHash: await sha256(content),
@@ -271,8 +271,8 @@ export class MirrorContext {
 			_id: assetId(dbPath),
 			type: "asset",
 			schemaVersion: 1,
-			classId: s.classId,
-			studentId: this.studentId,
+			workspaceId: s.workspaceId,
+			memberId: this.memberId,
 			path: dbPath,
 			mime: mimeFor(dbPath),
 			size: data.byteLength,

@@ -1,11 +1,11 @@
-import { ClassSyncSettings } from "./types";
+import { CoVaultSettings } from "./types";
 import { foldersOverlap, isValidCouchName } from "../core/path/path";
 
 export type IssueCode =
-	| "dup-studentId"
+	| "dup-memberId"
 	| "dup-username"
 	| "dup-remoteDb"
-	| "bad-studentId"
+	| "bad-memberId"
 	| "bad-username"
 	| "bad-remoteDb"
 	| "bad-shareDb"
@@ -32,13 +32,13 @@ function duplicates(values: string[]): string[] {
  * 설정의 위험/모순 상태를 코드로 반환(순수 함수, i18n은 UI에서). 초대/배포 전 막는 데 쓴다.
  * error=데이터 무결성 위험(중복 식별자), warn=권장 위반(겹침/URL/실시간 누락).
  */
-export function validateSettings(s: ClassSyncSettings): SettingsIssue[] {
+export function validateSettings(s: CoVaultSettings): SettingsIssue[] {
 	const issues: SettingsIssue[] = [];
 
-	if (s.role === "teacher") {
-		const st = s.students;
-		for (const id of duplicates(st.map((x) => x.studentId).filter((v): v is string => !!v)))
-			issues.push({ level: "error", code: "dup-studentId", params: { value: id } });
+	if (s.role === "manager") {
+		const st = s.members;
+		for (const id of duplicates(st.map((x) => x.memberId).filter((v): v is string => !!v)))
+			issues.push({ level: "error", code: "dup-memberId", params: { value: id } });
 		for (const u of duplicates(st.map((x) => x.username).filter((v): v is string => !!v)))
 			issues.push({ level: "error", code: "dup-username", params: { value: u } });
 		for (const db of duplicates(st.map((x) => x.remoteDb).filter((v): v is string => !!v)))
@@ -46,8 +46,8 @@ export function validateSettings(s: ClassSyncSettings): SettingsIssue[] {
 
 		// CouchDB 이름 형식(소문자·숫자·_·-). 값이 있을 때만 검사 — 프로비저닝 전에 막는다.
 		for (const x of st) {
-			if (x.studentId && !isValidCouchName(x.studentId))
-				issues.push({ level: "error", code: "bad-studentId", params: { value: x.studentId } });
+			if (x.memberId && !isValidCouchName(x.memberId))
+				issues.push({ level: "error", code: "bad-memberId", params: { value: x.memberId } });
 			if (x.username && !isValidCouchName(x.username))
 				issues.push({ level: "error", code: "bad-username", params: { value: x.username } });
 			if (x.remoteDb && !isValidCouchName(x.remoteDb))
@@ -59,7 +59,7 @@ export function validateSettings(s: ClassSyncSettings): SettingsIssue[] {
 
 		// 학생 폴더 간 + 학생↔공유 폴더 겹침(이중 동기화 혼란 방지)
 		const folders = [
-			...st.map((x) => ({ label: x.studentName || x.studentId, path: x.localRoot })),
+			...st.map((x) => ({ label: x.memberName || x.memberId, path: x.localRoot })),
 			...s.sharedSpaces.map((sp) => ({ label: sp.name || sp.id, path: sp.folder })),
 		].filter((f) => f.path);
 		for (let i = 0; i < folders.length; i++)

@@ -15,17 +15,17 @@ export class DeletedRecoverySection implements PanelSection {
 	constructor(private host: PanelHost) {}
 
 	render(container: HTMLElement): void {
-		container.addClass("class-sync-panel-section");
-		container.addClass("class-sync-recovery");
+		container.addClass("covault-panel-section");
+		container.addClass("covault-recovery");
 
-		const toolbar = container.createDiv({ cls: "class-sync-recovery-toolbar" });
+		const toolbar = container.createDiv({ cls: "covault-recovery-toolbar" });
 		panelButton(toolbar, t("common.refresh"), () => void this.renderList());
 		toolbar.createDiv({
-			cls: "class-sync-panel-hint",
+			cls: "covault-panel-hint",
 			text: t("recovery.restore_deleted_files_to_their_original"),
 		});
 
-		this.listEl = container.createDiv({ cls: "class-sync-recovery-list" });
+		this.listEl = container.createDiv({ cls: "covault-recovery-list" });
 		void this.renderList();
 	}
 
@@ -46,34 +46,34 @@ export class DeletedRecoverySection implements PanelSection {
 
 		// 1) 삭제/수정 충돌(있을 때만, 가장 위 — 사용자 판단 필요).
 		if (conflicts.length > 0) {
-			this.listEl.createDiv({ cls: "class-sync-recovery-group is-conflict", text: t("recovery.delete_modify_conflicts") });
+			this.listEl.createDiv({ cls: "covault-recovery-group is-conflict", text: t("recovery.delete_modify_conflicts") });
 			for (const c of conflicts) this.renderConflictRow(c);
 		}
 
 		// 2) 삭제된 파일.
-		this.listEl.createDiv({ cls: "class-sync-recovery-group", text: t("recovery.deleted_files") });
+		this.listEl.createDiv({ cls: "covault-recovery-group", text: t("recovery.deleted_files") });
 		if (items.length === 0) {
-			this.listEl.createDiv({ cls: "class-sync-recovery-empty", text: t("recovery.no_deleted_files") });
+			this.listEl.createDiv({ cls: "covault-recovery-empty", text: t("recovery.no_deleted_files") });
 		} else {
 			for (const it of items) this.renderRow(it);
 		}
 
 		// 3) 최근 영구 삭제(되돌리기).
 		if (purges.length > 0) {
-			this.listEl.createDiv({ cls: "class-sync-recovery-group", text: t("recovery.recently_purged") });
+			this.listEl.createDiv({ cls: "covault-recovery-group", text: t("recovery.recently_purged") });
 			for (const p of purges) this.renderPurgeRow(p);
 		}
 	}
 
 	private renderConflictRow(c: DeleteModifyRow): void {
 		if (!this.listEl) return;
-		const card = this.listEl.createDiv({ cls: "class-sync-recovery-card is-conflict" });
-		card.createDiv({ cls: "class-sync-recovery-path", text: c.dbPath });
+		const card = this.listEl.createDiv({ cls: "covault-recovery-card is-conflict" });
+		card.createDiv({ cls: "covault-recovery-path", text: c.dbPath });
 		card.createDiv({
-			cls: "class-sync-recovery-meta",
+			cls: "covault-recovery-meta",
 			text: t("recovery.you_deleted_this_but_another_device"),
 		});
-		const actions = card.createDiv({ cls: "class-sync-recovery-actions" });
+		const actions = card.createDiv({ cls: "covault-recovery-actions" });
 		panelButton(actions, t("recovery.keep_remote_edit"), () => this.resolveConflict(c, "keep-remote"), { cta: true });
 		panelButton(actions, t("recovery.keep_edit_as_copy_then_delete"), () => this.resolveConflict(c, "keep-both"));
 		panelButton(actions, t("recovery.apply_my_delete"), () => this.resolveConflict(c, "delete"), { warning: true });
@@ -86,17 +86,17 @@ export class DeletedRecoverySection implements PanelSection {
 
 	private renderPurgeRow(p: PurgeRow): void {
 		if (!this.listEl) return;
-		const card = this.listEl.createDiv({ cls: "class-sync-recovery-card" });
-		card.createDiv({ cls: "class-sync-recovery-path", text: p.dbPath });
+		const card = this.listEl.createDiv({ cls: "covault-recovery-card" });
+		card.createDiv({ cls: "covault-recovery-path", text: p.dbPath });
 		card.createDiv({
-			cls: "class-sync-recovery-meta",
+			cls: "covault-recovery-meta",
 			text: t("recovery.permanently_deleted_2", { when: formatDate(p.purgedAt) }),
 		});
-		const actions = card.createDiv({ cls: "class-sync-recovery-actions" });
+		const actions = card.createDiv({ cls: "covault-recovery-actions" });
 		if (p.recoverable) {
 			panelButton(actions, t("panel.reopen"), () => this.undoPurge(p), { cta: true });
 		} else {
-			card.createDiv({ cls: "class-sync-recovery-note", text: t("recovery.nothing_to_undo_attachment_binary_not") });
+			card.createDiv({ cls: "covault-recovery-note", text: t("recovery.nothing_to_undo_attachment_binary_not") });
 		}
 		panelButton(actions, t("recovery.remove_from_list"), async () => {
 			await this.host.clearPurge(p.remoteDb, p.id);
@@ -113,28 +113,28 @@ export class DeletedRecoverySection implements PanelSection {
 
 	private renderRow(it: DeletedItem): void {
 		if (!this.listEl) return;
-		const card = this.listEl.createDiv({ cls: "class-sync-recovery-card" });
+		const card = this.listEl.createDiv({ cls: "covault-recovery-card" });
 
-		const head = card.createDiv({ cls: "class-sync-recovery-head" });
-		head.createSpan({ cls: "class-sync-recovery-path", text: it.dbPath });
+		const head = card.createDiv({ cls: "covault-recovery-head" });
+		head.createSpan({ cls: "covault-recovery-path", text: it.dbPath });
 		head.createSpan({
-			cls: `class-sync-recovery-badge${it.recoverable ? " is-ok" : " is-warn"}`,
+			cls: `covault-recovery-badge${it.recoverable ? " is-ok" : " is-warn"}`,
 			text: it.kind === "asset" ? t("recovery.attachment") : t("recovery.note"),
 		});
 
-		const who = it.deletedByRole === "teacher" ? t("common.teacher") : t("common.student");
+		const who = it.deletedByRole === "manager" ? t("common.teacher") : t("common.student");
 		const when = it.deletedAt ? formatDate(new Date(it.deletedAt)) : t("recovery.time_unknown");
 		card.createDiv({
-			cls: "class-sync-recovery-meta",
+			cls: "covault-recovery-meta",
 			text: t("recovery.deleted_by", { who, by: it.deletedBy ?? "", when }),
 		});
 
-		const actions = card.createDiv({ cls: "class-sync-recovery-actions" });
+		const actions = card.createDiv({ cls: "covault-recovery-actions" });
 		if (it.recoverable) {
 			panelButton(actions, t("recovery.restore_to_original_location"), () => this.restore(it), { cta: true });
 		} else {
 			card.createDiv({
-				cls: "class-sync-recovery-note",
+				cls: "covault-recovery-note",
 				text:
 					it.kind === "asset"
 						? t("recovery.cannot_recover_attachment_binary_is_gone")

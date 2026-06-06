@@ -11,7 +11,7 @@ export class PresenceChips {
 	private handler: () => void;
 
 	constructor(container: HTMLElement, private awareness: Awareness) {
-		this.el = container.createDiv({ cls: "class-sync-presence" });
+		this.el = container.createDiv({ cls: "covault-presence" });
 		this.handler = () => this.render();
 		this.awareness.on("change", this.handler);
 		this.render();
@@ -24,8 +24,8 @@ export class PresenceChips {
 			if (clientId === this.awareness.clientID) return; // 자기 자신 제외
 			const user = state?.user;
 			if (!user) return;
-			const chip = this.el.createDiv({ cls: "class-sync-presence-chip" });
-			const dot = chip.createSpan({ cls: "class-sync-presence-dot" });
+			const chip = this.el.createDiv({ cls: "covault-presence-chip" });
+			const dot = chip.createSpan({ cls: "covault-presence-dot" });
 			dot.style.backgroundColor = clientColor(String(clientId));
 			chip.createSpan({ text: (user.name as string) || "?" });
 			count++;

@@ -30,9 +30,9 @@ export class VersionHistorySection implements PanelSection {
 	constructor(private host: PanelHost) {}
 
 	render(container: HTMLElement): void {
-		container.addClass("class-sync-panel-section");
-		container.addClass("class-sync-version");
-		this.listEl = container.createDiv({ cls: "class-sync-version-list" });
+		container.addClass("covault-panel-section");
+		container.addClass("covault-version");
+		this.listEl = container.createDiv({ cls: "covault-version-list" });
 
 		this.refs.push(this.host.app.workspace.on("active-leaf-change", () => void this.renderList()));
 		this.refs.push(this.host.app.workspace.on("file-open", () => void this.renderList()));
@@ -54,7 +54,7 @@ export class VersionHistorySection implements PanelSection {
 		const writeEmpty = (text: string): void => {
 			if (seq !== this.renderSeq || !this.listEl) return;
 			this.listEl.empty();
-			this.listEl.createDiv({ cls: "class-sync-version-empty", text });
+			this.listEl.createDiv({ cls: "covault-version-empty", text });
 		};
 
 		if (!file || file.extension !== "md") {
@@ -72,10 +72,10 @@ export class VersionHistorySection implements PanelSection {
 		if (seq !== this.renderSeq || !this.listEl) return;
 		this.listEl.empty();
 
-		this.listEl.createDiv({ cls: "class-sync-version-target", text: file.path });
+		this.listEl.createDiv({ cls: "covault-version-target", text: file.path });
 		if (versions.length === 0) {
 			this.listEl.createDiv({
-				cls: "class-sync-version-empty",
+				cls: "covault-version-empty",
 				text: t("version.no_saved_versions_recorded_on_edit"),
 			});
 			return;
@@ -85,19 +85,19 @@ export class VersionHistorySection implements PanelSection {
 
 	private renderRow(localPath: string, v: VersionDoc): void {
 		if (!this.listEl) return;
-		const card = this.listEl.createDiv({ cls: "class-sync-version-card" });
+		const card = this.listEl.createDiv({ cls: "covault-version-card" });
 
-		const head = card.createDiv({ cls: "class-sync-version-head" });
-		head.createSpan({ cls: "class-sync-version-time", text: formatDate(v.createdAtMs) });
-		head.createSpan({ cls: "class-sync-version-badge", text: kindLabel(v.kind) });
+		const head = card.createDiv({ cls: "covault-version-head" });
+		head.createSpan({ cls: "covault-version-time", text: formatDate(v.createdAtMs) });
+		head.createSpan({ cls: "covault-version-badge", text: kindLabel(v.kind) });
 
-		const who = v.role === "teacher" ? t("common.teacher") : t("common.student");
+		const who = v.role === "manager" ? t("common.teacher") : t("common.student");
 		card.createDiv({
-			cls: "class-sync-version-meta",
+			cls: "covault-version-meta",
 			text: t("version.msg_2", { who, by: v.createdBy, device: v.deviceId.slice(0, 6) }),
 		});
 
-		const actions = card.createDiv({ cls: "class-sync-version-actions" });
+		const actions = card.createDiv({ cls: "covault-version-actions" });
 		panelButton(actions, this.expanded === v._id ? t("version.close_preview") : t("deploy.preview"), () => {
 			this.expanded = this.expanded === v._id ? null : v._id;
 			void this.renderList();
@@ -106,7 +106,7 @@ export class VersionHistorySection implements PanelSection {
 		panelButton(actions, t("version.back_up_current_then_restore"), () => this.restore(localPath, v, true));
 
 		if (this.expanded === v._id) {
-			card.createEl("pre", { cls: "class-sync-version-preview", text: v.content });
+			card.createEl("pre", { cls: "covault-version-preview", text: v.content });
 		}
 	}
 

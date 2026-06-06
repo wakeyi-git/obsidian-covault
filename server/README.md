@@ -1,11 +1,11 @@
-# Class Sync — server setup
+# CoVault — server setup
 
 > 🌐 **한국어**: [`README.ko.md`](README.ko.md)
 
 Setting up the servers is the biggest hurdle for new users, so this guide is deliberately step-by-step. If you can
 copy-paste a few commands (or click through a NAS UI), you can do this. **You only set this up once.**
 
-Class Sync needs **two independent servers**:
+CoVault needs **two independent servers**:
 
 - **CouchDB** — the central database for file sync. **Required.**
 - **Yjs WebSocket server** — for realtime character-level co-editing. **Optional** — set it up later, only if you want
@@ -48,8 +48,8 @@ The plugin talks to two independent endpoints and is the only thing that bridges
 ```
             ┌──────────────── CouchDB   (PouchDB HTTP/HTTPS replication)
 plugin      │
-(teacher/   ├──────────────── Yjs server (WebSocket / WSS)
- students)  │
+(manager/   ├──────────────── Yjs server (WebSocket / WSS)
+ members)  │
             └─ realtime snapshots are written by the plugin → CouchDB
 ```
 
@@ -59,7 +59,7 @@ plugin      │
 - So **CouchDB and the Yjs server have no co-location requirement**: different hosts, providers, or regions are fine.
   Bundling them on one box is purely an operational convenience (one machine, one reverse proxy).
 - The hard constraints are **reachability** (every client must reach both over the internet — neither can sit on a
-  LAN-only address if remote students need it), **HTTPS/WSS** (mobile requires secure transport), and **`YJS_SECRET`
+  LAN-only address if remote members need it), **HTTPS/WSS** (mobile requires secure transport), and **`YJS_SECRET`
   parity** between the Yjs server and the plugin setting.
 
 ---
@@ -128,9 +128,9 @@ couch.example.com {
 Then `sudo systemctl reload caddy`. Within a minute Caddy fetches a certificate.
 
 **6. Test from anywhere:** open `https://couch.example.com/_up` in a browser → `{"status":"ok"}`. Done — use
-`https://couch.example.com` as the **CouchDB URL** in the plugin (Teacher Mode), with `admin` / your password.
+`https://couch.example.com` as the **CouchDB URL** in the plugin (Manager Mode), with `admin` / your password.
 
-> The plugin creates all student accounts, databases, and permissions for you. You do **not** create any databases by
+> The plugin creates all member accounts, databases, and permissions for you. You do **not** create any databases by
 > hand — just hand it the URL and admin credentials.
 
 ## Walkthrough B — CouchDB on a Synology NAS
@@ -171,13 +171,13 @@ plugin.
 Whichever route you take, the same four essentials apply:
 
 - **Persistent storage** mounted at `/opt/couchdb/data` — always a real volume/folder, never an ephemeral container
-  layer, or student data is lost on redeploy. A classroom is small; a few GB is usually enough (size up if you sync
+  layer, or member data is lost on redeploy. A organization is small; a few GB is usually enough (size up if you sync
   many large attachments).
 - **HTTPS in front.** Obsidian mobile only connects over `https://`. Use a reverse proxy with a Let's Encrypt
   certificate, or a platform that provides TLS automatically.
-- **A strong admin password,** used by the plugin **only on the teacher's device** to provision students. Students get
+- **A strong admin password,** used by the plugin **only on the manager's device** to provision members. Members get
   their own least-privilege accounts — never share admin credentials with them.
-- **Modest specs.** Single-node CouchDB is light — **1 vCPU / 1 GB RAM** comfortably handles a class; no clustering
+- **Modest specs.** Single-node CouchDB is light — **1 vCPU / 1 GB RAM** comfortably handles a workspace; no clustering
   needed. The official `couchdb:3` image is multi-arch (x86-64 **and** arm64 / Raspberry Pi).
 
 ## CouchDB hosting options
@@ -194,7 +194,7 @@ CouchDB is standard software — the plugin only needs an HTTPS URL + admin acco
   Schedule **backups of the data folder.** Uptime depends on your power and internet.
 
 **② Cloud VPS + Docker (Hetzner, DigitalOcean, Vultr, Linode, AWS Lightsail, Oracle Cloud Always-Free)**
-- *Good for:* remote students, no static home IP, or you just want a reliable public IP, and don't mind a Linux box.
+- *Good for:* remote members, no static home IP, or you just want a reliable public IP, and don't mind a Linux box.
 - *Setup:* see Walkthrough A — smallest tier (1 vCPU / 1–2 GB), Docker + a localhost-bound CouchDB + Caddy for HTTPS.
 - *Cost:* a small VPS ≈ a few USD/month (Hetzner is cheapest); **Oracle Cloud Always-Free** can be $0 on an ARM Ampere
   instance (signup quotas/availability vary by region).
@@ -234,8 +234,8 @@ Set it up *after* CouchDB is working. The runtime files live in [`yjs/`](yjs/):
 
 **1. Get the files onto the server** (clone the repo, or copy the `server/yjs/` folder):
 ```bash
-git clone https://github.com/wakeyi-git/obsidian-class-sync.git
-cd obsidian-class-sync/server/yjs
+git clone https://github.com/wakeyi-git/obsidian-covault.git
+cd obsidian-covault/server/yjs
 ```
 
 **2. Set a secret and start it.** Generate a long random `YJS_SECRET` (this is the HMAC key; you'll paste the same
@@ -261,7 +261,7 @@ Sanity check on the LAN: `http://<host>:1234` → `Yjs WebSocket server OK`. (Th
 
 **4. Configure the plugin.** Settings → **Yjs server URL** = `wss://yjs.example.com`, **Yjs space secret (HMAC)** = the
 exact `YJS_SECRET` value. Enable realtime, then **deploy** a shared space — per-space signed tokens are issued to
-students automatically.
+members automatically.
 
 ## Make it safe (required for real use)
 
@@ -285,16 +285,16 @@ This is **your own server (`yjs/`)**, not a generic Yjs service. Wherever you ru
   authoritative copy still lands in CouchDB via the plugin's snapshots; the LevelDB cache just smooths restarts.)
 - **WSS termination + WebSocket pass-through** — the proxy must forward `Upgrade`/`Connection` and allow long-lived
   connections (raise read timeouts).
-- **Tiny specs.** y-websocket keeps active docs in memory; **1 vCPU / 512 MB–1 GB** is plenty for a classroom.
+- **Tiny specs.** y-websocket keeps active docs in memory; **1 vCPU / 512 MB–1 GB** is plenty for a organization.
 
 ## Yjs hosting options
 
 **① Same box as CouchDB** — *simplest to operate.* One machine, one reverse proxy with two routes (a `couch.`
 subdomain → `5984`, a `yjs.` subdomain → `1234`). Realtime traffic is bursty WebSocket while CouchDB is plain HTTP; at
-classroom load they coexist comfortably on a 1–2 GB box.
+organization load they coexist comfortably on a 1–2 GB box.
 
 **② Cloud VPS / home server (separate from CouchDB)** — same steps as the walkthrough, on its own host. A
-512 MB–1 GB instance is enough. Good when you want realtime isolated from file sync, or in a region closer to students.
+512 MB–1 GB instance is enough. Good when you want realtime isolated from file sync, or in a region closer to members.
 
 **③ PaaS (Railway / Render / Fly.io)** — deploy the `yjs/` image with a **persistent volume** for `/data`. Confirm the
 plan is **always-on (no scale-to-zero)** and passes WebSockets through; otherwise idle sessions get dropped. TLS and a
@@ -346,7 +346,7 @@ Keep query strings out of edge logging/analytics so `?token=` isn't retained.
 
 **Tailscale Funnel** — publicly expose a tailnet node over TLS via its `*.ts.net` hostname, again with no
 port-forwarding. Note Funnel only serves a fixed set of ports (443 / 8443 / 10000) and has bandwidth limits — fine for
-a class, not heavy public traffic.
+a workspace, not heavy public traffic.
 
 **Traefik** — container auto-discovery + Let's Encrypt; convenient when you run several services and prefer routing by
 labels over hand-written vhosts.
@@ -371,10 +371,10 @@ labels over hand-written vhosts.
 
 ## Security checklist
 
-Before a real classroom:
+Before a real organization:
 
 - [ ] CouchDB is **only** reachable over HTTPS; the raw `5984` port is not published to the internet.
-- [ ] The admin password is strong and lives **only on the teacher's device** — students never receive it.
+- [ ] The admin password is strong and lives **only on the manager's device** — members never receive it.
 - [ ] `YJS_SECRET` is a fresh random value (not the placeholder), identical on the server and in the plugin.
 - [ ] The reverse proxy/CDN **does not log `?token=`** query strings.
 - [ ] The CouchDB **data volume is backed up** on a schedule.

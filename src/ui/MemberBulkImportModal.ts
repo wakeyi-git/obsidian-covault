@@ -1,17 +1,17 @@
 import { App, Modal, Notice, Setting } from "obsidian";
-import { StudentConfig } from "../settings/types";
-import { parseStudentRoster, finalizeRoster, RosterEntry } from "../settings/studentRoster";
+import { MemberConfig } from "../settings/types";
+import { parseMemberRoster, finalizeRoster, RosterEntry } from "../settings/memberRoster";
 import { t } from "../i18n";
 
 /** 학생 명단 붙여넣기 → 미리보기(중복/조정 표시) → 일괄 추가. */
-export class StudentBulkImportModal extends Modal {
+export class MemberBulkImportModal extends Modal {
 	private text = "";
 	private previewEl: HTMLElement | null = null;
 
 	constructor(
 		app: App,
 		private existingIds: string[],
-		private onConfirm: (students: StudentConfig[]) => Promise<void>,
+		private onConfirm: (members: MemberConfig[]) => Promise<void>,
 	) {
 		super(app);
 	}
@@ -24,7 +24,7 @@ export class StudentBulkImportModal extends Modal {
 			text: t("settings.one_per_line_name_id_or"),
 		});
 
-		const ta = contentEl.createEl("textarea", { cls: "class-sync-backup-input" });
+		const ta = contentEl.createEl("textarea", { cls: "covault-backup-input" });
 		ta.rows = 8;
 		ta.placeholder = "홍길동,hong\n김학생 kim_student\n이영희";
 		ta.addEventListener("input", () => {
@@ -33,7 +33,7 @@ export class StudentBulkImportModal extends Modal {
 		});
 		window.setTimeout(() => ta.focus(), 0);
 
-		this.previewEl = contentEl.createDiv({ cls: "class-sync-bulk-preview" });
+		this.previewEl = contentEl.createDiv({ cls: "covault-bulk-preview" });
 		this.renderPreview();
 
 		new Setting(contentEl)
@@ -42,7 +42,7 @@ export class StudentBulkImportModal extends Modal {
 	}
 
 	private entries(): RosterEntry[] {
-		return finalizeRoster(parseStudentRoster(this.text), this.existingIds);
+		return finalizeRoster(parseMemberRoster(this.text), this.existingIds);
 	}
 
 	private renderPreview(): void {
@@ -51,10 +51,10 @@ export class StudentBulkImportModal extends Modal {
 		el.empty();
 		const list = this.entries();
 		const valid = list.filter((e) => !e.emptyName);
-		el.createDiv({ cls: "class-sync-panel-hint", text: t("settings.preview_students_to_add", { n: valid.length }) });
+		el.createDiv({ cls: "covault-panel-hint", text: t("settings.preview_students_to_add", { n: valid.length }) });
 		if (list.length === 0) return;
 
-		const table = el.createEl("table", { cls: "class-sync-dash-table" });
+		const table = el.createEl("table", { cls: "covault-dash-table" });
 		const tr = table.createEl("thead").createEl("tr");
 		for (const h of [t("settings.name"), t("settings.student_id"), t("panel.mirror_db"), t("settings.note")]) tr.createEl("th", { text: h });
 		const tb = table.createEl("tbody");
@@ -65,20 +65,20 @@ export class StudentBulkImportModal extends Modal {
 			row.createEl("td", { text: e.remoteDb });
 			const note = e.emptyName ? t("settings.no_name_excluded") : e.adjusted ? t("settings.id_adjusted") : "";
 			const n = row.createEl("td", { text: note });
-			if (e.emptyName) n.addClass("class-sync-dash-conflict");
+			if (e.emptyName) n.addClass("covault-dash-conflict");
 		}
 	}
 
 	private async confirm(): Promise<void> {
-		const students: StudentConfig[] = this.entries()
+		const members: MemberConfig[] = this.entries()
 			.filter((e) => !e.emptyName)
-			.map((e) => ({ studentId: e.id, studentName: e.name, remoteDb: e.remoteDb, localRoot: "", username: "" }));
-		if (students.length === 0) {
+			.map((e) => ({ memberId: e.id, memberName: e.name, remoteDb: e.remoteDb, localRoot: "", username: "" }));
+		if (members.length === 0) {
 			new Notice(t("settings.class_sync_no_students_to_add"));
 			return;
 		}
 		this.close();
-		await this.onConfirm(students);
+		await this.onConfirm(members);
 	}
 
 	onClose(): void {

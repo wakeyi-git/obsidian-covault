@@ -1,33 +1,33 @@
 import { App } from "obsidian";
 import { Logger } from "../../core/log/Logger";
 import { FeedbackStore } from "../../core/feedback/FeedbackStore";
-import { ClassSyncSettings, SharedSpace } from "../../settings/types";
+import { CoVaultSettings, SharedSpace } from "../../settings/types";
 import { LinkStatus } from "../../core/sync/MirrorContext";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "../../core/sync/RestoreManager";
 import { PurgeSnapshot } from "../../core/sync/recentPurge";
 import { DeleteModifyItem } from "../../core/sync/deleteModifyQueue";
 import { VersionDoc } from "../../core/model/types";
-import { CopyOptions, CopyResult, CopyPlan } from "../../modes/teacher/BulkCopy";
+import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
 export type PanelTab = "setup" | "feedback" | "deploy" | "sync" | "manage" | "recovery" | "history" | "log";
 
 /** 동기화 상태 표 한 행(링크별). */
 export interface DashboardRow extends LinkStatus {
-	studentName: string;
-	studentId: string;
+	memberName: string;
+	memberId: string;
 	remoteDb: string;
 	localRoot: string;
 	conflicts: number;
 }
 
 /**
- * 패널 섹션이 플러그인에 요구하는 동작 모음. ClassSyncPlugin이 구현한다.
+ * 패널 섹션이 플러그인에 요구하는 동작 모음. CoVaultPlugin이 구현한다.
  * 명령(cmd+P)과 패널 버튼이 같은 메서드를 공유한다.
  */
 export interface PanelHost {
 	app: App;
-	settings: ClassSyncSettings;
+	settings: CoVaultSettings;
 	logger: Logger;
 	feedbackStore: FeedbackStore;
 	getDashboardRows(): Promise<DashboardRow[]>;
@@ -71,13 +71,13 @@ export interface PanelHost {
 /** 링크 라벨이 붙은 삭제/수정 충돌 항목. */
 export interface DeleteModifyRow extends DeleteModifyItem {
 	remoteDb: string;
-	studentName: string;
+	memberName: string;
 }
 
 /** 링크 라벨이 붙은 최근 영구 삭제 스냅샷. */
 export interface PurgeRow extends PurgeSnapshot {
 	remoteDb: string;
-	studentName: string;
+	memberName: string;
 }
 
 /** 탭 콘텐츠 렌더러. 탭 전환 시 render→dispose 로 교체된다(구독·interval은 dispose에서 해제). */

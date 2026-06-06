@@ -33,7 +33,7 @@ function slug(name: string): string {
  * - `이름,ID` (쉼표) 또는 `이름 ID`(마지막 토큰이 ASCII id면 ID로) 또는 `이름`(ID 자동).
  * - 빈 줄·`#` 주석 줄은 건너뜀.
  */
-export function parseStudentRoster(text: string): RosterInput[] {
+export function parseMemberRoster(text: string): RosterInput[] {
 	const out: RosterInput[] = [];
 	for (const raw of text.split(/\r?\n/)) {
 		const line = raw.trim();
@@ -60,7 +60,7 @@ export function parseStudentRoster(text: string): RosterInput[] {
 }
 
 /**
- * 파싱 결과에 최종 ID를 부여한다. 명시 ID는 정규화, 없으면 이름 슬러그(없으면 'student').
+ * 파싱 결과에 최종 ID를 부여한다. 명시 ID는 정규화, 없으면 이름 슬러그(없으면 'member').
  * 기존 ID + 배치 내에서 고유하도록 `_2`, `_3` … 접미사. CouchDB DB명도 함께 만든다.
  */
 export function finalizeRoster(parsed: RosterInput[], existingIds: string[]): RosterEntry[] {
@@ -68,7 +68,7 @@ export function finalizeRoster(parsed: RosterInput[], existingIds: string[]): Ro
 	const out: RosterEntry[] = [];
 	for (const p of parsed) {
 		const name = p.name.trim();
-		const base = normId(p.id) || slug(name) || "student";
+		const base = normId(p.id) || slug(name) || "member";
 		let id = base;
 		let n = 2;
 		while (used.has(id)) id = `${base}_${n++}`;

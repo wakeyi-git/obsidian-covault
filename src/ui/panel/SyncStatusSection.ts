@@ -44,9 +44,9 @@ export class SyncStatusSection implements PanelSection {
 	constructor(private host: PanelHost) {}
 
 	render(container: HTMLElement): void {
-		container.addClass("class-sync-dashboard");
+		container.addClass("covault-dashboard");
 
-		const actions = container.createDiv({ cls: "class-sync-panel-actions" });
+		const actions = container.createDiv({ cls: "covault-panel-actions" });
 		panelButton(actions, t("panel.full_sync"), () => this.host.fullSync("both"), { cta: true });
 		panelButton(actions, t("panel.upload_only"), () => this.host.fullSync("up"));
 		panelButton(actions, t("panel.download_only"), () => this.host.fullSync("down"));
@@ -93,9 +93,9 @@ export class SyncStatusSection implements PanelSection {
 
 		if (rows.length === 0) {
 			wrap.createEl("p", {
-				cls: "class-sync-feedback-empty",
+				cls: "covault-feedback-empty",
 				text:
-					this.host.settings.role === "teacher"
+					this.host.settings.role === "manager"
 						? t("panel.no_students_to_sync_yet_add")
 						: t("panel.not_connected_yet_apply_the_qr"),
 			});
@@ -106,7 +106,7 @@ export class SyncStatusSection implements PanelSection {
 		this.renderBanner(wrap, summary);
 		this.renderActionCards(wrap, summary);
 
-		const table = wrap.createEl("table", { cls: "class-sync-dash-table" });
+		const table = wrap.createEl("table", { cls: "covault-dash-table" });
 		const thead = table.createEl("thead").createEl("tr");
 		for (const h of [
 			t("panel.target"),
@@ -125,7 +125,7 @@ export class SyncStatusSection implements PanelSection {
 		const tbody = table.createEl("tbody");
 		for (const r of rows) {
 			const tr = tbody.createEl("tr");
-			tr.createEl("td", { text: r.studentName || r.studentId || "—" });
+			tr.createEl("td", { text: r.memberName || r.memberId || "—" });
 			tr.createEl("td", { text: r.remoteDb });
 			const fTd = tr.createEl("td", { text: r.localRoot || t("panel.root") });
 			const children = computeChildRoots(r.localRoot, allRoots);
@@ -134,17 +134,17 @@ export class SyncStatusSection implements PanelSection {
 					"title",
 					t("panel.inside_this_folder_are_handled_by", { roots: children.join(", ") }),
 				);
-				fTd.createSpan({ cls: "class-sync-nested-tag", text: t("panel.nested", { n: children.length }) });
+				fTd.createSpan({ cls: "covault-nested-tag", text: t("panel.nested", { n: children.length }) });
 			}
 			tr.createEl("td", { text: fmtTime(r.lastUploadAt) });
 			tr.createEl("td", { text: fmtTime(r.lastDownloadAt) });
 			const cTd = tr.createEl("td", { text: String(r.conflicts) });
-			if (r.conflicts > 0) cTd.addClass("class-sync-dash-conflict");
+			if (r.conflicts > 0) cTd.addClass("covault-dash-conflict");
 			const sTd = tr.createEl("td");
 			sTd.createSpan({ text: stateLabel(r.state) });
 			if (r.state === "error" && r.lastError) {
 				sTd.setAttribute("title", r.lastError);
-				sTd.createDiv({ cls: "class-sync-dash-err", text: shortErr(r.lastError) });
+				sTd.createDiv({ cls: "covault-dash-err", text: shortErr(r.lastError) });
 			}
 		}
 
@@ -153,18 +153,18 @@ export class SyncStatusSection implements PanelSection {
 	}
 
 	private renderBanner(wrap: HTMLElement, s: SyncSummary): void {
-		const banner = wrap.createDiv({ cls: `class-sync-dash-banner is-${s.overall}` });
-		banner.createSpan({ cls: "class-sync-dash-banner-status", text: overallLabel(s.overall) });
+		const banner = wrap.createDiv({ cls: `covault-dash-banner is-${s.overall}` });
+		banner.createSpan({ cls: "covault-dash-banner-status", text: overallLabel(s.overall) });
 		const parts =
-			this.host.settings.role === "teacher"
+			this.host.settings.role === "manager"
 				? [
-						t("panel.students", { invited: s.invited, total: s.students }),
+						t("panel.students", { invited: s.invited, total: s.members }),
 						t("panel.shared", { n: s.shared }),
 						t("panel.conflicts_2", { n: s.conflicts }),
 					]
 				: [t("panel.shared", { n: s.shared }), t("panel.conflicts_2", { n: s.conflicts })];
 		if (s.lastSyncAt) parts.push(t("panel.last", { time: fmtTime(s.lastSyncAt) }));
-		banner.createSpan({ cls: "class-sync-dash-banner-meta", text: parts.join(" · ") });
+		banner.createSpan({ cls: "covault-dash-banner-meta", text: parts.join(" · ") });
 	}
 
 	private renderActionCards(wrap: HTMLElement, s: SyncSummary): void {
@@ -185,28 +185,28 @@ export class SyncStatusSection implements PanelSection {
 		if (s.autoSyncOff)
 			cards.push({ text: t("panel.auto_sync_is_off"), cta: t("panel.turn_on"), run: () => void this.host.toggleAutoSync() });
 		if (cards.length === 0) return;
-		const box = wrap.createDiv({ cls: "class-sync-dash-cards-actions" });
+		const box = wrap.createDiv({ cls: "covault-dash-cards-actions" });
 		for (const c of cards) {
-			const card = box.createDiv({ cls: `class-sync-action-card${c.warn ? " is-warn" : ""}` });
+			const card = box.createDiv({ cls: `covault-action-card${c.warn ? " is-warn" : ""}` });
 			card.createSpan({ text: c.text });
 			panelButton(card, c.cta, c.run);
 		}
 	}
 
 	private renderCards(wrap: HTMLElement, rows: DashboardRow[], allRoots: string[]): void {
-		const box = wrap.createDiv({ cls: "class-sync-dash-cards" });
+		const box = wrap.createDiv({ cls: "covault-dash-cards" });
 		for (const r of rows) {
-			const card = box.createDiv({ cls: "class-sync-dash-card" });
-			const head = card.createDiv({ cls: "class-sync-dash-card-head" });
-			head.createSpan({ cls: "class-sync-dash-card-name", text: r.studentName || r.studentId || "—" });
+			const card = box.createDiv({ cls: "covault-dash-card" });
+			const head = card.createDiv({ cls: "covault-dash-card-head" });
+			head.createSpan({ cls: "covault-dash-card-name", text: r.memberName || r.memberId || "—" });
 			head.createSpan({ text: stateLabel(r.state) });
-			const meta = card.createDiv({ cls: "class-sync-dash-card-meta" });
+			const meta = card.createDiv({ cls: "covault-dash-card-meta" });
 			meta.createSpan({ text: t("panel.received", { time: fmtTime(r.lastDownloadAt) }) });
 			const conf = meta.createSpan({ text: t("panel.conflicts_2", { n: r.conflicts }) });
-			if (r.conflicts > 0) conf.addClass("class-sync-dash-conflict");
+			if (r.conflicts > 0) conf.addClass("covault-dash-conflict");
 			const children = computeChildRoots(r.localRoot, allRoots);
-			if (children.length > 0) meta.createSpan({ cls: "class-sync-nested-tag", text: t("panel.nested", { n: children.length }) });
-			if (r.state === "error" && r.lastError) card.createDiv({ cls: "class-sync-dash-err", text: shortErr(r.lastError) });
+			if (children.length > 0) meta.createSpan({ cls: "covault-nested-tag", text: t("panel.nested", { n: children.length }) });
+			if (r.state === "error" && r.lastError) card.createDiv({ cls: "covault-dash-err", text: shortErr(r.lastError) });
 		}
 	}
 }

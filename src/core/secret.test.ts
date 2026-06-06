@@ -3,9 +3,9 @@ import {
 	getSecretValue,
 	setSecretValue,
 	hasSecretStorage,
-	getStudentPassword,
-	setStudentPassword,
-	studentPasswordId,
+	getMemberPassword,
+	setMemberPassword,
+	memberPasswordId,
 	COUCH_PASSWORD_ID,
 } from "./secret";
 
@@ -41,17 +41,17 @@ describe("secret storage helpers", () => {
 
 	it("학생별 비밀번호 키 + 라운드트립", () => {
 		const app = fakeApp();
-		setStudentPassword(app, "student_a", "pwA");
-		setStudentPassword(app, "student_b", "pwB");
-		expect(getStudentPassword(app, "student_a", "")).toBe("pwA");
-		expect(getStudentPassword(app, "student_b", "")).toBe("pwB");
+		setMemberPassword(app, "student_a", "pwA");
+		setMemberPassword(app, "student_b", "pwB");
+		expect(getMemberPassword(app, "student_a", "")).toBe("pwA");
+		expect(getMemberPassword(app, "student_b", "")).toBe("pwB");
 		// 키가 학생별로 분리됨
-		expect(app.secretStorage.listSecrets()).toContain(studentPasswordId("student_a"));
+		expect(app.secretStorage.listSecrets()).toContain(memberPasswordId("student_a"));
 	});
 
-	it("studentPasswordId 정규화(소문자-영숫자-대시)", () => {
-		expect(studentPasswordId("Student_A")).toBe("class-sync-student-pw-student-a");
-		expect(studentPasswordId("2024-001")).toBe("class-sync-student-pw-2024-001");
-		expect(studentPasswordId("  spaced id  ")).toBe("class-sync-student-pw-spaced-id");
+	it("memberPasswordId 정규화(소문자-영숫자-대시)", () => {
+		expect(memberPasswordId("Member_A")).toBe("covault-member-pw-member-a");
+		expect(memberPasswordId("2024-001")).toBe("covault-member-pw-2024-001");
+		expect(memberPasswordId("  spaced id  ")).toBe("covault-member-pw-spaced-id");
 	});
 });

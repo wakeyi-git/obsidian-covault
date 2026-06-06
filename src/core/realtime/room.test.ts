@@ -23,7 +23,7 @@ describe("roomName — 교사/학생 패리티", () => {
 	it("교사(folder='학생A')와 학생(folder='')이 같은 mirror room을 산출", () => {
 		const teacher = roomName("c1", "mirror-s1", "학생A/note.md", "학생A");
 		const student = roomName("c1", "mirror-s1", "note.md", "");
-		expect(teacher).toBe("class_c1/share/mirror-s1/note.md");
+		expect(teacher).toBe("ws_c1/share/mirror-s1/note.md");
 		expect(student).toBe(teacher);
 	});
 
@@ -34,7 +34,7 @@ describe("roomName — 교사/학생 패리티", () => {
 	});
 
 	it("공유 공간 room과 네임스페이스가 같음(서버 prefix 무변경)", () => {
-		expect(roomName("c1", "g1", "모둠1/x.md", "모둠1")).toBe("class_c1/share/g1/x.md");
+		expect(roomName("c1", "g1", "모둠1/x.md", "모둠1")).toBe("ws_c1/share/g1/x.md");
 	});
 
 	it("folder 밖이면 null", () => {

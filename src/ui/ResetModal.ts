@@ -19,7 +19,7 @@ export class ResetModal extends Modal {
 		const { contentEl } = this;
 		contentEl.createEl("h3", { text: t("reset.reset_server_data") });
 		contentEl.createEl("p", {
-			cls: "class-sync-reset-warn",
+			cls: "covault-reset-warn",
 			text: t("reset.this_permanently_deletes_all_student_and", {
 				count: this.dbCount,
 			}),

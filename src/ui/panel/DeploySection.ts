@@ -1,6 +1,6 @@
 import { Notice, Setting, TFile, TFolder } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
-import { ExistingPolicy, CopyResult, CopyPlan } from "../../modes/teacher/BulkCopy";
+import { ExistingPolicy, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 import { t } from "../../i18n";
 
 /** 배포 탭(교사) — 경로 선택 복사(현재 파일/폴더 빠른 입력) + 공유 공간 배포. 기술문서 §20. */
@@ -16,13 +16,13 @@ export class DeploySection implements PanelSection {
 	private lastResult: (CopyResult & { error?: string }) | null = null;
 
 	constructor(private host: PanelHost) {
-		for (const st of host.settings.students) if (st.studentId) this.selected.add(st.studentId);
+		for (const st of host.settings.members) if (st.memberId) this.selected.add(st.memberId);
 	}
 
 	render(container: HTMLElement): void {
 		this.container = container;
 		container.empty();
-		container.addClass("class-sync-panel-section");
+		container.addClass("covault-panel-section");
 
 		this.renderCopy(container);
 		this.renderShared(container);
@@ -36,11 +36,11 @@ export class DeploySection implements PanelSection {
 	// --- 학생에게 복사 ---
 
 	private renderCopy(container: HTMLElement): void {
-		container.createDiv({ cls: "class-sync-panel-label", text: t("deploy.copy_to_students") });
+		container.createDiv({ cls: "covault-panel-label", text: t("deploy.copy_to_students") });
 
-		const students = this.host.settings.students.filter((st) => st.studentId);
-		if (students.length === 0) {
-			container.createDiv({ cls: "class-sync-feedback-empty", text: t("deploy.add_students_in_settings_first") });
+		const members = this.host.settings.members.filter((st) => st.memberId);
+		if (members.length === 0) {
+			container.createDiv({ cls: "covault-feedback-empty", text: t("deploy.add_students_in_settings_first") });
 			return;
 		}
 
@@ -57,11 +57,11 @@ export class DeploySection implements PanelSection {
 					}),
 			);
 
-		const quick = container.createDiv({ cls: "class-sync-panel-actions" });
+		const quick = container.createDiv({ cls: "covault-panel-actions" });
 		panelButton(quick, t("deploy.current_file"), () => this.fillCurrent("file"));
 		panelButton(quick, t("deploy.current_folder"), () => this.fillCurrent("folder"));
 
-		this.infoEl = container.createDiv({ cls: "class-sync-panel-hint" });
+		this.infoEl = container.createDiv({ cls: "covault-panel-hint" });
 		this.updateInfo();
 
 		const srcFile = this.host.app.vault.getAbstractFileByPath(this.sourcePath);
@@ -89,22 +89,22 @@ export class DeploySection implements PanelSection {
 			.setDesc(t("deploy.substitute_per_student"))
 			.addToggle((tg) => tg.setValue(this.substitute).onChange((v) => (this.substitute = v)));
 
-		const head = new Setting(container).setName(t("deploy.target_students", { count: students.length }));
+		const head = new Setting(container).setName(t("deploy.target_students", { count: members.length }));
 		head.addButton((b) => b.setButtonText(t("deploy.select_all")).onClick(() => this.setAll(true)));
 		head.addButton((b) => b.setButtonText(t("deploy.none")).onClick(() => this.setAll(false)));
-		for (const st of students) {
+		for (const st of members) {
 			new Setting(container)
-				.setName(st.studentName || st.studentId)
+				.setName(st.memberName || st.memberId)
 				.setDesc(st.localRoot || "")
 				.addToggle((tg) =>
-					tg.setValue(this.selected.has(st.studentId)).onChange((v) => {
-						if (v) this.selected.add(st.studentId);
-						else this.selected.delete(st.studentId);
+					tg.setValue(this.selected.has(st.memberId)).onChange((v) => {
+						if (v) this.selected.add(st.memberId);
+						else this.selected.delete(st.memberId);
 					}),
 				);
 		}
 
-		const runRow = container.createDiv({ cls: "class-sync-panel-actions" });
+		const runRow = container.createDiv({ cls: "covault-panel-actions" });
 		panelButton(runRow, t("deploy.preview"), () => this.runPreview());
 		panelButton(runRow, t("deploy.copy_to_students"), () => this.runCopy(), { cta: true });
 
@@ -115,48 +115,48 @@ export class DeploySection implements PanelSection {
 	private renderResult(container: HTMLElement): void {
 		if (this.lastPlan) {
 			const plan = this.lastPlan;
-			container.createDiv({ cls: "class-sync-panel-label", text: t("deploy.preview") });
-			const table = container.createEl("table", { cls: "class-sync-dash-table" });
+			container.createDiv({ cls: "covault-panel-label", text: t("deploy.preview") });
+			const table = container.createEl("table", { cls: "covault-dash-table" });
 			const tr = table.createEl("thead").createEl("tr");
 			for (const h of [t("common.student"), t("deploy.create"), t("deploy.overwrite"), t("deploy.skip"), t("deploy.rename")]) tr.createEl("th", { text: h });
 			const tb = table.createEl("tbody");
-			for (const sp of plan.students) {
+			for (const sp of plan.members) {
 				const c = { create: 0, overwrite: 0, skip: 0, rename: 0 };
 				for (const e of sp.entries) c[e.action]++;
 				const row = tb.createEl("tr");
-				row.createEl("td", { text: sp.studentName || sp.studentId });
+				row.createEl("td", { text: sp.memberName || sp.memberId });
 				row.createEl("td", { text: String(c.create) });
 				row.createEl("td", { text: String(c.overwrite) });
 				row.createEl("td", { text: String(c.skip) });
 				row.createEl("td", { text: String(c.rename) });
 			}
 			if (plan.sampleAfter !== undefined) {
-				container.createDiv({ cls: "class-sync-panel-hint", text: t("deploy.substitution_preview_first_student") });
-				container.createEl("pre", { cls: "class-sync-deploy-sample", text: plan.sampleAfter });
+				container.createDiv({ cls: "covault-panel-hint", text: t("deploy.substitution_preview_first_student") });
+				container.createEl("pre", { cls: "covault-deploy-sample", text: plan.sampleAfter });
 			}
 		}
 
 		if (this.lastResult && !this.lastResult.error) {
 			const res = this.lastResult;
-			container.createDiv({ cls: "class-sync-panel-label", text: t("deploy.copy_result") });
-			const table = container.createEl("table", { cls: "class-sync-dash-table" });
+			container.createDiv({ cls: "covault-panel-label", text: t("deploy.copy_result") });
+			const table = container.createEl("table", { cls: "covault-dash-table" });
 			const tr = table.createEl("thead").createEl("tr");
 			for (const h of [t("common.student"), t("deploy.written"), t("deploy.skip"), t("deploy.result")]) tr.createEl("th", { text: h });
 			const tb = table.createEl("tbody");
 			for (const d of res.details) {
 				const row = tb.createEl("tr");
-				row.createEl("td", { text: d.studentName || d.studentId });
+				row.createEl("td", { text: d.memberName || d.memberId });
 				row.createEl("td", { text: String(d.written) });
 				row.createEl("td", { text: String(d.skipped) });
 				const note = row.createEl("td", { text: d.error ? t("deploy.failed") : "✓" });
 				if (d.error) {
-					note.addClass("class-sync-dash-conflict");
+					note.addClass("covault-dash-conflict");
 					note.setAttribute("title", d.error);
 				}
 			}
-			const failed = res.details.filter((d) => d.error).map((d) => d.studentId);
+			const failed = res.details.filter((d) => d.error).map((d) => d.memberId);
 			if (failed.length > 0) {
-				const row = container.createDiv({ cls: "class-sync-panel-actions" });
+				const row = container.createDiv({ cls: "covault-panel-actions" });
 				panelButton(row, t("deploy.retry_failed", { n: failed.length }), () => this.runCopy(failed), { warning: true });
 			}
 		}
@@ -189,7 +189,7 @@ export class DeploySection implements PanelSection {
 
 	private setAll(v: boolean): void {
 		this.selected.clear();
-		if (v) for (const st of this.host.settings.students) if (st.studentId) this.selected.add(st.studentId);
+		if (v) for (const st of this.host.settings.members) if (st.memberId) this.selected.add(st.memberId);
 		if (this.container) this.render(this.container);
 	}
 
@@ -238,14 +238,14 @@ export class DeploySection implements PanelSection {
 	// --- 공유 공간 배포 ---
 
 	private renderShared(container: HTMLElement): void {
-		container.createDiv({ cls: "class-sync-panel-label", text: t("panel.shared_spaces") });
+		container.createDiv({ cls: "covault-panel-label", text: t("panel.shared_spaces") });
 		const spaces = this.host.settings.sharedSpaces;
 		if (spaces.length === 0) {
-			container.createDiv({ cls: "class-sync-feedback-empty", text: t("panel.add_a_shared_space_in_settings") });
+			container.createDiv({ cls: "covault-feedback-empty", text: t("panel.add_a_shared_space_in_settings") });
 			return;
 		}
 		for (const sp of spaces) {
-			const row = container.createDiv({ cls: "class-sync-panel-row" });
+			const row = container.createDiv({ cls: "covault-panel-row" });
 			row.createSpan({
 				text: t("panel.msg_3", {
 					name: sp.name || sp.id,

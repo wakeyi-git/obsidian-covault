@@ -3,16 +3,16 @@ import { MirrorSync } from "../../core/sync/MirrorSync";
 import { SyncDirection } from "../../core/sync/FullSync";
 import { computeChildRoots } from "../../core/sync/childRoots";
 import { SharesDoc, SHARES_DOC_ID, RtConfigDoc, RTCONFIG_DOC_ID } from "../../core/model/types";
-import { ClassSyncMode } from "../ClassSyncMode";
+import { CoVaultMode } from "../CoVaultMode";
 import { t } from "../../i18n";
 
 /**
- * Student Mode (Phase 6a). 기술문서 §11.
+ * Member Mode (Phase 6a). 기술문서 §11.
  * 개인 미러(vault ↔ 자기 mirror DB) + 교사가 배정한 공유 공간(모둠/학급) 링크를 동기화한다.
  * 공유 공간 목록은 개인 mirror DB의 'shares' 문서로 자동 전파되며, 변경 시 reconcile한다.
  */
-export class StudentMode implements ClassSyncMode {
-	readonly role = "student" as const;
+export class MemberMode implements CoVaultMode {
+	readonly role = "member" as const;
 	private syncs: MirrorSync[] = [];
 	private reconciling = false;
 	private pendingReconcile = false;
@@ -71,8 +71,8 @@ export class StudentMode implements ClassSyncMode {
 			// 개인 미러 (공유 폴더는 childRoots로 제외)
 			this.syncs.push(
 				new MirrorSync(this.core, {
-					studentId: s.userId,
-					studentName: s.displayName,
+					memberId: s.userId,
+					memberName: s.displayName,
 					localRoot: s.localRoot,
 					remoteDb: s.remoteDb,
 					childRoots: computeChildRoots(s.localRoot, allRoots),
@@ -84,8 +84,8 @@ export class StudentMode implements ClassSyncMode {
 			for (const sp of linkSpaces) {
 				this.syncs.push(
 					new MirrorSync(this.core, {
-						studentId: s.userId,
-						studentName: sp.name,
+						memberId: s.userId,
+						memberName: sp.name,
 						localRoot: sp.folder,
 						remoteDb: sp.remoteDb,
 						childRoots: computeChildRoots(sp.folder, allRoots),

@@ -1,25 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { computeSyncSummary } from "./syncSummary";
 import { DashboardRow } from "./PanelSection";
-import { ClassSyncSettings } from "../../settings/types";
+import { CoVaultSettings } from "../../settings/types";
 
-function settings(over: Partial<ClassSyncSettings> = {}): ClassSyncSettings {
+function settings(over: Partial<CoVaultSettings> = {}): CoVaultSettings {
 	return {
-		role: "teacher",
+		role: "manager",
 		autoSync: true,
 		realtimeEnabled: false,
 		yjsServerUrl: "",
 		yjsToken: "",
-		students: [],
+		members: [],
 		sharedSpaces: [],
 		...over,
-	} as ClassSyncSettings;
+	} as CoVaultSettings;
 }
 
 function row(over: Partial<DashboardRow> = {}): DashboardRow {
 	return {
-		studentName: "A",
-		studentId: "a",
+		memberName: "A",
+		memberId: "a",
 		remoteDb: "mirror_a",
 		localRoot: "A",
 		conflicts: 0,
@@ -37,20 +37,20 @@ describe("computeSyncSummary", () => {
 
 	it("초대 안 된 학생 수를 센다", () => {
 		const s = settings({
-			students: [
-				{ studentId: "a", provisioned: true },
-				{ studentId: "b", provisioned: false },
-				{ studentId: "c" },
+			members: [
+				{ memberId: "a", provisioned: true },
+				{ memberId: "b", provisioned: false },
+				{ memberId: "c" },
 			] as any,
 		});
 		const sum = computeSyncSummary([], s);
-		expect(sum.students).toBe(3);
+		expect(sum.members).toBe(3);
 		expect(sum.invited).toBe(1);
 		expect(sum.notInvited).toBe(2);
 	});
 
 	it("충돌/오류는 attention, 오프라인은 offline, 정상은 ok", () => {
-		const s = settings({ students: [{ studentId: "a", provisioned: true }] as any });
+		const s = settings({ members: [{ memberId: "a", provisioned: true }] as any });
 		expect(computeSyncSummary([row({ conflicts: 2 })], s).overall).toBe("attention");
 		expect(computeSyncSummary([row({ state: "error" })], s).overall).toBe("attention");
 		expect(computeSyncSummary([row({ state: "offline" })], s).overall).toBe("offline");
@@ -58,7 +58,7 @@ describe("computeSyncSummary", () => {
 	});
 
 	it("자동 동기화 꺼짐이면 autosync-off(문제 없을 때)", () => {
-		const s = settings({ autoSync: false, students: [{ studentId: "a", provisioned: true }] as any });
+		const s = settings({ autoSync: false, members: [{ memberId: "a", provisioned: true }] as any });
 		expect(computeSyncSummary([row()], s).overall).toBe("autosync-off");
 	});
 
@@ -67,7 +67,7 @@ describe("computeSyncSummary", () => {
 			realtimeEnabled: true,
 			yjsServerUrl: "wss://x",
 			yjsToken: "",
-			students: [{ studentId: "a", provisioned: true }] as any,
+			members: [{ memberId: "a", provisioned: true }] as any,
 			sharedSpaces: [{ id: "s1", token: undefined } as any],
 		});
 		expect(computeSyncSummary([row()], s).realtimeTokenMissing).toBe(true);
@@ -78,14 +78,14 @@ describe("computeSyncSummary", () => {
 			realtimeEnabled: true,
 			yjsServerUrl: "wss://x",
 			yjsToken: "legacy",
-			students: [{ studentId: "a", provisioned: true }] as any,
+			members: [{ memberId: "a", provisioned: true }] as any,
 			sharedSpaces: [{ id: "s1" } as any],
 		});
 		expect(computeSyncSummary([row()], s).realtimeTokenMissing).toBe(false);
 	});
 
 	it("마지막 동기화 시각은 업/다운로드 최대", () => {
-		const s = settings({ students: [{ studentId: "a", provisioned: true }] as any });
+		const s = settings({ members: [{ memberId: "a", provisioned: true }] as any });
 		const sum = computeSyncSummary([row({ lastUploadAt: 100, lastDownloadAt: 250 })], s);
 		expect(sum.lastSyncAt).toBe(250);
 	});
