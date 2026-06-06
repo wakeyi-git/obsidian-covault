@@ -1,14 +1,13 @@
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { NoticesView } from "./dashboard/NoticesView";
-import { TimetableView } from "./dashboard/TimetableView";
 import { AssignmentsView } from "./dashboard/AssignmentsView";
 import { RoutinesView } from "./dashboard/RoutinesView";
 import { GradebookView } from "./dashboard/GradebookView";
-import { NoticeDoc, ResponseDoc, TimetableDoc, TIMETABLE_DOC_ID, noticePrefix, RESPONSE_ID_PREFIX } from "../../core/model/types";
+import { NoticeDoc, ResponseDoc, noticePrefix, RESPONSE_ID_PREFIX } from "../../core/model/types";
 import { itemsOn, dayStr } from "../../core/classroom/routines";
 import { t } from "../../i18n";
 
-type DashView = "hub" | "notices" | "lessons" | "timetable" | "assignments" | "routines" | "gradebook";
+type DashView = "hub" | "notices" | "lessons" | "assignments" | "routines" | "gradebook";
 
 /**
  * 학급 운영 대시보드(홈). 허브에서 모듈(알림장·시간표/수업·과제·체크리스트)로 진입한다.
@@ -44,12 +43,6 @@ export class DashboardSection implements PanelSection {
 		}
 		if (this.view === "lessons") {
 			const v = new NoticesView(this.host, () => this.go("hub"), "lesson");
-			this.active = v;
-			v.render(c);
-			return;
-		}
-		if (this.view === "timetable") {
-			const v = new TimetableView(this.host, () => this.go("hub"));
 			this.active = v;
 			v.render(c);
 			return;
@@ -97,8 +90,7 @@ export class DashboardSection implements PanelSection {
 
 		const grid = c.createDiv({ cls: "covault-dash-grid" });
 		this.moduleCard(grid, t("dashboard.notices"), t("dashboard.notices_desc"), () => this.go("notices"), () => this.noticeSummary("notice"));
-		this.moduleCard(grid, t("dashboard.lessons"), t("dashboard.lessons_desc"), () => this.go("lessons"), () => this.noticeSummary("lesson"));
-		this.moduleCard(grid, t("dashboard.timetable"), t("dashboard.timetable_desc"), () => this.go("timetable"), () => this.timetableSummary());
+		this.moduleCard(grid, t("dashboard.lessons"), t("dashboard.lessons_with_timetable_desc"), () => this.go("lessons"), () => this.noticeSummary("lesson"));
 		this.moduleCard(grid, t("dashboard.assignments"), t("dashboard.assignments_desc"), () => this.go("assignments"), () => this.assignmentsSummary());
 		this.moduleCard(grid, t("dashboard.routines"), t("dashboard.routines_desc"), () => this.go("routines"), () => this.routinesSummary());
 		if (manager) this.moduleCard(grid, t("dashboard.gradebook"), t("dashboard.gradebook_desc"), () => this.go("gradebook"), () => this.gradebookSummary());
@@ -153,14 +145,6 @@ export class DashboardSection implements PanelSection {
 		const members = this.host.settings.members.filter((m) => m.memberId);
 		const read = members.filter((m) => readers.has(m.memberId)).length;
 		return t("dashboard.sum_members_read", { done: read, total: members.length });
-	}
-
-	private async timetableSummary(): Promise<string> {
-		const store = this.host.classroomStore;
-		if (!store.ready()) return "";
-		const tt = await store.get<TimetableDoc>(TIMETABLE_DOC_ID);
-		const filled = tt ? Object.values(tt.cells).filter((v) => v && String(v).trim()).length : 0;
-		return filled ? t("dashboard.sum_cells", { n: filled }) : t("dashboard.not_set");
 	}
 
 	private async assignmentsSummary(): Promise<string> {

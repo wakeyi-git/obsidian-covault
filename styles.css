@@ -952,6 +952,11 @@
 	flex-direction: column;
 	gap: 8px;
 }
+.covault-dash-timetable-embed {
+	margin-bottom: 12px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
 .covault-dash-empty {
 	color: var(--text-muted);
 	padding: 12px 0;

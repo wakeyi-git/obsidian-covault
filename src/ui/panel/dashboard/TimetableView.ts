@@ -5,12 +5,13 @@ import { t } from "../../../i18n";
 const DEFAULT_DAYS = ["월", "화", "수", "목", "금"];
 const DEFAULT_PERIODS = ["1", "2", "3", "4", "5", "6"];
 
-/** 시간표 모듈 — 주간 그리드(요일×교시). 교사 편집 / 학생 읽기전용. */
+/** 시간표 — 주간 그리드(요일×교시). 교사 편집 / 학생 읽기전용. 수업 안내 뷰 상단에 임베드(onBack 없음). */
 export class TimetableView {
 	private container: HTMLElement | null = null;
 	private doc: TimetableDoc | null = null;
 
-	constructor(private host: PanelHost, private onBack: () => void) {}
+	/** onBack 없으면 임베드 모드(뒤로 버튼 미표시). */
+	constructor(private host: PanelHost, private onBack?: () => void) {}
 
 	render(container: HTMLElement): void {
 		this.container = container;
@@ -27,7 +28,7 @@ export class TimetableView {
 		c.empty();
 
 		const head = c.createDiv({ cls: "covault-dash-modhead" });
-		panelButton(head, t("dashboard.back"), () => this.onBack());
+		if (this.onBack) panelButton(head, t("dashboard.back"), () => this.onBack!());
 		head.createSpan({ cls: "covault-dash-modtitle", text: t("dashboard.timetable") });
 
 		const store = this.host.classroomStore;

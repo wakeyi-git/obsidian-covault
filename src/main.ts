@@ -18,6 +18,7 @@ import { RoleSetupModal } from "./ui/RoleSetupModal";
 import { InviteModal } from "./ui/InviteModal";
 import { ConflictModal, ConflictRow, ConflictHost } from "./ui/ConflictModal";
 import { VersionHistoryModal } from "./ui/VersionHistoryModal";
+import { SetupWizardModal } from "./ui/SetupWizardModal";
 import { ResolveChoice } from "./core/sync/ConflictManager";
 import { BulkCopy, CopyOptions, CopyResult, CopyPlan } from "./modes/manager/BulkCopy";
 import { RealtimeManager } from "./core/realtime/RealtimeManager";
@@ -231,8 +232,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 					true,
 				);
 				await this.startMode();
-				// 교사는 온보딩 마법사를 자동으로 띄운다(이미 완료/닫았으면 생략).
-				if (role === "manager" && !this.settings.managerOnboardingDone) await this.activatePanel("setup");
+				// 교사는 온보딩 마법사(모달)를 자동으로 띄운다(이미 완료/닫았으면 생략).
+				if (role === "manager" && !this.settings.managerOnboardingDone) this.openSetupWizard();
 			},
 			(code) => void this.ingestInvite(code),
 		).open();
@@ -457,14 +458,20 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		s.sharedSpaces = setHomeroom(s.sharedSpaces, on ? space.id : null);
 		await this.saveSettings();
 		const hr = s.sharedSpaces.find((sp) => sp.id === space.id);
-		// 지정한 공간이 미배포면 배포(프로비저닝 + 전원 shares 갱신 + 모드 재시작 포함).
+		// 지정한 공간이 미배포면 배포(프로비저닝 + 전원 shares 갱신 + 모드 재시작 포함), 아니면 shares 전파 + 모드 재구성.
 		if (on && hr && !hr.provisioned) {
 			await this.deployShared(hr);
-			return;
+		} else {
+			await this.refreshMemberShares();
+			await this.restartMode();
 		}
-		// 이미 배포된 경우: kind 변경을 구성원 shares에 전파 + 모드 재구성.
-		await this.refreshMemberShares();
-		await this.restartMode();
+		// 학급 공동 공간을 켜면 대시보드를 열어 학급 운영 기능을 바로 사용하게 한다.
+		if (on) await this.activatePanel("dashboard");
+	}
+
+	/** SettingsHost: 교사 온보딩 마법사(모달) 실행. */
+	openSetupWizard(): void {
+		new SetupWizardModal(this.app, this).open();
 	}
 
 	/** 게시 본문 파일 + NoticeDoc 생성(교사). 성공 시 uid, 실패 시 null. */

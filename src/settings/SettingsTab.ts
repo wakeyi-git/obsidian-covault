@@ -74,6 +74,8 @@ export interface SettingsHost extends Plugin {
 	importSettingsJson(json: string): Promise<{ ok: boolean; error?: string }>;
 	openResetModal(): void;
 	refreshUiLanguage(): void;
+	/** 교사 온보딩 마법사(모달) 실행. */
+	openSetupWizard(): void;
 }
 
 /**
@@ -180,6 +182,12 @@ export class CoVaultSettingTab extends PluginSettingTab {
 	// --- Manager Mode ---
 	private renderManager(s: CoVaultSettings): void {
 		const klass = this.group(t("settings.workspace"));
+		klass.addSetting((set) =>
+			set
+				.setName(t("settings.setup_wizard"))
+				.setDesc(t("settings.setup_wizard_desc"))
+				.addButton((b) => b.setButtonText(t("settings.run_setup_wizard")).setCta().onClick(() => this.host.openSetupWizard())),
+		);
 		this.textSetting(klass, t("settings.workspace_id"), "workspaceId", "ws_2026_1");
 		this.textSetting(klass, t("settings.display_name"), "displayName", t("common.manager"));
 

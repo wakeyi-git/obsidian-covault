@@ -9,11 +9,13 @@ import {
 } from "../../../core/model/types";
 import { sortNotices, summarizeResponses } from "../../../core/classroom/notices";
 import { NoticeComposeModal } from "../../NoticeComposeModal";
+import { TimetableView } from "./TimetableView";
 import { t, formatDate } from "../../../i18n";
 
-/** 알림장/수업안내 모듈 — 목록 + (교사)게시/집계 + (학생)읽음·댓글. category로 분리. */
+/** 알림장/수업안내 모듈 — 목록 + (교사)게시/집계 + (학생)읽음·댓글. category로 분리. 수업안내는 상단에 시간표 임베드. */
 export class NoticesView {
 	private container: HTMLElement | null = null;
+	private timetable: TimetableView | null = null;
 
 	constructor(private host: PanelHost, private onBack: () => void, private category: "notice" | "lesson" = "notice") {}
 
@@ -40,6 +42,8 @@ export class NoticesView {
 	private async reload(): Promise<void> {
 		const c = this.container;
 		if (!c) return;
+		this.timetable?.dispose();
+		this.timetable = null;
 		c.empty();
 
 		// 헤더(뒤로 + 제목 + 교사 게시)
@@ -66,6 +70,13 @@ export class NoticesView {
 			return;
 		}
 
+		// 수업 안내 상단에 주간 시간표를 임베드(시간표 패널 통합).
+		if (this.isLesson) {
+			const ttBox = c.createDiv({ cls: "covault-dash-timetable-embed" });
+			this.timetable = new TimetableView(this.host);
+			this.timetable.render(ttBox);
+		}
+
 		const all = sortNotices(await store.listByPrefix<NoticeDoc>(noticePrefix()));
 		const notices = all.filter((n) => (n.category ?? "notice") === this.category);
 		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
@@ -90,7 +101,14 @@ export class NoticesView {
 		const top = card.createDiv({ cls: "covault-dash-card-row" });
 		top.createSpan({ cls: "covault-dash-card-title", text: (n.pinned ? "📌 " : "") + n.title });
 		top.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(n.postedAtMs)) });
-		panelButton(card, t("dashboard.open"), () => this.openFile(n.filePath));
+		const acts = card.createDiv({ cls: "covault-dash-rowactions" });
+		panelButton(acts, t("dashboard.open"), () => this.openFile(n.filePath));
+		if (this.manager) {
+			panelButton(acts, t("common.delete"), async () => {
+				await this.host.classroomStore.softDelete(n);
+				await this.reload();
+			}, { warning: true });
+		}
 
 		const sum = summarizeResponses(responses, this.memberIds());
 		const me = this.host.settings.userId;
@@ -165,6 +183,8 @@ export class NoticesView {
 	}
 
 	dispose(): void {
+		this.timetable?.dispose();
+		this.timetable = null;
 		this.container = null;
 	}
 }

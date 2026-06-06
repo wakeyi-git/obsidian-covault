@@ -2,7 +2,7 @@ import { ItemView, WorkspaceLeaf } from "obsidian";
 import { PanelHost, PanelSection, PanelTab } from "./panel/PanelSection";
 import { DashboardSection } from "./panel/DashboardSection";
 import { FeedbackSection } from "./panel/FeedbackSection";
-import { SetupSection } from "./panel/SetupSection";
+// (시작하기 마법사는 설정에서 모달로 실행 — 패널 탭 제거)
 import { SyncStatusSection } from "./panel/SyncStatusSection";
 import { DeploySection } from "./panel/DeploySection";
 import { ManageSection } from "./panel/ManageSection";
@@ -17,8 +17,6 @@ function tabLabel(tab: PanelTab): string {
 	switch (tab) {
 		case "dashboard":
 			return t("dashboard.dashboard");
-		case "setup":
-			return t("panel.get_started");
 		case "feedback":
 			return t("panel.feedback");
 		case "deploy":
@@ -63,7 +61,7 @@ export class CoVaultPanelView extends ItemView {
 	private tabs(): PanelTab[] {
 		const manager = this.host.settings.role === "manager";
 		return manager
-			? ["dashboard", "setup", "feedback", "deploy", "sync", "manage", "recovery", "history", "log"]
+			? ["dashboard", "feedback", "deploy", "sync", "manage", "recovery", "history", "log"]
 			: ["dashboard", "feedback", "sync", "manage", "recovery", "history", "log"];
 	}
 
@@ -127,8 +125,6 @@ export class CoVaultPanelView extends ItemView {
 		switch (tab) {
 			case "dashboard":
 				return new DashboardSection(this.host);
-			case "setup":
-				return new SetupSection(this.host);
 			case "feedback":
 				return new FeedbackSection(this.host.app, this.host.feedbackStore);
 			case "deploy":
