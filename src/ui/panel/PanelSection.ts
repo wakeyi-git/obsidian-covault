@@ -1,4 +1,4 @@
-import { App } from "obsidian";
+import { App, setIcon } from "obsidian";
 import { Logger } from "../../core/log/Logger";
 import { FeedbackStore } from "../../core/feedback/FeedbackStore";
 import { ClassroomStore } from "../../core/classroom/ClassroomStore";
@@ -142,6 +142,21 @@ export function panelButton(
 	const b = parent.createEl("button", { text: label });
 	if (opts?.warning) b.addClass("mod-warning");
 	if (opts?.cta) b.addClass("mod-cta");
+	b.onclick = () => void onClick();
+	return b;
+}
+
+/** 아이콘 버튼(모듈 헤더 뒤로 등). lucide 아이콘 + 접근성 라벨. */
+export function iconButton(
+	parent: HTMLElement,
+	icon: string,
+	label: string,
+	onClick: () => void | Promise<void>,
+): HTMLButtonElement {
+	const b = parent.createEl("button", { cls: "covault-cr-iconbtn" });
+	setIcon(b, icon);
+	b.setAttr("aria-label", label);
+	b.title = label;
 	b.onclick = () => void onClick();
 	return b;
 }

@@ -63,9 +63,14 @@ export class TimetableView {
 		if (!doc) return;
 		const wrap = c.createDiv({ cls: "covault-timetable-wrap" });
 		const table = wrap.createEl("table", { cls: "covault-timetable" });
+		// 이번 주를 보고 있을 때만 오늘 요일 열을 강조.
+		const todayCol = this.weekKey === weekStart(Date.now()) ? (new Date().getDay() + 6) % 7 : -1;
 		const headRow = table.createEl("tr");
 		headRow.createEl("th", { text: "" });
-		for (const d of doc.days) headRow.createEl("th", { text: d });
+		doc.days.forEach((d, di) => {
+			const th = headRow.createEl("th", { text: d });
+			if (di === todayCol) th.addClass("is-today");
+		});
 
 		// 입력 칸은 DOM상 행 우선(교시 행마다 요일 칸)으로 생성되지만, Tab 순서는 "같은 요일의 다음 교시"
 		// (열 우선)가 되도록 양의 tabindex를 부여한다. 한 요일(열)을 위→아래로 채운 뒤 다음 요일로 넘어간다.
@@ -76,6 +81,7 @@ export class TimetableView {
 			doc.days.forEach((d, di) => {
 				const key = `${di}:${pi}`;
 				const td = row.createEl("td");
+				if (di === todayCol) td.addClass("is-today");
 				const rawUid = doc.lessons?.[key];
 				// 삭제된 수업을 가리키면 미연결 처리(+ 버튼 복구).
 				const lessonUid = rawUid && validLessons.has(rawUid) ? rawUid : undefined;

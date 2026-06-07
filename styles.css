@@ -1385,3 +1385,26 @@
 	height: 24px;
 	opacity: 0.6;
 }
+
+/* covault-cr 보조: 카드 내 진행률 행 + 보조 텍스트 */
+.covault-cr-cardrow {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.covault-cr-cardrow .covault-cr-progress {
+	flex: 1;
+}
+.covault-cr-muted {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+/* 시간표 오늘 요일 열 강조 */
+.covault-timetable th.is-today {
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
+}
+.covault-timetable td.is-today {
+	background: var(--background-modifier-hover);
+}

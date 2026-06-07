@@ -1,5 +1,5 @@
-import { TFile } from "obsidian";
-import { PanelHost, panelButton } from "../PanelSection";
+import { TFile, setIcon } from "obsidian";
+import { PanelHost, panelButton, iconButton } from "../PanelSection";
 import {
 	NoticeDoc,
 	ResponseDoc,
@@ -50,10 +50,10 @@ export class NoticesView {
 		this.timetable = null;
 		c.empty();
 
-		// 헤더(뒤로 + 제목 + 교사 게시)
-		const head = c.createDiv({ cls: "covault-dash-modhead" });
-		panelButton(head, t("dashboard.back"), () => this.onBack());
-		head.createSpan({ cls: "covault-dash-modtitle", text: this.label(t("dashboard.notices"), t("dashboard.lessons")) });
+		// 헤더(뒤로 아이콘 + 제목 + 교사 게시 CTA)
+		const head = c.createDiv({ cls: "covault-cr-modhead" });
+		iconButton(head, "arrow-left", t("dashboard.back"), () => this.onBack());
+		head.createSpan({ cls: "covault-cr-modtitle", text: this.label(t("dashboard.notices"), t("dashboard.lessons")) });
 		if (this.manager) {
 			panelButton(
 				head,
@@ -70,16 +70,16 @@ export class NoticesView {
 
 		const store = this.host.classroomStore;
 		if (!store.ready()) {
-			c.createDiv({ cls: "covault-dash-empty", text: t("dashboard.homeroom_not_ready") });
+			this.empty(c, t("dashboard.homeroom_not_ready"));
 			return;
 		}
 
 		// 수업 안내: 주간 네비게이션 + 상단 주간 시간표 임베드(시간표 패널 통합).
 		if (this.isLesson) {
 			const nav = c.createDiv({ cls: "covault-dash-weeknav" });
-			panelButton(nav, "‹", () => this.shiftWeek(-1));
+			iconButton(nav, "chevron-left", t("dashboard.prev_week"), () => this.shiftWeek(-1));
 			nav.createSpan({ cls: "covault-dash-weeklabel", text: weekRangeLabel(this.weekKey) });
-			panelButton(nav, "›", () => this.shiftWeek(1));
+			iconButton(nav, "chevron-right", t("dashboard.next_week"), () => this.shiftWeek(1));
 			panelButton(nav, t("dashboard.this_week"), () => {
 				this.weekKey = weekStart(Date.now());
 				void this.reload();
@@ -108,7 +108,7 @@ export class NoticesView {
 		}
 		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
 		if (notices.length === 0) {
-			c.createDiv({ cls: "covault-dash-empty", text: this.label(t("dashboard.no_notices"), t("dashboard.no_lessons")) });
+			this.empty(c, this.label(t("dashboard.no_notices"), t("dashboard.no_lessons")), this.isLesson ? "calendar-days" : "megaphone");
 			return;
 		}
 		const byTarget = new Map<string, ResponseDoc[]>();
@@ -128,11 +128,41 @@ export class NoticesView {
 		if (ok) await this.reload();
 	}
 
+	private empty(parent: HTMLElement, text: string, icon = "inbox"): void {
+		const box = parent.createDiv({ cls: "covault-cr-empty" });
+		setIcon(box.createSpan(), icon);
+		box.createDiv({ text });
+	}
+
 	private renderNotice(parent: HTMLElement, n: NoticeDoc, responses: ResponseDoc[]): void {
-		const card = parent.createDiv({ cls: "covault-dash-card" });
-		const top = card.createDiv({ cls: "covault-dash-card-row" });
-		top.createSpan({ cls: "covault-dash-card-title", text: (n.pinned ? "📌 " : "") + n.title });
+		const card = parent.createDiv({ cls: "covault-cr-card" });
+		const top = card.createDiv({ cls: "covault-cr-card-head" });
+		if (n.pinned) setIcon(top.createSpan({ cls: "covault-cr-card-icon" }), "pin");
+		top.createSpan({ cls: "covault-cr-card-title", text: n.title });
 		top.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(n.postedAtMs)) });
+
+		const sum = summarizeResponses(responses, this.memberIds());
+		const me = this.host.settings.userId;
+
+		if (this.manager) {
+			// 교사: 읽음 진행률(막대) + 미읽음 명단 + 댓글
+			const total = this.memberIds().length;
+			const row = card.createDiv({ cls: "covault-cr-cardrow" });
+			row.createSpan({ cls: "covault-cr-muted", text: t("dashboard.read_count", { read: sum.readCount, total }) });
+			const prog = row.createDiv({ cls: "covault-cr-progress" });
+			prog.createEl("i").style.width = total > 0 ? `${Math.round((sum.readCount / total) * 100)}%` : "0%";
+			if (sum.unread.length > 0)
+				card.createDiv({ cls: "covault-cr-muted", text: t("dashboard.unread_list", { names: sum.unread.join(", ") }) });
+			this.renderComments(card, sum.comments);
+		} else {
+			// 학생: 읽음 배지/확인 + 댓글/질문
+			const acted = card.createDiv({ cls: "covault-dash-actions" });
+			if (sum.readUsers.includes(me)) acted.createSpan({ cls: "covault-cr-badge is-ok", text: t("dashboard.read_done") });
+			else panelButton(acted, t("dashboard.mark_read"), () => this.respond(n, "read"), { cta: true });
+			this.renderComments(card, sum.comments);
+			this.renderReplyBox(card, n);
+		}
+
 		const acts = card.createDiv({ cls: "covault-dash-rowactions" });
 		panelButton(acts, t("dashboard.open"), () => this.openFile(n.filePath));
 		if (this.manager) {
@@ -140,28 +170,6 @@ export class NoticesView {
 				await this.host.deleteNotice(n);
 				await this.reload();
 			}, { warning: true });
-		}
-
-		const sum = summarizeResponses(responses, this.memberIds());
-		const me = this.host.settings.userId;
-
-		if (this.manager) {
-			// 교사: 읽음 현황 + 미읽음 명단 + 댓글 스레드
-			card.createDiv({
-				cls: "covault-dash-card-desc",
-				text: t("dashboard.read_count", { read: sum.readCount, total: this.memberIds().length }),
-			});
-			if (sum.unread.length > 0)
-				card.createDiv({ cls: "covault-dash-card-desc", text: t("dashboard.unread_list", { names: sum.unread.join(", ") }) });
-			this.renderComments(card, sum.comments);
-		} else {
-			// 학생: 읽음 확인 + 댓글/질문
-			const acted = card.createDiv({ cls: "covault-dash-actions" });
-			const haveRead = sum.readUsers.includes(me);
-			if (haveRead) acted.createSpan({ cls: "covault-feedback-badge", text: t("dashboard.read_done") });
-			else panelButton(acted, t("dashboard.mark_read"), () => this.respond(n, "read"));
-			this.renderComments(card, sum.comments);
-			this.renderReplyBox(card, n);
 		}
 	}
 

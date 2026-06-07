@@ -162,6 +162,8 @@
 		"sum_cells": "{n} filled",
 		"not_set": "Not set",
 		"this_week": "This week",
+		"prev_week": "Previous week",
+		"next_week": "Next week",
 		"open_lesson": "Open lesson",
 		"add_lesson": "Add lesson for this slot",
 		"period_suffix": "",
