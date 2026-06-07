@@ -39,9 +39,16 @@ for (const file of walk("src")) {
 }
 const usedMissing = [...used].filter((k) => !enKeys.has(k));
 
+// 동적 키(템플릿 리터럴)로 참조되는 접두사 — 정적 grep으로 못 잡으므로 미사용 판정에서 제외.
+// 예: t(`dashboard.wd_${k}`) → dashboard.wd_sun..sat
+const dynamicPrefixes = ["dashboard.wd_"];
+const unused = [...enKeys].filter((k) => !used.has(k) && !dynamicPrefixes.some((p) => k.startsWith(p)));
+
 console.log(
-	`i18n: en ${enKeys.size}키, ko ${koKeys.size}키, 사용 ${used.size}키, ko누락 ${missingInKo.length}, en누락 ${missingInEn.length}, 사용미정의 ${usedMissing.length}`,
+	`i18n: en ${enKeys.size}키, ko ${koKeys.size}키, 사용 ${used.size}키, ko누락 ${missingInKo.length}, en누락 ${missingInEn.length}, 사용미정의 ${usedMissing.length}, 미사용 ${unused.length}`,
 );
+// 미사용 키는 경고만(동적 키 오탐 가능성으로 실패시키지 않음).
+if (unused.length) console.warn("⚠ 미사용 키(정리 후보):", unused);
 const fail = missingInKo.length || missingInEn.length || usedMissing.length;
 if (missingInKo.length) console.error("✗ ko.json 누락:", missingInKo);
 if (missingInEn.length) console.error("✗ en.json 누락:", missingInEn);
