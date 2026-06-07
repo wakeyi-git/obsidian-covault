@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, Modal, Notice, Platform, Setting } from "obsidian";
 import { t } from "../i18n";
 
 /** 설정 내보내기 모달 — 자격증명 제외된 JSON을 보여주고 복사. 기술문서 §22.4. */
@@ -9,6 +9,7 @@ export class ExportModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
+		this.modalEl.addClass("covault-backup-modal");
 		contentEl.createEl("h3", { text: t("backup.export_settings") });
 		contentEl.createEl("p", {
 			cls: "setting-item-description",
@@ -17,7 +18,7 @@ export class ExportModal extends Modal {
 		});
 
 		const ta = contentEl.createEl("textarea", { cls: "covault-backup-input" });
-		ta.rows = 12;
+		ta.rows = Platform.isMobile ? 6 : 12;
 		ta.value = this.json;
 		ta.readOnly = true;
 
@@ -50,6 +51,7 @@ export class ImportModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
+		this.modalEl.addClass("covault-backup-modal");
 		contentEl.createEl("h3", { text: t("backup.import_settings") });
 		contentEl.createEl("p", {
 			cls: "setting-item-description",
@@ -58,10 +60,11 @@ export class ImportModal extends Modal {
 		});
 
 		const ta = contentEl.createEl("textarea", { cls: "covault-backup-input" });
-		ta.rows = 12;
+		// 모바일: 키보드가 올라오면 하단 버튼을 가리므로 입력칸을 작게 + 자동 포커스 안 함(사용자가 탭할 때 키보드).
+		ta.rows = Platform.isMobile ? 4 : 12;
 		ta.placeholder = t("backup.paste_settings_json_here");
 		ta.oninput = () => (this.value = ta.value);
-		window.setTimeout(() => ta.focus(), 0);
+		if (!Platform.isMobile) window.setTimeout(() => ta.focus(), 0);
 
 		new Setting(contentEl)
 			.addButton((b) => b.setButtonText(t("common.cancel")).onClick(() => this.close()))

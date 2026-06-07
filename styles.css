@@ -632,6 +632,15 @@
 	margin: 8px 0;
 }
 
+/* 모바일(iOS): 키보드가 올라와도 하단 버튼이 가려지지 않도록 입력칸 높이를 제한하고 모달 내용을 스크롤 가능하게 한다. */
+.is-mobile .covault-backup-modal .modal-content {
+	max-height: 70vh;
+	overflow-y: auto;
+}
+.is-mobile .covault-backup-input {
+	max-height: 28vh;
+}
+
 .covault-log-view {
 	padding: 8px 12px;
 	font-family: var(--font-monospace);
