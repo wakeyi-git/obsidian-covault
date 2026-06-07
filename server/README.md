@@ -223,8 +223,9 @@ CouchDB is standard software — the plugin only needs an HTTPS URL + admin acco
 Only for **realtime co-editing** — independent of CouchDB file sync; **skip this entirely if you only need file sync.**
 Set it up *after* CouchDB is working. The runtime files live in [`yjs/`](yjs/):
 
-- [`yjs/server.js`](yjs/server.js) — y-websocket server with two auth modes (per-space HMAC `YJS_SECRET`, or legacy
-  global `YJS_TOKEN`).
+- [`yjs/server.js`](yjs/server.js) — y-websocket server using **per-space HMAC `YJS_SECRET`** auth. (A legacy global
+  `YJS_TOKEN` mode still exists in the code but is **deprecated** — the current plugin issues per-space HMAC tokens only;
+  set `YJS_SECRET`.)
 - [`yjs/Dockerfile`](yjs/Dockerfile) / [`yjs/docker-compose.yml`](yjs/docker-compose.yml) /
   [`yjs/package.json`](yjs/package.json) — container build + run (LevelDB persistence in `./data`).
 - [`yjs/disable-yjs-accesslog.sh`](yjs/disable-yjs-accesslog.sh) — Synology DSM helper to keep `?token=` out of

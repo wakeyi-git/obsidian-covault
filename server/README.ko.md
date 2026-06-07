@@ -218,8 +218,9 @@ CouchDB는 표준 소프트웨어라, 플러그인은 HTTPS URL + 관리자 계�
 **실시간 공동 편집**에만 필요 — 파일 동기화(CouchDB)와 독립적이라, **파일 동기화만 쓸 거면 통째로 건너뜁니다.** CouchDB가
 동작한 *뒤* 구축하세요. 구동 파일은 [`yjs/`](yjs/)에 있습니다:
 
-- [`yjs/server.js`](yjs/server.js) — y-websocket 서버. 두 가지 인증 모드(공간별 HMAC `YJS_SECRET`, 또는 레거시 전역
-  `YJS_TOKEN`).
+- [`yjs/server.js`](yjs/server.js) — **공간별 HMAC `YJS_SECRET`** 인증을 쓰는 y-websocket 서버. (레거시 전역
+  `YJS_TOKEN` 모드가 코드에 남아 있지만 **더 이상 사용되지 않습니다** — 현재 플러그인은 공간별 HMAC 토큰만
+  발급하므로 `YJS_SECRET`을 설정하세요.)
 - [`yjs/Dockerfile`](yjs/Dockerfile) / [`yjs/docker-compose.yml`](yjs/docker-compose.yml) /
   [`yjs/package.json`](yjs/package.json) — 컨테이너 빌드 + 실행(영속 저장은 `./data`, LevelDB).
 - [`yjs/disable-yjs-accesslog.sh`](yjs/disable-yjs-accesslog.sh) — 리버스 프록시 접근 로그에 `?token=`이 남지 않게

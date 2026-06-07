@@ -25,7 +25,8 @@ Highlights:
 - **Realtime co-editing** — character-level co-editing of shared-folder notes via Yjs. For **both markdown and Excalidraw**, cursors/names + a **participant chip** (always shown at the bottom-right) reveal who is co-editing — even on tablets/phones without a mouse (image sync; the Excalidraw plugin is required). A separate WebSocket server is needed.
 - **Realtime security** — realtime tokens are issued as **per-shared-space HMAC-signed tokens**, so a leaked token only grants access to **that space's room** (not the whole workspace). The server refuses to start with a known placeholder secret, and the manager's tokens/secret are kept in **Obsidian Secret Storage** (not plaintext in `data.json`).
 - **Feedback layer** — leave comments anchored to text without editing the body (on shared and personal notes). The manager can review scattered feedback at once with the **all-unresolved feedback inbox**. Periodic in-session snapshots are also supported.
-- **Operational UX** — manager **onboarding wizard** ('Get started' checklist), **bulk member import** (paste/CSV), **deploy preview (dry-run) + per-member result & retry-failed**, an **action-oriented dashboard** (action cards + narrow-screen card layout), and inline settings validation (duplicate ID / URL / folder-overlap warnings).
+- **Classroom dashboard** — an optional manager↔member workspace built on one auto-provisioned **homeroom** shared space: **notices** (read-confirm + class comments + private questions/replies), a **weekly timetable + lessons**, **assignments** (distribute → submit with version snapshot → grade by score/rubric/comment → return), **checklists/routines**, and a **statistics** view (read/submission/score/completion rates, CSV export). Notices and lessons are authored **right in the Obsidian editor using frontmatter** (draft → publish toggle), and notices/lessons/assignments support **reusable content templates**.
+- **Operational UX** — manager **onboarding wizard** ('Get started' checklist), **bulk member import** (paste a roster with an optional per-member folder) and **bulk invite** for all pending members, **deploy preview (dry-run) + per-member result & retry-failed**, an **action-oriented dashboard** (action cards + narrow-screen card layout), and inline settings validation (duplicate ID / URL / folder-overlap warnings).
 - **Operational convenience** — settings export/import (credentials excluded), full diagnostics (server · read/write permissions · realtime), mobile power-saving (pause background sync · pre-check large files), and a configurable max-delete-reconcile limit.
 
 ### Requirements
@@ -64,7 +65,8 @@ Highlights:
 | **Stabilization** | Settings export/import · full diagnostics (read/write permissions) · mobile power-saving (background pause · large-file pre-check · debounce) | ✅ |
 | **Security/consistency hardening** | Per-space HMAC realtime tokens · invite password reissue (revoke) · manifest-based offline delete reconcile (bulk-delete threshold) · attachment conflict preservation · unit tests + CI gate | ✅ |
 | **Operational UX** | Manager onboarding wizard · bulk member import · deploy preview/result report · action-oriented dashboard (action cards · narrow card layout) · all-unresolved feedback inbox · simplified member home · shared-space operational badges | ✅ |
-| **Realtime chips · security** | Markdown & Excalidraw participant chips (unified name/color) · Yjs token/secret in Secret Storage · faster startup (onLayoutReady) · plugin-guideline compliance (Vault.process, etc.) | ✅ |
+| **Realtime chips · security** | Markdown & Excalidraw participant chips (unified name/color) · Yjs secret in Secret Storage · faster startup (onLayoutReady) · plugin-guideline compliance (Vault.process, etc.) | ✅ |
+| **Classroom dashboard** | Homeroom space · notices (read-confirm/comments/private questions) · weekly timetable + lessons · assignments (distribute/submit/grade/return) · checklists/routines · statistics (CSV) · editor+frontmatter authoring (draft→publish) · content templates | ✅ |
 
 ---
 
@@ -114,8 +116,8 @@ On first run the role-selection screen appears. The role locks once chosen; to c
 
 ### Manager (Manager Mode)
 1. Settings → enter the **admin account** (CouchDB URL / admin username·password) — stored on this device only.
-2. In the **member list**, `+ Add member` (or `Paste roster` for bulk) → enter name and member ID (Mirror DB/folder auto-fill if blank).
-3. Click **Invite** on a member card → the plugin auto-creates the account/DB/permissions and shows a **QR + invite code**.
+2. In the **member list**, `+ Add member` (or `Paste roster` for bulk — each line `Name,ID,Folder` with ID/folder optional, plus an optional base folder) → enter name and member ID (Mirror DB/folder auto-fill if blank).
+3. Click **Invite** on a member card (or **Invite all** to provision every pending member at once) → the plugin auto-creates the account/DB/permissions and shows a **QR + invite code**.
 4. Run **Test connection** to verify access to all member DBs, then **Apply settings** to start syncing.
 
 > Managers can follow the **'Get started' tab (onboarding wizard)** in the panel: server connection → workspace info → add members → invite → first sync, in order.
@@ -126,18 +128,22 @@ On first run the role-selection screen appears. The role locks once chosen; to c
 - The member connects with a dedicated account that can only access their own mirror DB.
 
 ### Commands (`Cmd/Ctrl+P` → `CoVault:`)
+The single **🎓 ribbon** opens the unified panel; the commands below open a specific tab or action.
+
 | Command | Action |
 |---|---|
+| Open panel / Open dashboard | Open the panel; "Open dashboard" jumps to the classroom **Dashboard** tab |
 | Full sync / Upload only / Download only | Manual reconcile (Manager: all members) |
 | Test connection/permissions | Verify CouchDB connection and permissions |
 | Run full diagnostics | Check server reachability + DB read/write permissions + realtime status at once |
-| Add feedback / Open feedback panel | Anchored comment on a selection; list/jump/resolve in the panel (also via 💬 ribbon) |
+| Add feedback / Open feedback panel | Anchored comment on a selection; list/jump/resolve in the panel |
 | Toggle auto-sync | Toggle realtime watching/subscription |
 | Reset local cache | Delete local PouchDB and re-fetch from server |
 | Open conflicts | Compare/resolve conflicts (keep local · apply remote · keep both) |
-| Open dashboard | Per-member sync status table (also via 👥 ribbon) |
+| Open sync status | Per-member sync status table |
 | Copy to members (open deploy tab) | Pick a path (file/folder) in the deploy tab and deploy to members — substitutes `{{memberName}}`, etc. |
-| Open log panel | View the sync log (also via 🔄 ribbon) |
+| Check realtime status / Open version history | Realtime diagnostics; per-note version snapshots |
+| Open log panel | View the sync log |
 
 Deleted files move to the **archive folder (`_삭제됨/`, configurable)**; deleting from that folder permanently purges from the DB.
 
@@ -188,7 +194,7 @@ then each time the manager deploys a space, a **per-shared-space signed token** 
 token payload carries `workspaceId`·`spaceId` (+ optional expiry) and the server verifies that the connecting room starts with
 `<workspaceId>/share/<spaceId>/`, so a leaked token only grants access to **that space's room** (not the whole workspace). Changing the
 secret/members and redeploying refreshes tokens, and **'Space token expiry (days)'** sets a TTL. The manager's tokens/secret
-are stored in Obsidian Secret Storage. (A legacy mode with a single `YJS_TOKEN` and no secret is also supported, but has no per-space isolation.)
+are stored in Obsidian Secret Storage. Realtime auth is **HMAC-only** — every token is scoped to a single shared space.
 The token is sent over WSS (not exposed in transit); keep it out of reverse-proxy/CDN/monitoring access logs by masking query strings (see [`server/README.md`](server/README.md)).
 
 **Excalidraw drawings** also support **element-level realtime co-editing** in shared folders (add/move/delete, named/colored
@@ -204,6 +210,32 @@ location. You can resolve/delete. The panel's **'Show all unresolved'** toggle s
 at once (with member/note labels + jump-to). Feedback documents are stored in the DB the target note belongs to (personal
 mirror or shared) and propagate via the existing sync; they are metadata, not files, so nothing is written to the vault.
 Works on both shared-folder notes and regular member mirror notes.
+
+### Classroom dashboard
+> **Optional.** Turns the manager↔member sync into a lightweight classroom workspace. Skip it if you only need file sync.
+
+Mark one shared space as the **homeroom** (settings → a shared space → "Set as homeroom"); it is auto-provisioned to all
+members and powers the **Dashboard** tab (open it from the 🎓 ribbon). Content lives as normal markdown files under the
+homeroom folder, while lightweight state (read receipts, submissions, grades, checklist ticks) lives in the DB and syncs
+with everything else. Modules:
+
+- **Notices** — write announcements **in the Obsidian editor**: "New notice" creates a draft note (from a template) with
+  frontmatter, which you fill in and then **Publish** (a `published` property / button — members only see published ones).
+  Members read-confirm and leave **comments** (class-visible) or **questions** (private to the manager); the manager can
+  reply inline. Edit (open the note) and delete from the card.
+- **Lessons & timetable** — a **weekly timetable grid**; each cell can link a **lesson** note (same editor+frontmatter
+  flow as notices), navigable by week/day.
+- **Assignments** — created in a dialog (title, due, points, **visibility: private per-member or shared**, target members,
+  **rubric**, template). On create it **distributes** a work file to each target (their mirror or the shared folder) and a
+  status doc. Members **turn in** (a version snapshot is taken); the manager **grades** (score / rubric / comment) and
+  **returns**. Assignments can be **edited** (re-distributes, preserving submissions/grades) or **deleted**.
+- **Checklists / routines** — daily/weekly checklist items; members tick them off and the manager sees per-member
+  completion (drag to reorder).
+- **Statistics** — per-member rates for notice/lesson reads, assignment submission, average score, and checklist
+  completion, with **CSV export**.
+
+**Content templates** — under settings → *Content templates*, set a template file per type (notice / lesson / assignment),
+or leave blank to use the built-in default; "Create default" writes a starter template into the vault you can customize.
 
 ---
 
@@ -221,8 +253,9 @@ src/
 │  ├─ invite/invite.ts         # Invite payload encoding + obsidian:// deep link
 │  ├─ realtime/                # Yjs realtime (RealtimeManager · editorBinding · excalidrawBinding · presenceChips · spaceToken = per-space HMAC token)
 │  ├─ feedback/FeedbackStore.ts # Feedback layer (anchored comments) store/query/sync
+│  ├─ classroom/               # Classroom dashboard core (ClassroomStore · notices · assignments · templates · week · homeroom)
 │  ├─ guard/RemoteApplyGuard.ts# Sync-loop guard
-│  ├─ secret.ts                # Obsidian Secret Storage wrapper (Yjs token/secret)
+│  ├─ secret.ts                # Obsidian Secret Storage wrapper (Yjs space secret · CouchDB password)
 │  ├─ sync/
 │  │  ├─ MirrorContext.ts      # Per-link path/IO/state/archive helpers
 │  │  ├─ MirrorApplier.ts      # Remote→local apply (_conflicts preserve-local, delete/purge)
@@ -235,9 +268,9 @@ src/
 │  │  ├─ MirrorSync.ts         # The member↔DB link engine tying the above together + state
 │  │  └─ connectionTest.ts     # Connection/permission test
 │  ├─ path/  hash/  log/       # Path mapping · contentHash · logger
-│  └─ model/types.ts           # Document model (note / asset / tombstone)
-├─ modes/                      # CoVaultMode / MemberMode / ManagerMode / manager/BulkCopy
-└─ ui/                         # Unified panel (Get started · Feedback · Deploy · Sync · Manage · Log) · RoleSetupModal · InviteModal · ConfirmModal · ResetModal · BackupModal · MemberBulkImportModal
+│  └─ model/types.ts           # Document model (note / asset / tombstone · classroom: notice/response/timetable/assignment/routine)
+├─ modes/                      # CoVaultMode / MemberMode / ManagerMode / manager/BulkCopy + domain controllers (Classroom · Realtime · Member)
+└─ ui/                         # Unified panel (Get started · Dashboard · Feedback · Deploy · Sync · Manage · Log) · panel/dashboard/* (notices/timetable/assignments/routines/statistics) · RoleSetupModal · InviteModal/BulkInviteModal · AssignmentCreateModal · GradingModal · ConfirmModal · ResetModal · BackupModal · MemberBulkImportModal
 ```
 
 **Sync structure (offline-first)**
@@ -254,11 +287,11 @@ The manager keeps one `MirrorSync` per member to sync many members at once.
   no built-in expiry, but if a leak is suspected the manager can rotate the password via **'Reissue password'** on the
   member card, **immediately invalidating the old invite**.
 - **Realtime tokens** are issued as per-space **HMAC-signed tokens**, so a leak only grants access to that space's room
-  (`classId`·`spaceId` binding + optional expiry). The server refuses to start with a placeholder/too-short secret like
+  (`workspaceId`·`spaceId` binding + optional expiry). The server refuses to start with a placeholder/too-short secret like
   `CHANGE_ME`, and tokens travel over WSS so they aren't exposed in transit (mask query tokens in server/proxy logs).
-- **Yjs token and space secret** (manager) are stored in **Obsidian Secret Storage** (a per-vault store), not left in
-  plaintext in `data.json`. Existing plaintext values are migrated automatically on upgrade.
-- **Settings export** excludes credentials — admin password, member passwords, `yjsToken`, `yjsSecret`, space tokens, and device-specific values.
+- **The Yjs space secret** (manager) and **CouchDB admin password** are stored in **Obsidian Secret Storage** (a per-vault
+  store), not left in plaintext in `data.json`.
+- **Settings export** excludes credentials — admin password, member passwords, `yjsSecret`, space tokens, and device-specific values.
 - The manager's admin credentials are stored only on the manager's device; members never handle admin permissions.
 - Inter-member data is isolated on the server by CouchDB `_security` (403 when accessing another member's DB).
 - **Offline delete reconcile** uses a per-device manifest baseline (content verification + rev/hash comparison) and a
