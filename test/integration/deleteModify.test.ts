@@ -69,9 +69,18 @@ describe("삭제/수정 충돌 큐", () => {
 		expect((await r.listDeleteModify()).some((e) => e.dbPath === "x.md")).toBe(false);
 	});
 
-	it("'원격 수정 유지' → 큐에서만 제거(문서는 그대로)", async () => {
+	it("'원격 수정 유지' → 원격 내용을 vault에 되살리고 큐에서 제거", async () => {
 		const { a, r } = await setupConflict();
+		// 파일이 vault에 없는 상태에서 keep-remote를 누르는 경우를 검증한다.
+		// (예전 동작은 큐 항목만 지워 파일이 삭제된 채 남았다 → 회귀 방지.)
+		const f = a.vault.getAbstractFileByPath("x.md");
+		if (f) await a.vault.delete(f as any);
+		expect(a.vault.has("x.md")).toBe(false);
+
 		await r.resolveDeleteModify("x.md", "keep-remote");
+
+		// 핵심: 원격 내용("v2")으로 vault에 복원되어야 한다.
+		expect(a.vault.textOf("x.md")).toBe("v2");
 		expect((await a.note("x.md"))?.deleted).toBe(false);
 		expect((await r.listDeleteModify()).some((e) => e.dbPath === "x.md")).toBe(false);
 	});
