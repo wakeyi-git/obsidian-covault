@@ -44,7 +44,21 @@ export class ManagerMode implements CoVaultMode {
 					childRoots: computeChildRoots(sp.folder, roots),
 				}),
 		);
-		this.syncs = [...memberSyncs, ...sharedSyncs];
+		// 내 볼트 개인 동기화(선택): vault 전체(localRoot="") ↔ 개인 DB. 개별/공동 공간 폴더는 childRoots로,
+		// .obsidian·.trash·보관/충돌 폴더는 isExcluded(excludeFolders)로 제외된다.
+		const personalSyncs =
+			s.personalSyncEnabled && s.personalRemoteDb
+				? [
+						new MirrorSync(core, {
+							memberId: t("mode.personal_vault"),
+							memberName: s.displayName || t("mode.personal_vault"),
+							localRoot: "",
+							remoteDb: s.personalRemoteDb,
+							childRoots: computeChildRoots("", roots),
+						}),
+				  ]
+				: [];
+		this.syncs = [...memberSyncs, ...sharedSyncs, ...personalSyncs];
 		// 실시간(RealtimeManager)이 참조할 공간 목록: 공유 공간 + 실시간 허용 학생의 개인 mirror(1:1).
 		// mirror 공간은 학생 폴더(localRoot)를 그대로 folder로 쓰고 spaceId=mirror-<id>로 구분한다.
 		// 별도 동기화 링크는 만들지 않는다(이미 memberSyncs가 그 폴더를 동기화하므로).

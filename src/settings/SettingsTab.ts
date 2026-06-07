@@ -74,6 +74,8 @@ export interface SettingsHost extends Plugin {
 	setHomeroomSpace(space: SharedSpace, on: boolean): Promise<void>;
 	/** 유형별 기본 콘텐츠 템플릿 파일 생성 + 설정 경로 저장 후 편집창에서 열기. */
 	createTemplateFile(kind: "notice" | "lesson" | "assignment"): Promise<void>;
+	/** 내 볼트 개인 동기화 켜기/끄기(켜면 개인 DB 프로비저닝). */
+	setPersonalSync(on: boolean): Promise<void>;
 	redeployRealtime(): Promise<void>;
 	exportSettingsJson(): string;
 	importSettingsJson(json: string): Promise<{ ok: boolean; error?: string }>;
@@ -296,6 +298,20 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		this.templateRow(tpl, t("settings.notice_template"), "noticeTemplate", "notice");
 		this.templateRow(tpl, t("settings.lesson_template"), "lessonTemplate", "lesson");
 		this.templateRow(tpl, t("settings.assignment_template"), "assignmentTemplate", "assignment");
+
+		// 내 볼트 개인 동기화(개별/공동 공간 제외)
+		const personal = this.group(t("settings.personal_sync"), t("settings.personal_sync_desc"));
+		personal.addSetting((set) =>
+			set
+				.setName(t("settings.personal_sync_enable"))
+				.setDesc(t("settings.personal_sync_enable_desc"))
+				.addToggle((tg) =>
+					tg.setValue(!!s.personalSyncEnabled).onChange((v) => this.runAsync(tg, async () => { await this.host.setPersonalSync(v); this.display(); })),
+				),
+		);
+		if (s.personalSyncEnabled && s.personalRemoteDb) {
+			this.readonlySetting(personal, t("settings.personal_sync_db"), s.personalRemoteDb);
+		}
 
 		// 실시간 공동 편집 (Yjs)
 		const rt = this.group(

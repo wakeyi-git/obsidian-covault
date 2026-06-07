@@ -380,6 +380,40 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		if (on) await this.activatePanel("dashboard");
 	}
 
+	/** SettingsHost: 내 볼트 개인 동기화 켜기/끄기(교사 전용). 켜면 개인 DB를 프로비저닝하고 모드 재시작. */
+	async setPersonalSync(on: boolean): Promise<void> {
+		const s = this.settings;
+		if (s.role !== "manager") {
+			this.logger.warn(t("command.available_in_manager_mode_only"), true);
+			return;
+		}
+		if (on) {
+			if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
+				this.logger.warn(t("command.enter_the_admin_account_first"), true);
+				return;
+			}
+			const db = s.personalRemoteDb || `personal_${s.userId.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^[^a-z]+/, "") || "vault"}`;
+			await this.activatePanel("log");
+			this.logger.info(t("command.provisioning_personal_db", { db }));
+			const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
+			const res = await admin.provisionPersonalDb(db, s.username);
+			if (!res.ok) {
+				this.logger.error(t("command.personal_provision_failed", { err: res.error ?? "" }), true);
+				return;
+			}
+			s.personalRemoteDb = db;
+			s.personalSyncEnabled = true;
+			await this.saveSettings();
+			await this.restartMode();
+			this.logger.ok(t("command.personal_sync_on", { db }), true);
+		} else {
+			s.personalSyncEnabled = false;
+			await this.saveSettings();
+			await this.restartMode();
+			this.logger.info(t("command.personal_sync_off"), true);
+		}
+	}
+
 	/** SettingsHost: 교사 온보딩 마법사(모달) 실행. */
 	openSetupWizard(): void {
 		new SetupWizardModal(this.app, this).open();

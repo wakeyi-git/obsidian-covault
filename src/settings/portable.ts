@@ -16,6 +16,8 @@ const IMPORT_KEYS: Array<keyof CoVaultSettings> = [
 	"localRoot",
 	"members",
 	"sharedSpaces",
+	"personalSyncEnabled",
+	"personalRemoteDb",
 	"excludeFolders",
 	"archiveFolder",
 	"conflictFolder",

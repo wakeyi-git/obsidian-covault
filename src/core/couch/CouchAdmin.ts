@@ -146,6 +146,18 @@ export class CouchAdmin {
 	}
 
 	/**
+	 * 관리자 개인 볼트 동기화 DB 프로비저닝(멱등). DB 생성 + _security 멤버=관리자 계정.
+	 * 관리자는 server-admin이라 항상 접근 가능하며, 다기기에서 같은 DB로 동기화/백업하는 용도.
+	 */
+	async provisionPersonalDb(remoteDb: string, username: string): Promise<{ ok: boolean; error?: string }> {
+		const putDb = await this.req("PUT", encodeURIComponent(remoteDb));
+		if (putDb.status >= 400 && putDb.status !== 412 && putDb.status !== 409) {
+			return { ok: false, error: t("couch.failed_to_create_db_http", { status: putDb.status, reason: this.reasonOf(putDb) }) };
+		}
+		return this.setSecurity(remoteDb, [username]);
+	}
+
+	/**
 	 * 공유 공간 프로비저닝(멱등). DB 생성 + _security 멤버 = 참여 학생 계정들.
 	 * 학생 계정은 개인 프로비저닝으로 이미 존재한다고 가정.
 	 */

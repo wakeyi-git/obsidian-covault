@@ -73,6 +73,11 @@ export interface CoVaultSettings {
 	/** Manager Mode: 공유 공간 목록(모둠/학급 공유). */
 	sharedSpaces: SharedSpace[];
 
+	/** Manager Mode: 내 볼트 개인 동기화 사용 여부(개별/공동 공간·제외 폴더 제외한 나머지 노트·첨부). */
+	personalSyncEnabled?: boolean;
+	/** Manager Mode: 개인 동기화 DB명(기본 personal_<userId>). */
+	personalRemoteDb?: string;
+
 	/** Manager Mode: 과제 정의 목록(교사 기기 보관, 동기화 안 함). 배포 시 학생 미러에 상태 문서 생성. */
 	assignments?: AssignmentDoc[];
 
