@@ -1209,3 +1209,179 @@
 	font-weight: 600;
 	color: var(--text-accent);
 }
+
+/* ===================================================================
+   학급 운영 대시보드 공통 컴포넌트 레이어 (covault-cr-*)
+   옥시디언 기본 톤 유지. 동기화 대시보드(covault-dash-*)와 네임스페이스 분리.
+   허브가 먼저 채택, 모듈 뷰는 후속 증분에서 이전.
+=================================================================== */
+.covault-cr-title {
+	font-size: 15px;
+	font-weight: 700;
+	margin: 4px 0 12px;
+}
+
+/* 정보 안내(경고 아님) */
+.covault-cr-notice {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 10px 12px;
+	margin-bottom: 12px;
+	background: var(--background-secondary);
+}
+.covault-cr-notice-text {
+	font-size: 13px;
+	color: var(--text-muted);
+}
+
+/* 허브 카드 그리드 — 좁은 패널에선 자연히 1열 */
+.covault-cr-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
+	gap: 8px;
+}
+.covault-cr-card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px;
+	background: var(--background-secondary);
+}
+.covault-cr-card.is-clickable {
+	cursor: pointer;
+	transition: border-color 0.12s ease, background 0.12s ease;
+}
+.covault-cr-card.is-clickable:hover {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+.covault-cr-card.is-clickable:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+.covault-cr-card-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.covault-cr-card-icon {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+.covault-cr-card-icon .svg-icon {
+	width: 18px;
+	height: 18px;
+}
+.covault-cr-card-title {
+	font-weight: 600;
+}
+.covault-cr-card-desc {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+.covault-cr-card-summary {
+	margin-top: 2px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-accent);
+}
+.covault-cr-card-soon {
+	font-size: 10px;
+	color: var(--text-faint);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+/* 모듈 헤더(후속 증분에서 모듈이 채택) */
+.covault-cr-modhead {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 10px;
+}
+.covault-cr-modtitle {
+	flex: 1;
+	min-width: 0;
+	font-size: 15px;
+	font-weight: 700;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.covault-cr-iconbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border-radius: 6px;
+	background: transparent;
+	border: none;
+	box-shadow: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+.covault-cr-iconbtn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+/* 상태 배지 */
+.covault-cr-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	font-size: 11px;
+	padding: 1px 7px;
+	border-radius: 10px;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+.covault-cr-badge.is-ok {
+	background: var(--color-green);
+	color: var(--text-on-accent);
+}
+.covault-cr-badge.is-warn {
+	background: var(--color-orange);
+	color: var(--text-on-accent);
+}
+.covault-cr-badge.is-accent {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+/* 진행률 막대 */
+.covault-cr-progress {
+	height: 6px;
+	border-radius: 3px;
+	background: var(--background-modifier-border);
+	overflow: hidden;
+}
+.covault-cr-progress > i {
+	display: block;
+	height: 100%;
+	background: var(--interactive-accent);
+}
+
+/* 빈 상태 */
+.covault-cr-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 20px 12px;
+	color: var(--text-muted);
+	text-align: center;
+}
+.covault-cr-empty .svg-icon {
+	width: 24px;
+	height: 24px;
+	opacity: 0.6;
+}

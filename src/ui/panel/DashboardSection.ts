@@ -1,3 +1,4 @@
+import { setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { NoticesView } from "./dashboard/NoticesView";
 import { AssignmentsView } from "./dashboard/AssignmentsView";
@@ -79,23 +80,23 @@ export class DashboardSection implements PanelSection {
 		const manager = this.host.settings.role === "manager";
 		const ready = this.host.homeroomReady();
 
-		c.createDiv({ cls: "covault-dash-title", text: t("dashboard.classroom_dashboard") });
+		c.createDiv({ cls: "covault-cr-title", text: t("dashboard.classroom_dashboard") });
 
 		if (!ready) {
-			const box = c.createDiv({ cls: "covault-issues" });
+			const box = c.createDiv({ cls: "covault-cr-notice" });
 			box.createDiv({
-				cls: "covault-issues-title",
+				cls: "covault-cr-notice-text",
 				text: manager ? t("dashboard.homeroom_not_set_manager") : t("dashboard.homeroom_not_set_member"),
 			});
 			if (manager) panelButton(box, t("dashboard.open_settings_homeroom"), () => this.host.openSettings(), { cta: true });
 		}
 
-		const grid = c.createDiv({ cls: "covault-dash-grid" });
-		this.moduleCard(grid, t("dashboard.notices"), t("dashboard.notices_desc"), () => this.go("notices"), () => this.noticeSummary("notice"));
-		this.moduleCard(grid, t("dashboard.lessons"), t("dashboard.lessons_with_timetable_desc"), () => this.go("lessons"), () => this.noticeSummary("lesson"));
-		this.moduleCard(grid, t("dashboard.assignments"), t("dashboard.assignments_desc"), () => this.go("assignments"), () => this.assignmentsSummary());
-		this.moduleCard(grid, t("dashboard.routines"), t("dashboard.routines_desc"), () => this.go("routines"), () => this.routinesSummary());
-		if (manager) this.moduleCard(grid, t("dashboard.gradebook"), t("dashboard.gradebook_desc"), () => this.go("gradebook"), () => this.gradebookSummary());
+		const grid = c.createDiv({ cls: "covault-cr-grid" });
+		this.moduleCard(grid, "megaphone", t("dashboard.notices"), t("dashboard.notices_desc"), () => this.go("notices"), () => this.noticeSummary("notice"));
+		this.moduleCard(grid, "calendar-days", t("dashboard.lessons"), t("dashboard.lessons_with_timetable_desc"), () => this.go("lessons"), () => this.noticeSummary("lesson"));
+		this.moduleCard(grid, "clipboard-list", t("dashboard.assignments"), t("dashboard.assignments_desc"), () => this.go("assignments"), () => this.assignmentsSummary());
+		this.moduleCard(grid, "check-square", t("dashboard.routines"), t("dashboard.routines_desc"), () => this.go("routines"), () => this.routinesSummary());
+		if (manager) this.moduleCard(grid, "table-2", t("dashboard.gradebook"), t("dashboard.gradebook_desc"), () => this.go("gradebook"), () => this.gradebookSummary());
 	}
 
 	private get manager(): boolean {
@@ -104,23 +105,37 @@ export class DashboardSection implements PanelSection {
 
 	private moduleCard(
 		parent: HTMLElement,
+		icon: string,
 		title: string,
 		desc: string,
 		open: (() => void) | null,
 		summary?: () => Promise<string>,
 	): void {
-		const card = parent.createDiv({ cls: `covault-dash-card${open ? " is-clickable" : ""}` });
-		card.createDiv({ cls: "covault-dash-card-title", text: title });
-		card.createDiv({ cls: "covault-dash-card-desc", text: desc });
+		const card = parent.createDiv({ cls: `covault-cr-card${open ? " is-clickable" : ""}` });
+		const head = card.createDiv({ cls: "covault-cr-card-head" });
+		setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), icon);
+		head.createSpan({ cls: "covault-cr-card-title", text: title });
+		card.createDiv({ cls: "covault-cr-card-desc", text: desc });
 		if (summary) {
-			const sumEl = card.createDiv({ cls: "covault-dash-card-summary" });
+			const sumEl = card.createDiv({ cls: "covault-cr-card-summary" });
 			void summary().then((text) => {
 				// 허브를 벗어났으면(다른 뷰로 이동) 무시.
 				if (this.view === "hub" && text) sumEl.setText(text);
 			});
 		}
-		if (open) card.onclick = () => open();
-		else card.createDiv({ cls: "covault-dash-card-soon", text: t("dashboard.coming_soon") });
+		if (open) {
+			card.onclick = () => open();
+			card.setAttr("role", "button");
+			card.tabIndex = 0;
+			card.onkeydown = (e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					open();
+				}
+			};
+		} else {
+			card.createDiv({ cls: "covault-cr-card-soon", text: t("dashboard.coming_soon") });
+		}
 	}
 
 	// --- 현황 요약(역할별, 완료/전체 형태). 학생=본인 진행, 교사=구성원별 집계. ---
