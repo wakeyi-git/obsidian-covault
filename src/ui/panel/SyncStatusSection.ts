@@ -35,6 +35,21 @@ function overallLabel(o: SyncSummary["overall"]): string {
 	}
 }
 
+function stateIcon(state: LinkStatus["state"]): string {
+	switch (state) {
+		case "syncing":
+			return "refresh-cw";
+		case "idle":
+			return "circle-check";
+		case "offline":
+			return "circle-slash";
+		case "error":
+			return "circle-x";
+		case "disabled":
+			return "circle-pause";
+	}
+}
+
 function stateLabel(state: LinkStatus["state"]): string {
 	switch (state) {
 		case "syncing":
@@ -157,7 +172,7 @@ export class SyncStatusSection implements PanelSection {
 			const cTd = tr.createEl("td", { text: String(r.conflicts) });
 			if (r.conflicts > 0) cTd.addClass("covault-dash-conflict");
 			const sTd = tr.createEl("td");
-			sTd.createSpan({ text: stateLabel(r.state) });
+			this.renderState(sTd, r.state);
 			if (r.state === "error" && r.lastError) {
 				sTd.setAttribute("title", r.lastError);
 				sTd.createDiv({ cls: "covault-dash-err", text: shortErr(r.lastError) });
@@ -166,6 +181,13 @@ export class SyncStatusSection implements PanelSection {
 
 		// 좁은 패널/모바일용 카드 목록(같은 데이터). CSS container query로 표↔카드 전환.
 		this.renderCards(wrap, rows, allRoots);
+	}
+
+	/** 상태 아이콘 + 라벨(이모지 원 대신 단일 아이콘). 상태별 색은 CSS(is-<state>). */
+	private renderState(parent: HTMLElement, state: LinkStatus["state"]): void {
+		const span = parent.createSpan({ cls: `covault-state is-${state}` });
+		setIcon(span.createSpan({ cls: "covault-state-icon" }), stateIcon(state));
+		span.createSpan({ text: stateLabel(state) });
 	}
 
 	private renderBanner(wrap: HTMLElement, s: SyncSummary): void {
@@ -219,7 +241,7 @@ export class SyncStatusSection implements PanelSection {
 			const card = box.createDiv({ cls: "covault-dash-card" });
 			const head = card.createDiv({ cls: "covault-dash-card-head" });
 			head.createSpan({ cls: "covault-dash-card-name", text: r.memberName || r.memberId || "—" });
-			head.createSpan({ text: stateLabel(r.state) });
+			this.renderState(head, r.state);
 			const meta = card.createDiv({ cls: "covault-dash-card-meta" });
 			meta.createSpan({ text: t("panel.received", { time: fmtTime(r.lastDownloadAt) }) });
 			const conf = meta.createSpan({ text: t("panel.conflicts_2", { n: r.conflicts }) });

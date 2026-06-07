@@ -1508,3 +1508,30 @@
 	border-color: var(--interactive-accent);
 	border-style: dashed;
 }
+
+/* 동기화 상태: 단일 아이콘 + 라벨(이모지 원 대체) */
+.covault-state {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.covault-state-icon {
+	display: inline-flex;
+}
+.covault-state-icon .svg-icon {
+	width: 14px;
+	height: 14px;
+}
+.covault-state.is-idle .covault-state-icon {
+	color: var(--text-success);
+}
+.covault-state.is-syncing .covault-state-icon {
+	color: var(--interactive-accent);
+}
+.covault-state.is-error .covault-state-icon {
+	color: var(--text-error);
+}
+.covault-state.is-offline .covault-state-icon,
+.covault-state.is-disabled .covault-state-icon {
+	color: var(--text-muted);
+}
