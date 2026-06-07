@@ -233,7 +233,8 @@ export class CoVaultSettingTab extends PluginSettingTab {
 			s.members.length === 0 ? t("settings.add_your_first_member_with_add") : undefined,
 		);
 		s.members.forEach((st, i) => this.renderMemberCard(members, st, i));
-		members.addSetting((set) =>
+		const pending = s.members.filter((st) => st.memberId && !st.provisioned).length;
+		members.addSetting((set) => {
 			set
 				.setClass("covault-add-row")
 				.addButton((b) =>
@@ -259,23 +260,16 @@ export class CoVaultSettingTab extends PluginSettingTab {
 							},
 						).open(),
 					),
-				),
-		);
-		const pending = s.members.filter((st) => st.memberId && !st.provisioned).length;
-		if (pending > 0) {
-			members.addSetting((set) =>
-				set
-					.setClass("covault-add-row")
-					.setName(t("settings.invite_all_pending", { n: pending }))
-					.setDesc(t("settings.invite_all_desc"))
-					.addButton((b) =>
-						b
-							.setButtonText(t("settings.invite_all"))
-							.setCta()
-							.onClick(() => this.runAsync(b, async () => { await this.host.inviteAllMembers(); this.display(); })),
-					),
-			);
-		}
+				);
+			if (pending > 0) {
+				set.addButton((b) =>
+					b
+						.setButtonText(t("settings.invite_all"))
+						.setTooltip(t("settings.invite_all_pending", { n: pending }))
+						.onClick(() => this.runAsync(b, async () => { await this.host.inviteAllMembers(); this.display(); })),
+				);
+			}
+		});
 
 		// 공유 공간 (모둠/학급)
 		const shared = this.group(t("settings.shared_spaces_group_workspace"), t("settings.pick_members_and_deploy_to_create"));

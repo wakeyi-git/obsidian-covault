@@ -281,7 +281,6 @@
 		"paste_roster": "Paste roster",
 		"invite_all": "Invite all",
 		"invite_all_pending": "Invite all pending members ({n})",
-		"invite_all_desc": "Provision every not-yet-invited member at once and show all invite codes together.",
 		"bulk_add_members": "Bulk add members",
 		"one_per_line_name_id_or": "One per line: ‘Name,ID,Folder’ (ID and Folder optional) or ‘Name ID’ or just ‘Name’ (ID auto-generated). Lines starting with ‘#’ are comments.",
 		"base_folder_optional": "Base folder (optional)",
