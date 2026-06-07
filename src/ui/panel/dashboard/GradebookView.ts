@@ -159,6 +159,17 @@ export class GradebookView {
 		setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), metric.icon);
 		head.createSpan({ cls: "covault-cr-card-title", text: metric.label });
 
+		// 학생: 본인 통계만 보므로 이름 없이 제목 옆에 값 + 막대만 표시.
+		if (!this.manager) {
+			const s = stats[0];
+			const v = s ? metric.get(s) : null;
+			const score = head.createSpan({ cls: "covault-cr-score", text: v == null ? "—" : `${v}%` });
+			score.style.marginLeft = "auto";
+			const prog = card.createDiv({ cls: "covault-cr-progress" });
+			prog.createEl("i").style.width = `${v ?? 0}%`;
+			return;
+		}
+
 		const matrix = card.createDiv({ cls: "covault-cr-matrix" });
 		let aggNum = 0;
 		let aggDen = 0;
