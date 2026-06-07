@@ -31,6 +31,10 @@
 }
 
 /* 통합 패널: 탭 바 + 콘텐츠 */
+/* 뷰 콘텐츠 기본 패딩 제거 — 우리 패널이 좌우/상하 여백을 직접 관리(본문 8px 12px). */
+.workspace-leaf-content[data-type="covault-panel"] .view-content {
+	padding: 0;
+}
 .covault-panel {
 	display: flex;
 	flex-direction: column;
