@@ -342,7 +342,7 @@
 		"archive_folder": "Archive folder",
 		"classroom_modules": "Classroom features",
 		"plaintext_secret_title": "Secrets are stored in plaintext on this device",
-		"plaintext_secret_desc": "This device doesn't support Secret Storage, so passwords and tokens are saved as plaintext in data.json (inside the synced vault). Use a platform with Secret Storage (recent desktop), keep this vault private, and rotate credentials if exposed.",
+		"plaintext_secret_desc": "This Obsidian version doesn't expose Secret Storage, so passwords and tokens are saved as plaintext in data.json (inside the synced vault). Update Obsidian, keep this vault private, and rotate credentials if exposed.",
 		"dashboard_page_size": "Dashboard items per page",
 		"dashboard_page_size_desc": "How many notices/assignments to show before \"Show more\". Default 10.",
 		"deleted_files_collect_here_under_the": "Deleted files collect here under the ‘Move to archive folder’ policy; removing them here permanently deletes them from the DB too.",
