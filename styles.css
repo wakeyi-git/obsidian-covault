@@ -1,7 +1,7 @@
 /* CoVault — styles */
 
 .covault-log-toolbar {
-	padding: 6px 12px;
+	padding: 0 0 8px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -231,9 +231,14 @@
 
 /* 대시보드 */
 .covault-dashboard {
-	padding: 8px 0;
+	/* 패딩은 .covault-panel-body(8px 12px) 단일 기준을 따른다(탭 간 여백 통일). */
 	overflow: auto;
 	container-type: inline-size; /* 패널 폭 기준 표↔카드 전환(@container) */
+}
+
+/* 모든 탭의 상단 여백을 본문 패딩(8px) 하나로 통일 — 첫 요소의 상단 마진 제거. */
+.covault-panel-body > :first-child {
+	margin-top: 0;
 }
 
 /* 상단 상태 배너 */
@@ -519,7 +524,7 @@
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
-	padding: 6px 0;
+	padding: 0 0 8px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -663,7 +668,7 @@
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
-	padding: 6px 0;
+	padding: 0 0 8px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
