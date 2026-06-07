@@ -408,6 +408,14 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	createTemplateFile(kind: "notice" | "lesson" | "assignment"): Promise<void> {
 		return this.classroomCtl.createTemplateFile(kind);
 	}
+	cleanupClassroomDocs(): Promise<{ duplicates: number; orphans: number; danglingLinks: number }> {
+		return this.classroomCtl.cleanupClassroomDocs();
+	}
+	/** 명령용: 로그 패널을 열고 중복/고아 학급 문서 정리 실행(결과는 로그에 표시). */
+	private async runCleanupClassroom(): Promise<void> {
+		await this.activatePanel("log");
+		await this.cleanupClassroomDocs();
+	}
 	openLesson(uid: string): Promise<void> {
 		return this.classroomCtl.openLesson(uid);
 	}
@@ -878,6 +886,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private registerCommands(): void {
 		this.addCommand({ id: "covault-open-panel", name: t("command.open_panel"), callback: () => this.activatePanel() });
 		this.addCommand({ id: "covault-open-dashboard", name: t("command.open_dashboard"), callback: () => this.activatePanel("dashboard") });
+		this.addCommand({
+			id: "covault-cleanup-classroom",
+			name: t("command.cleanup_classroom_docs"),
+			callback: () => this.runCleanupClassroom(),
+		});
 		this.addCommand({ id: "covault-open-log", name: t("command.open_log_panel"), callback: () => this.activatePanel("log") });
 		this.addCommand({
 			id: "covault-test-connection",

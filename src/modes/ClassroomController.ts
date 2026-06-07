@@ -6,7 +6,7 @@ import { MirrorSync } from "../core/sync/MirrorSync";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
 import { VersionStore } from "../core/sync/VersionStore";
 import { ensureParentFolders } from "../core/vault/folders";
-import { noticeFilePath } from "../core/classroom/notices";
+import { noticeFilePath, staleNoticesForPath } from "../core/classroom/notices";
 import {
 	defaultTemplate,
 	defaultTemplatePath,
@@ -22,6 +22,7 @@ import {
 	noticePrefix,
 	TimetableDoc,
 	timetableId,
+	TIMETABLE_ID_PREFIX,
 	ResponseDoc,
 	responseId,
 	RESPONSE_ID_PREFIX,
@@ -198,10 +199,88 @@ export class ClassroomController {
 		const fields = noticeFieldsFromFrontmatter(fm, file.basename);
 		if (!fields) return;
 		await this.putNoticeDoc(uid, file.path, fields);
+		// 직접 uid를 바꿔 생긴 중복(같은 파일을 가리키는 옛 uid 문서)을 폐기 — 다음 저장 때 자가 치유.
+		await this.retireStaleNoticesForPath(file.path, uid);
 		// 수업이 프론트매터에 day/period를 가지면 해당 주 시간표 칸에 자동 배치(외부/Cowork 작성 수업도 배치 가능).
 		if (fields.category === "lesson" && fields.weekKey && (fm.day !== undefined || fm.period !== undefined)) {
 			await this.placeLessonInTimetable(uid, fields.weekKey, fm.day, fm.period);
 		}
+	}
+
+	/** 같은 파일 경로를 가리키지만 uid가 다른 옛 게시 메타를 soft-delete(중복/고아 정리). */
+	private async retireStaleNoticesForPath(path: string, keepUid: string): Promise<void> {
+		const docs = await this.d.classroom.listByPrefix<NoticeDoc>(noticePrefix());
+		for (const d of staleNoticesForPath(docs, path, keepUid)) await this.d.classroom.softDelete(d);
+	}
+
+	/**
+	 * 중복/고아 학급 문서 정리(교사, 수동 명령). 반환: 정리 건수.
+	 * - 중복: 같은 파일을 가리키는 게시 메타가 여럿이면 하나만 남기고 폐기(파일 프론트매터 uid 우선, 없으면 최신).
+	 * - 고아: 파일이 더 이상 없는 게시 메타 폐기.
+	 * - 끊긴 연결: 시간표 칸이 가리키는 수업 uid가 살아있지 않으면 칸 연결 제거.
+	 */
+	async cleanupClassroomDocs(): Promise<{ duplicates: number; orphans: number; danglingLinks: number }> {
+		const result = { duplicates: 0, orphans: 0, danglingLinks: 0 };
+		if (this.d.settings().role !== "manager") {
+			this.d.logger.warn(t("command.available_in_manager_mode_only"), true);
+			return result;
+		}
+		if (!this.d.homeroomReady()) {
+			this.d.logger.warn(t("dashboard.homeroom_not_ready"), true);
+			return result;
+		}
+		const live = (await this.d.classroom.listByPrefix<NoticeDoc>(noticePrefix())).filter((n) => !n.deleted);
+
+		// 1) 같은 파일 경로 중복 → 하나만 남김.
+		const byPath = new Map<string, NoticeDoc[]>();
+		for (const n of live) (byPath.get(n.filePath) ?? byPath.set(n.filePath, []).get(n.filePath)!).push(n);
+		for (const [path, group] of byPath) {
+			if (group.length < 2) continue;
+			const fm = this.frontmatterOf(path);
+			const keepUid = typeof fm?.uid === "string" ? fm.uid : undefined;
+			const keeper =
+				(keepUid && group.find((n) => n.uid === keepUid)) ||
+				group.slice().sort((a, b) => b.postedAtMs - a.postedAtMs)[0];
+			for (const n of group) if (n.uid !== keeper.uid) {
+				await this.d.classroom.softDelete(n);
+				result.duplicates++;
+			}
+		}
+
+		// 2) 파일이 사라진 고아 → 폐기.
+		const surviving = (await this.d.classroom.listByPrefix<NoticeDoc>(noticePrefix())).filter((n) => !n.deleted);
+		for (const n of surviving) {
+			if (!this.d.app.vault.getAbstractFileByPath(n.filePath)) {
+				await this.d.classroom.softDelete(n);
+				result.orphans++;
+			}
+		}
+
+		// 3) 시간표의 끊긴 수업 연결 제거.
+		const liveUids = new Set(
+			(await this.d.classroom.listByPrefix<NoticeDoc>(noticePrefix())).filter((n) => !n.deleted).map((n) => n.uid),
+		);
+		for (const tt of await this.d.classroom.listByPrefix<TimetableDoc>(TIMETABLE_ID_PREFIX)) {
+			const lessons = { ...(tt.lessons ?? {}) };
+			let changed = false;
+			for (const [cell, uid] of Object.entries(lessons))
+				if (!liveUids.has(uid)) {
+					delete lessons[cell];
+					changed = true;
+					result.danglingLinks++;
+				}
+			if (changed) await this.d.classroom.put({ ...tt, lessons });
+		}
+
+		this.d.requestApply();
+		this.d.logger.ok(t("command.cleanup_done", result), true);
+		return result;
+	}
+
+	/** 파일의 현재 프론트매터(없으면 undefined). */
+	private frontmatterOf(path: string): Record<string, unknown> | undefined {
+		const f = this.d.app.vault.getAbstractFileByPath(path);
+		return f instanceof TFile ? (this.d.app.metadataCache.getFileCache(f)?.frontmatter as Record<string, unknown> | undefined) : undefined;
 	}
 
 	/**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { slugify, noticeFilePath, sortNotices, summarizeResponses, sortLessonsBySchedule, LessonSlot } from "./notices";
+import { slugify, noticeFilePath, sortNotices, summarizeResponses, sortLessonsBySchedule, staleNoticesForPath, LessonSlot } from "./notices";
 import { NoticeDoc, ResponseDoc } from "../model/types";
 
 describe("slugify / noticeFilePath", () => {
@@ -102,5 +102,23 @@ describe("summarizeResponses", () => {
 		expect(r.readCount).toBe(1);
 		expect(r.unread.sort()).toEqual(["b", "c", "d"]);
 		expect(r.comments.map((c) => c.byUser)).toEqual(["c", "b"]); // createdAtMs asc
+	});
+});
+
+describe("staleNoticesForPath", () => {
+	it("같은 경로에서 keepUid가 아닌 비삭제 문서만 반환", () => {
+		const docs = [
+			notice({ uid: "new", filePath: "_학급/수업/a.md" }),
+			notice({ uid: "old", filePath: "_학급/수업/a.md" }),
+			notice({ uid: "old2", filePath: "_학급/수업/a.md", deleted: true }), // 이미 삭제 → 제외
+			notice({ uid: "other", filePath: "_학급/수업/b.md" }), // 다른 경로 → 제외
+		];
+		const stale = staleNoticesForPath(docs, "_학급/수업/a.md", "new");
+		expect(stale.map((n) => n.uid)).toEqual(["old"]);
+	});
+
+	it("중복이 없으면 빈 배열", () => {
+		const docs = [notice({ uid: "new", filePath: "_학급/수업/a.md" })];
+		expect(staleNoticesForPath(docs, "_학급/수업/a.md", "new")).toEqual([]);
 	});
 });

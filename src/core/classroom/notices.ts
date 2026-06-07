@@ -22,6 +22,14 @@ export function noticeFilePath(folder: string, ts: number, title: string, sub = 
 	return `${folder}/${sub}/${stamp}-${slugify(title)}.md`;
 }
 
+/**
+ * 같은 파일 경로를 가리키지만 uid가 다른 옛 게시 메타(직접 uid 변경 등으로 생긴 중복/고아) 목록(순수).
+ * 한 파일 = 하나의 게시여야 하므로, keepUid가 아닌 나머지는 폐기 대상이다.
+ */
+export function staleNoticesForPath(notices: NoticeDoc[], path: string, keepUid: string): NoticeDoc[] {
+	return notices.filter((n) => !n.deleted && n.filePath === path && n.uid !== keepUid);
+}
+
 /** 표시 순서: 삭제 제외 → 고정(pinned) 먼저 → 최신(postedAtMs desc). */
 export function sortNotices(notices: NoticeDoc[]): NoticeDoc[] {
 	return notices
