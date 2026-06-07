@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, Modal, Notice, Setting, setIcon } from "obsidian";
 import { t } from "../i18n";
 
 export interface RoutineItemInput {
@@ -94,12 +94,30 @@ export class RoutineEditModal extends Modal {
 			const card = box.createDiv({ cls: "covault-dash-itemrow" });
 			const top = card.createDiv({ cls: "covault-dash-rubric-row" });
 			const ti = top.createEl("input", { attr: { type: "text", placeholder: t("dashboard.routine_item_placeholder") } });
+			ti.style.flex = "1"; // 입력칸이 남는 폭을 채우도록(오른쪽 여백 제거)
+			ti.style.minWidth = "0";
 			ti.value = it.label;
 			ti.oninput = () => (it.label = ti.value);
 			const sel = top.createEl("select", { cls: "covault-dash-recur" });
 			sel.createEl("option", { value: "daily", text: t("dashboard.daily") });
 			sel.createEl("option", { value: "weekly", text: t("dashboard.weekly") });
 			sel.value = it.recurrence;
+			const up = top.createEl("button", { cls: "clickable-icon" });
+			setIcon(up, "chevron-up");
+			up.setAttr("aria-label", t("dashboard.move_up"));
+			up.disabled = i === 0;
+			up.onclick = () => {
+				[this.items[i - 1], this.items[i]] = [this.items[i], this.items[i - 1]];
+				this.renderItems(box);
+			};
+			const down = top.createEl("button", { cls: "clickable-icon" });
+			setIcon(down, "chevron-down");
+			down.setAttr("aria-label", t("dashboard.move_down"));
+			down.disabled = i === this.items.length - 1;
+			down.onclick = () => {
+				[this.items[i + 1], this.items[i]] = [this.items[i], this.items[i + 1]];
+				this.renderItems(box);
+			};
 			const del = top.createEl("button", { cls: "mod-warning", text: "✕" });
 			del.onclick = () => {
 				this.items.splice(i, 1);

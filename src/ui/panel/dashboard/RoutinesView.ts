@@ -97,11 +97,23 @@ export class RoutinesView {
 			.filter((m) => m.memberId && m.provisioned)
 			.map((m) => ({ memberId: m.memberId, memberName: m.memberName || m.memberId }));
 
+		const order = routines.map((r) => r.uid);
+		const move = async (i: number, d: number): Promise<void> => {
+			const j = i + d;
+			if (j < 0 || j >= order.length) return;
+			[order[i], order[j]] = [order[j], order[i]];
+			await this.host.reorderRoutines(order);
+			await this.reload();
+		};
+
 		const list = c.createDiv({ cls: "covault-dash-list" });
-		for (const r of routines) {
+		for (let ri = 0; ri < routines.length; ri++) {
+			const r = routines[ri];
 			const card = list.createDiv({ cls: "covault-cr-card" });
 			const top = card.createDiv({ cls: "covault-cr-card-head" });
 			top.createSpan({ cls: "covault-cr-card-title", text: r.title });
+			if (ri > 0) iconButton(top, "chevron-up", t("dashboard.move_up"), () => move(ri, -1));
+			if (ri < routines.length - 1) iconButton(top, "chevron-down", t("dashboard.move_down"), () => move(ri, 1));
 			iconButton(top, "pencil", t("dashboard.edit"), () =>
 				new RoutineEditModal(
 					this.host.app,

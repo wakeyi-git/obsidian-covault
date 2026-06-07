@@ -72,6 +72,8 @@ export interface PanelHost {
 		input: { title: string; items: Array<{ id?: string; label: string; recurrence: "daily" | "weekly"; weekdays?: number[] }> },
 	): Promise<boolean>;
 	deleteRoutine(uid: string): Promise<void>;
+	/** 루틴 표시 순서 재배치(교사). */
+	reorderRoutines(orderedUids: string[]): Promise<void>;
 	myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null>;
 	myRoutineDays(uid: string): Promise<RoutineStateDoc[]>;
 	toggleRoutineItem(uid: string, day: string, itemId: string, checked: boolean): Promise<boolean>;

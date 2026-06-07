@@ -345,6 +345,8 @@ export interface RoutineDoc extends PouchDocBase {
 	uid: string;
 	title: string;
 	items: RoutineItem[];
+	/** 표시 순서(교사 배치). 작을수록 위. 미설정이면 생성순. */
+	order?: number;
 	createdBy: string;
 	createdAtMs: number;
 	deleted?: boolean;

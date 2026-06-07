@@ -141,7 +141,7 @@ export class GradebookView {
 
 		// CSV 내보내기(교사)
 		if (this.manager) {
-			panelButton(c, t("dashboard.export_csv"), async () => {
+			const csvBtn = panelButton(c, t("dashboard.export_csv"), async () => {
 				const csv = this.buildCsv(stats);
 				try {
 					await navigator.clipboard.writeText(csv);
@@ -150,6 +150,7 @@ export class GradebookView {
 					new Notice(t("dashboard.csv_copy_failed"));
 				}
 			});
+			csvBtn.style.marginTop = "10px";
 		}
 	}
 

@@ -765,7 +765,17 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	/** PanelHost: 루틴 정의 목록(학급 공유). */
 	async listRoutines(): Promise<RoutineDoc[]> {
 		const docs = await this.classroom.listByPrefix<RoutineDoc>(routinePrefix());
-		return docs.filter((d) => !d.deleted).sort((a, b) => a.createdAtMs - b.createdAtMs);
+		const ord = (r: RoutineDoc): number => r.order ?? Number.MAX_SAFE_INTEGER;
+		return docs.filter((d) => !d.deleted).sort((a, b) => ord(a) - ord(b) || a.createdAtMs - b.createdAtMs);
+	}
+
+	/** PanelHost: 루틴 표시 순서 재배치(교사). uid 순서대로 order 부여. */
+	async reorderRoutines(orderedUids: string[]): Promise<void> {
+		if (this.settings.role !== "manager") return;
+		for (let i = 0; i < orderedUids.length; i++) {
+			const doc = await this.classroom.get<RoutineDoc>(routineId(orderedUids[i]));
+			if (doc && doc.order !== i) await this.classroom.put({ ...doc, order: i });
+		}
 	}
 
 	/** PanelHost: 루틴 생성(교사, 학급 공유에 기록). 반복은 항목별. */

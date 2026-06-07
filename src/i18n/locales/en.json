@@ -147,6 +147,8 @@
 		"this_month": "This month",
 		"class_average": "Class average {pct}%",
 		"drag_to_reorder": "Drag to reorder",
+		"move_up": "Move up",
+		"move_down": "Move down",
 		"metric_notice_read": "Notice read rate",
 		"metric_lesson_read": "Lesson read rate",
 		"metric_submit": "Assignment submission rate",
