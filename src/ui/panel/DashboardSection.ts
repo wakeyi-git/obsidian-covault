@@ -76,6 +76,11 @@ export class DashboardSection implements PanelSection {
 		this.draw();
 	}
 
+	/** 대시보드 탭을 다시 누르면 허브(첫 페이지)로 복귀. */
+	onReactivate(): void {
+		if (this.view !== "hub") this.go("hub");
+	}
+
 	private drawHub(c: HTMLElement): void {
 		const manager = this.host.settings.role === "manager";
 		const ready = this.host.homeroomReady();

@@ -134,6 +134,8 @@ export interface PurgeRow extends PurgeSnapshot {
 export interface PanelSection {
 	render(container: HTMLElement): void | Promise<void>;
 	dispose(): void;
+	/** 이미 활성인 탭을 다시 눌렀을 때(예: 대시보드 첫 페이지로 복귀). */
+	onReactivate?(): void;
 }
 
 /** 패널 액션 버튼 헬퍼. */

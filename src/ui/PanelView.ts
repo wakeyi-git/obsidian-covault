@@ -128,7 +128,11 @@ export class CoVaultPanelView extends ItemView {
 			el.createSpan({ cls: "covault-panel-tab-label", text: tabLabel(tab) });
 			el.setAttr("aria-label", tabLabel(tab));
 			el.onclick = () => {
-				if (this.activeTab === tab) return;
+				if (this.activeTab === tab) {
+					// 같은 탭 재선택 → 섹션 초기 화면으로(대시보드 첫 페이지 등).
+					this.current?.onReactivate?.();
+					return;
+				}
 				this.activeTab = tab;
 				this.renderTabBar();
 				this.renderSection();
