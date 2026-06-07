@@ -2,11 +2,8 @@ import { setIcon } from "obsidian";
 import { PanelHost } from "../PanelSection";
 import { TimetableDoc, NoticeDoc, timetableId, noticePrefix } from "../../../core/model/types";
 import { weekStart } from "../../../core/classroom/week";
+import { defaultTimetableDays as defaultDays, DEFAULT_PERIODS } from "../../../core/classroom/timetable";
 import { t } from "../../../i18n";
-
-/** 신규 시간표 기본 요일(로케일). 생성 시점에 t()로 평가 → en/ko 모두 자연스러운 라벨. */
-const defaultDays = (): string[] => [t("dashboard.wd_mon"), t("dashboard.wd_tue"), t("dashboard.wd_wed"), t("dashboard.wd_thu"), t("dashboard.wd_fri")];
-const DEFAULT_PERIODS = ["1", "2", "3", "4", "5", "6"];
 
 /** 시간표 — 주간 그리드(요일×교시). 주(週)별 문서. 수업 안내 뷰에 임베드되며 주는 NoticesView가 제어. */
 export class TimetableView {

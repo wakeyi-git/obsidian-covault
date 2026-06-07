@@ -14,11 +14,14 @@ import {
 	noticeFieldsFromFrontmatter,
 	NoticeTemplateKind,
 } from "../core/classroom/templates";
+import { defaultTimetableDays, DEFAULT_PERIODS, resolveTimetableSlot } from "../core/classroom/timetable";
 import { assignmentWorkDir, substituteTemplate, slugify, rubricMax } from "../core/classroom/assignments";
 import {
 	NoticeDoc,
 	noticeId,
 	noticePrefix,
+	TimetableDoc,
+	timetableId,
 	ResponseDoc,
 	responseId,
 	RESPONSE_ID_PREFIX,
@@ -195,6 +198,48 @@ export class ClassroomController {
 		const fields = noticeFieldsFromFrontmatter(fm, file.basename);
 		if (!fields) return;
 		await this.putNoticeDoc(uid, file.path, fields);
+		// 수업이 프론트매터에 day/period를 가지면 해당 주 시간표 칸에 자동 배치(외부/Cowork 작성 수업도 배치 가능).
+		if (fields.category === "lesson" && fields.weekKey && (fm.day !== undefined || fm.period !== undefined)) {
+			await this.placeLessonInTimetable(uid, fields.weekKey, fm.day, fm.period);
+		}
+	}
+
+	/** 수업(uid)을 그 주 시간표의 day/period 칸에 연결(교사). 유효한 칸이 아니면 미배치 유지. */
+	private async placeLessonInTimetable(uid: string, weekKey: string, dayRaw: unknown, periodRaw: unknown): Promise<void> {
+		const existing = await this.d.classroom.get<TimetableDoc>(timetableId(weekKey));
+		const days = existing?.days ?? defaultTimetableDays();
+		const periods = existing?.periods ?? [...DEFAULT_PERIODS];
+		const cellKey = resolveTimetableSlot(dayRaw, periodRaw, days, periods);
+		if (!cellKey) return;
+		const doc: TimetableDoc =
+			existing ?? {
+				_id: timetableId(weekKey),
+				type: "timetable",
+				schemaVersion: 1,
+				workspaceId: this.d.settings().workspaceId,
+				weekKey,
+				days,
+				periods,
+				cells: {},
+				lessons: {},
+				updatedAtMs: 0,
+				updatedBy: this.d.settings().userId,
+			};
+		const lessons = { ...(doc.lessons ?? {}) };
+		let changed = false;
+		// 같은 수업이 다른 칸에 연결돼 있으면 정리(이동 지원).
+		for (const [k, v] of Object.entries(lessons)) {
+			if (v === uid && k !== cellKey) {
+				delete lessons[k];
+				changed = true;
+			}
+		}
+		if (lessons[cellKey] !== uid) {
+			lessons[cellKey] = uid;
+			changed = true;
+		}
+		if (!changed) return;
+		await this.d.classroom.put({ ...doc, lessons, updatedAtMs: Date.now(), updatedBy: this.d.settings().userId });
 	}
 
 	/** 파일 삭제 시 대응 게시 메타를 soft-delete(교사 전용). */
