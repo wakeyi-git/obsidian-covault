@@ -1,4 +1,5 @@
 import { MirrorContext } from "./MirrorContext";
+import { errMessage } from "../util/err";
 import { VersionDoc, VersionKind, NoteDoc, noteId, versionId, versionPrefix } from "../model/types";
 import { sha256 } from "../hash/hash";
 import { selectVersionsToPrune, DAY_MS } from "./versionRetention";
@@ -56,7 +57,7 @@ export class VersionStore {
 			await this.prune(dbPath);
 		} catch (e) {
 			ctx.logger.warn(
-				t("version.failed_to_record_version_snapshot", { path: dbPath, err: e instanceof Error ? e.message : String(e) }),
+				t("version.failed_to_record_version_snapshot", { path: dbPath, err: errMessage(e) }),
 			);
 		}
 	}

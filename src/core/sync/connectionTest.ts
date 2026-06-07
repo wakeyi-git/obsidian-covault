@@ -1,4 +1,5 @@
 import { CoreServices } from "../CoreServices";
+import { errMessage } from "../util/err";
 import { t } from "../../i18n";
 
 /**
@@ -23,7 +24,7 @@ export async function testConnection(core: CoreServices, dbName?: string): Promi
 			raw = await pouch.rawInfo();
 		} catch (e) {
 			log.error(
-				t("diagnostics.connection_failed_server_unreachable", { err: e instanceof Error ? e.message : String(e) }),
+				t("diagnostics.connection_failed_server_unreachable", { err: errMessage(e) }),
 				true,
 			);
 			return;

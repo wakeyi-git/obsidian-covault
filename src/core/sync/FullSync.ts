@@ -1,4 +1,5 @@
 import { TFile } from "obsidian";
+import { errMessage } from "../util/err";
 import { MirrorContext } from "./MirrorContext";
 import { MirrorApplier } from "./MirrorApplier";
 import { Uploader } from "./Uploader";
@@ -67,7 +68,7 @@ export class FullSync {
 			}
 		} catch (e) {
 			ctx.logger.error(
-				t("sync.remote_sync_failed", { err: e instanceof Error ? e.message : String(e) }),
+				t("sync.remote_sync_failed", { err: errMessage(e) }),
 				true,
 			);
 		}
@@ -101,7 +102,7 @@ export class FullSync {
 			const pushed = await ctx.pouch.replicatePushOnce();
 			ctx.logger.info(t("version.startup_reconcile_done_docs", { pushed, pulled }));
 		} catch (e) {
-			ctx.logger.error(t("version.startup_reconcile_failed", { err: e instanceof Error ? e.message : String(e) }), true);
+			ctx.logger.error(t("version.startup_reconcile_failed", { err: errMessage(e) }), true);
 		}
 
 		await this.writeManifestSnapshot();
@@ -253,7 +254,7 @@ export class FullSync {
 			await saveManifest(ctx.pouch, { localRoot: ctx.localRoot, paths, updatedAt: Date.now() });
 		} catch (e) {
 			ctx.logger.error(
-				t("sync.failed_to_write_manifest", { err: e instanceof Error ? e.message : String(e) }),
+				t("sync.failed_to_write_manifest", { err: errMessage(e) }),
 			);
 		}
 	}

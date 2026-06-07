@@ -1,4 +1,5 @@
 import { App, MarkdownView, TFile, View } from "obsidian";
+import { errMessage } from "../util/err";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { EditorView } from "@codemirror/view";
@@ -247,7 +248,7 @@ export class RealtimeManager {
 			this.core.logger.warn(
 				t("realtime.periodic_snapshot_failed", {
 					file: session.file,
-					error: e instanceof Error ? e.message : String(e),
+					error: errMessage(e),
 				}),
 			);
 		}
@@ -362,7 +363,7 @@ export class RealtimeManager {
 				this.core.logger.error(
 					t("realtime.realtime_binding_failed", {
 						file: session.file,
-						error: e instanceof Error ? e.message : String(e),
+						error: errMessage(e),
 					}),
 				);
 			}
@@ -397,7 +398,7 @@ export class RealtimeManager {
 			this.core.logger.error(
 				t("realtime.realtime_binding_failed", {
 					file: session.file,
-					error: e instanceof Error ? e.message : String(e),
+					error: errMessage(e),
 				}),
 			);
 		}
@@ -481,7 +482,7 @@ export class RealtimeManager {
 				}
 			} catch (e) {
 				this.core.logger.error(
-					t("realtime.snapshot_save_failed", { path, error: e instanceof Error ? e.message : String(e) }),
+					t("realtime.snapshot_save_failed", { path, error: errMessage(e) }),
 				);
 			}
 		} else {
@@ -517,7 +518,7 @@ export class RealtimeManager {
 				}
 			} catch (e) {
 				this.core.logger.error(
-					t("realtime.snapshot_save_failed", { path, error: e instanceof Error ? e.message : String(e) }),
+					t("realtime.snapshot_save_failed", { path, error: errMessage(e) }),
 				);
 			}
 		}

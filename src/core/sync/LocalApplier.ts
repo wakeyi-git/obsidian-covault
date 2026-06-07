@@ -1,4 +1,5 @@
 import { MirrorContext } from "./MirrorContext";
+import { errMessage } from "../util/err";
 import { MirrorApplier } from "./MirrorApplier";
 import { LiveHandle } from "../couch/PouchService";
 import { NoteDoc } from "../model/types";
@@ -55,7 +56,7 @@ export class LocalApplier {
 					this.ctx.logger.error(
 						t("sync.failed_to_apply_local_change", {
 							id: change.id,
-							err: e instanceof Error ? e.message : String(e),
+							err: errMessage(e),
 						}),
 					);
 				}

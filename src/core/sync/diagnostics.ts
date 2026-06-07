@@ -1,4 +1,5 @@
 import { CoreServices } from "../CoreServices";
+import { errMessage } from "../util/err";
 import { t } from "../../i18n";
 
 /** 진단 대상 DB. label은 학생/공유 식별. */
@@ -57,7 +58,7 @@ export async function runDiagnostics(core: CoreServices, targets: DiagTarget[]):
 					t("diagnostics.server_unreachable", {
 						label,
 						db,
-						err: e instanceof Error ? e.message : String(e),
+						err: errMessage(e),
 					}),
 				);
 				failCount++;

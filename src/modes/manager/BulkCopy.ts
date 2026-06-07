@@ -1,4 +1,5 @@
 import { App, TFile, TFolder, normalizePath } from "obsidian";
+import { errMessage } from "../../core/util/err";
 import { CoVaultSettings, MemberConfig } from "../../settings/types";
 import { ExistingPolicy, CopyAction, decideAction } from "./copyAction";
 import { ensureParentFolders } from "../../core/vault/folders";
@@ -120,7 +121,7 @@ export class BulkCopy {
 					else d.skipped++;
 				}
 			} catch (e) {
-				d.error = e instanceof Error ? e.message : String(e);
+				d.error = errMessage(e);
 			}
 			res.written += d.written;
 			res.skipped += d.skipped;

@@ -135,7 +135,7 @@ export class RoutineEditModal extends Modal {
 				const cb = lab.createEl("input", { attr: { type: "checkbox" } });
 				cb.checked = it.weekdays.has(di);
 				cb.onchange = () => (cb.checked ? it.weekdays.add(di) : it.weekdays.delete(di));
-				lab.createSpan({ text: t(`dashboard.wd_${k}` as never) });
+				lab.createSpan({ text: t(`dashboard.wd_${k}`) });
 			});
 			sel.onchange = () => {
 				it.recurrence = sel.value as "daily" | "weekly";

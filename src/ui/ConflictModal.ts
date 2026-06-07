@@ -1,4 +1,5 @@
 import { App, Modal, Setting } from "obsidian";
+import { errMessage } from "../core/util/err";
 import { ConflictInfo, ResolveChoice } from "../core/sync/ConflictManager";
 import { MirrorSync } from "../core/sync/MirrorSync";
 import { lineDiff, diffStats } from "../core/diff/lineDiff";
@@ -41,7 +42,7 @@ export class ConflictModal extends Modal {
 			rows = await this.host.listConflicts();
 		} catch (e) {
 			contentEl.createEl("p", {
-				text: t("conflict.failed_to_load_list", { error: e instanceof Error ? e.message : String(e) }),
+				text: t("conflict.failed_to_load_list", { error: errMessage(e) }),
 			});
 			return;
 		}
@@ -133,7 +134,7 @@ export class ConflictModal extends Modal {
 			await this.host.resolveConflict(row, choice);
 		} catch (e) {
 			this.contentEl.createEl("p", {
-				text: t("conflict.resolution_failed", { error: e instanceof Error ? e.message : String(e) }),
+				text: t("conflict.resolution_failed", { error: errMessage(e) }),
 			});
 		}
 		await this.render();

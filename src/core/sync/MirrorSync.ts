@@ -1,4 +1,5 @@
 import { CoreServices } from "../CoreServices";
+import { errMessage } from "../util/err";
 import { PouchService, ReplicationHandlers } from "../couch/PouchService";
 import { MirrorContext } from "./MirrorContext";
 import { MirrorApplier } from "./MirrorApplier";
@@ -157,7 +158,7 @@ export class MirrorSync {
 			await this.fullSyncRunner.runStartup();
 		} catch (e) {
 			this.ctx.logger.error(
-				t("sync.upload_reconciliation_on_startup_failed", { err: e instanceof Error ? e.message : String(e) }),
+				t("sync.upload_reconciliation_on_startup_failed", { err: errMessage(e) }),
 				true,
 			);
 		}

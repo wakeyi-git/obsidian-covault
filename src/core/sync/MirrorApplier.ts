@@ -1,4 +1,5 @@
 import { MirrorContext } from "./MirrorContext";
+import { errMessage } from "../util/err";
 import { ConflictManager } from "./ConflictManager";
 import { NoteDoc, AssetDoc, assetId } from "../model/types";
 import { sha256 } from "../hash/hash";
@@ -237,7 +238,7 @@ export class MirrorApplier {
 			}
 		} catch (e) {
 			ctx.logger.error(
-				t("sync.failed_to_save_attachment_conflict_copy", { path: localPath, err: e instanceof Error ? e.message : String(e) }),
+				t("sync.failed_to_save_attachment_conflict_copy", { path: localPath, err: errMessage(e) }),
 			);
 		}
 	}

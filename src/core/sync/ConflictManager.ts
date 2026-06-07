@@ -1,4 +1,5 @@
 import { MirrorContext } from "./MirrorContext";
+import { errMessage } from "../util/err";
 import { NoteDoc, AssetDoc, noteId, assetId } from "../model/types";
 import { sha256 } from "../hash/hash";
 import { insertLabelBeforeExt } from "../path/path";
@@ -45,7 +46,7 @@ export class ConflictManager {
 			await ctx.writeVaultFile(path, remote.content);
 		} catch (e) {
 			ctx.logger.error(
-				t("sync.failed_to_write_conflict_copy", { path, err: e instanceof Error ? e.message : String(e) }),
+				t("sync.failed_to_write_conflict_copy", { path, err: errMessage(e) }),
 			);
 		}
 	}
@@ -248,7 +249,7 @@ export class ConflictManager {
 			await this.ctx.writeVaultFile(path, content);
 		} catch (e) {
 			this.ctx.logger.error(
-				t("sync.failed_to_preserve_my_edit", { path, err: e instanceof Error ? e.message : String(e) }),
+				t("sync.failed_to_preserve_my_edit", { path, err: errMessage(e) }),
 			);
 		}
 	}

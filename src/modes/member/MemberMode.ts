@@ -1,4 +1,5 @@
 import { CoreServices } from "../../core/CoreServices";
+import { errMessage } from "../../core/util/err";
 import { MirrorSync } from "../../core/sync/MirrorSync";
 import { SyncDirection } from "../../core/sync/FullSync";
 import { computeChildRoots } from "../../core/sync/childRoots";
@@ -101,7 +102,7 @@ export class MemberMode implements CoVaultMode {
 			this.core.logger.ok(t("mode.member_mode_started_personal_shared", { count: linkSpaces.length }), true);
 		} catch (e) {
 			this.core.logger.error(
-				t("mode.failed_to_reconcile_shared_spaces", { error: e instanceof Error ? e.message : String(e) }),
+				t("mode.failed_to_reconcile_shared_spaces", { error: errMessage(e) }),
 				true,
 			);
 		} finally {

@@ -1,4 +1,5 @@
 import { App, Modal, Notice, Setting } from "obsidian";
+import { errMessage } from "../core/util/err";
 import qrcode from "qrcode-generator";
 import { InvitePayload, buildInviteUri, encodeInvite } from "../core/invite/invite";
 import { t } from "../i18n";
@@ -45,7 +46,7 @@ export class InviteModal extends Modal {
 			qrWrap.appendChild(svg);
 		} catch (e) {
 			qrWrap.createEl("p", {
-				text: t("invite.failed_to_generate_qr", { error: e instanceof Error ? e.message : String(e) }),
+				text: t("invite.failed_to_generate_qr", { error: errMessage(e) }),
 			});
 		}
 

@@ -1,4 +1,5 @@
 import { EventRef, Platform, TAbstractFile, TFile } from "obsidian";
+import { errMessage } from "../util/err";
 import { MirrorContext } from "./MirrorContext";
 import { Uploader } from "./Uploader";
 import { exceedsAttachmentLimit } from "./attachment";
@@ -122,7 +123,7 @@ export class LocalWatcher {
 				t("sync.rename_handling_failed", {
 					from: oldPath,
 					to: newPath,
-					err: e instanceof Error ? e.message : String(e),
+					err: errMessage(e),
 				}),
 			);
 		}
@@ -145,7 +146,7 @@ export class LocalWatcher {
 				.purgePath(archivedDb)
 				.catch((e) =>
 					this.ctx.logger.error(
-						t("sync.purge_failed", { path: localPath, err: e instanceof Error ? e.message : String(e) }),
+						t("sync.purge_failed", { path: localPath, err: errMessage(e) }),
 					),
 				);
 			return;
@@ -159,7 +160,7 @@ export class LocalWatcher {
 			.tombstonePath(dbPath)
 			.catch((e) =>
 				this.ctx.logger.error(
-					t("sync.delete_handling_failed", { path: localPath, err: e instanceof Error ? e.message : String(e) }),
+					t("sync.delete_handling_failed", { path: localPath, err: errMessage(e) }),
 				),
 			);
 	}
@@ -181,7 +182,7 @@ export class LocalWatcher {
 			await this.uploader.uploadPath(localPath);
 		} catch (e) {
 			this.ctx.logger.error(
-				t("sync.upload_failed", { path: localPath, err: e instanceof Error ? e.message : String(e) }),
+				t("sync.upload_failed", { path: localPath, err: errMessage(e) }),
 			);
 		} finally {
 			this.ctx.clearPending(dbPath);

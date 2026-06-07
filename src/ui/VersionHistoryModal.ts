@@ -1,4 +1,5 @@
 import { App, Modal, Notice, Setting } from "obsidian";
+import { errMessage } from "../core/util/err";
 import { VersionDoc, VersionKind } from "../core/model/types";
 import { t, formatDate } from "../i18n";
 
@@ -49,7 +50,7 @@ export class VersionHistoryModal extends Modal {
 		try {
 			versions = await this.host.versionHistoryFor(this.localPath);
 		} catch (e) {
-			contentEl.createEl("p", { text: t("conflict.failed_to_load_list", { error: e instanceof Error ? e.message : String(e) }) });
+			contentEl.createEl("p", { text: t("conflict.failed_to_load_list", { error: errMessage(e) }) });
 			return;
 		}
 

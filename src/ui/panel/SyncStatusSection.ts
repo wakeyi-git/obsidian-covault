@@ -1,4 +1,5 @@
 import { setIcon } from "obsidian";
+import { errMessage } from "../../core/util/err";
 import { LinkStatus } from "../../core/sync/MirrorContext";
 import { computeChildRoots } from "../../core/sync/childRoots";
 import { DashboardRow, PanelHost, PanelSection, panelButton } from "./PanelSection";
@@ -117,7 +118,7 @@ export class SyncStatusSection implements PanelSection {
 			if (seq !== this.renderSeq || !this.tableWrap) return;
 			this.tableWrap.empty();
 			this.tableWrap.createEl("p", {
-				text: t("panel.failed_to_load_status", { error: e instanceof Error ? e.message : String(e) }),
+				text: t("panel.failed_to_load_status", { error: errMessage(e) }),
 			});
 			return;
 		}

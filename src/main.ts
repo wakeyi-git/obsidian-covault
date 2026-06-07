@@ -1,4 +1,5 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { errMessage } from "./core/util/err";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { VersionDoc, NoticeDoc, ResponseDoc } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
@@ -300,7 +301,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				await p.close();
 				this.logger.ok(t("command.local_cache_deleted", { db }));
 			} catch (e) {
-				this.logger.error(t("command.failed_to_delete_local_cache", { db, err: e instanceof Error ? e.message : String(e) }));
+				this.logger.error(t("command.failed_to_delete_local_cache", { db, err: errMessage(e) }));
 			}
 		}
 	}
@@ -663,7 +664,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				const infos = await sync.listConflicts();
 				for (const info of infos) rows.push({ sync, info });
 			} catch (e) {
-				this.logger.error(t("command.failed_to_fetch_conflict_list", { label: sync.label, err: e instanceof Error ? e.message : String(e) }));
+				this.logger.error(t("command.failed_to_fetch_conflict_list", { label: sync.label, err: errMessage(e) }));
 			}
 		}
 		return rows;
@@ -1003,8 +1004,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	/** 공유 공간 새로고침(학생=shares 재조회, 교사=재시작). */
 	async refreshShares(): Promise<void> {
 		await this.activatePanel("log");
-		const m = this.mode as unknown as { refreshShares?: () => Promise<void> } | null;
-		if (this.settings.role === "member" && m?.refreshShares) await m.refreshShares();
+		if (this.settings.role === "member" && this.mode?.refreshShares) await this.mode.refreshShares();
 		else await this.restartMode();
 	}
 
@@ -1021,7 +1021,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				? await r.bulk.copyFolder(r.src, r.targets, r.opts)
 				: await r.bulk.copyFile(r.src, r.targets, r.opts);
 		} catch (e) {
-			return { written: 0, skipped: 0, details: [], error: e instanceof Error ? e.message : String(e) };
+			return { written: 0, skipped: 0, details: [], error: errMessage(e) };
 		}
 	}
 
@@ -1036,7 +1036,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		try {
 			return await r.bulk.preview(r.src, r.targets, r.opts);
 		} catch (e) {
-			return { members: [], error: e instanceof Error ? e.message : String(e) };
+			return { members: [], error: errMessage(e) };
 		}
 	}
 
