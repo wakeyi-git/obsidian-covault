@@ -18,7 +18,6 @@ import { SetupWizardModal } from "./ui/SetupWizardModal";
 import { ResolveChoice } from "./core/sync/ConflictManager";
 import { BulkCopy, CopyOptions, CopyResult, CopyPlan } from "./modes/manager/BulkCopy";
 import { RealtimeManager } from "./core/realtime/RealtimeManager";
-import { mintSpaceToken } from "./core/realtime/spaceToken";
 import { isValidCouchName } from "./core/path/path";
 import {
 	getSecretValue,
@@ -34,6 +33,7 @@ import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
 import { ClassroomController } from "./modes/ClassroomController";
+import { RealtimeController } from "./modes/RealtimeController";
 import { findHomeroom, setHomeroom } from "./core/classroom/homeroom";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
@@ -65,6 +65,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private feedback!: FeedbackStore;
 	private classroom!: ClassroomStore;
 	private classroomCtl!: ClassroomController;
+	private realtimeCtl!: RealtimeController;
 	private applyTimer: number | null = null;
 
 	/** PanelHost: 피드백 섹션이 사용. */
@@ -94,6 +95,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			(p) => this.syncForLocalPath(p), // 주기적 스냅샷 쓰기 대상
 		);
 		this.core.isRealtimeActive = (p) => this.realtime.isActive(p);
+		this.realtimeCtl = new RealtimeController({
+			app: this.app,
+			settings: () => this.settings,
+			realtime: () => this.realtime,
+			openLog: () => this.activatePanel("log"),
+		});
 		this.registerEditorExtension(realtimeEditorExtension());
 
 		// 피드백 레이어(§19.5)
@@ -574,41 +581,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	 * 모든 구성원 개인 mirror에 발급하고, 꺼져 있거나 시크릿이 없으면 모두 비운다(stale 재배포 방지).
 	 * (유출 시 해당 공간 room만 접근 가능 — 학급 전체 아님.) 시크릿은 Secret Storage에서 읽는다.
 	 */
-	private async mintRealtimeTokens(): Promise<void> {
-		const s = this.settings;
-		const yjsSecret = getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
-		const on = s.realtimeEnabled && !!yjsSecret;
-		const ttl =
-			s.yjsTokenTtlDays && s.yjsTokenTtlDays > 0
-				? Math.floor(Date.now() / 1000) + s.yjsTokenTtlDays * 86400
-				: undefined;
-		for (const sp of s.sharedSpaces) {
-			if (on) sp.token = await mintSpaceToken(yjsSecret, { workspaceId: s.workspaceId, spaceId: sp.id, exp: ttl });
-			else delete sp.token;
-		}
-		for (const st of s.members) await this.mintMirrorToken(st);
+	private mintRealtimeTokens(): Promise<void> {
+		return this.realtimeCtl.mintAll();
 	}
 
-	/**
-	 * 개인 mirror 실시간 토큰 발급/회수(교사). 전역 실시간(realtimeEnabled) + yjsSecret 있을 때 발급, 아니면 비운다.
-	 * spaceId=mirror-<memberId>이라 서버의 share 룸 prefix(<workspaceId>/share/<spaceId>/) 검증을 그대로 통과한다.
-	 */
-	private async mintMirrorToken(member: MemberConfig): Promise<void> {
-		const s = this.settings;
-		const yjsSecret = getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
-		if (s.realtimeEnabled && yjsSecret && member.memberId) {
-			const ttl =
-				s.yjsTokenTtlDays && s.yjsTokenTtlDays > 0
-					? Math.floor(Date.now() / 1000) + s.yjsTokenTtlDays * 86400
-					: undefined;
-			member.realtimeToken = await mintSpaceToken(yjsSecret, {
-				workspaceId: s.workspaceId,
-				spaceId: `mirror-${member.memberId}`,
-				exp: ttl,
-			});
-		} else {
-			delete member.realtimeToken;
-		}
+	private mintMirrorToken(member: MemberConfig): Promise<void> {
+		return this.realtimeCtl.mintMirror(member);
 	}
 
 	/** 한 학생의 shares + rtconfig 문서 기록(공유 공간 멤버십 + 개인 mirror 실시간 공간). */
@@ -1121,10 +1099,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	/** 실시간 세션 점검 + 진단 로그. */
-	async realtimeStatus(): Promise<void> {
-		await this.activatePanel("log");
-		this.realtime.syncOpenEditors();
-		this.realtime.diagnose();
+	realtimeStatus(): Promise<void> {
+		return this.realtimeCtl.realtimeStatus();
 	}
 
 	/** 공유 공간 새로고침(학생=shares 재조회, 교사=재시작). */
