@@ -374,6 +374,7 @@
 		"delete_immediately": "Delete immediately",
 		"ignore_deletion": "Ignore deletion",
 		"archive_folder": "Archive folder",
+		"classroom_modules": "Classroom features",
 		"dashboard_page_size": "Dashboard items per page",
 		"dashboard_page_size_desc": "How many notices/assignments to show before \"Show more\". Default 10.",
 		"deleted_files_collect_here_under_the": "Deleted files collect here under the ‘Move to archive folder’ policy; removing them here permanently deletes them from the DB too.",

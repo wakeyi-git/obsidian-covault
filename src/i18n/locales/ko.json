@@ -374,6 +374,7 @@
 		"delete_immediately": "즉시 삭제",
 		"ignore_deletion": "삭제 무시",
 		"archive_folder": "보관 폴더",
+		"classroom_modules": "학급 운영 기능",
 		"dashboard_page_size": "대시보드 페이지당 표시 개수",
 		"dashboard_page_size_desc": "알림장/과제를 \"더 보기\" 전까지 한 번에 보여줄 개수. 기본 10.",
 		"deleted_files_collect_here_under_the": "‘보관 폴더로 이동’ 정책에서 삭제 파일이 모이며, 여기서 지우면 DB에서도 영구 삭제됩니다.",

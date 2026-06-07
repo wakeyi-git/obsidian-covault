@@ -422,6 +422,26 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				}),
 			);
 
+		// 학급 공동 공간일 때만: 학급 운영 특화 기능(모듈) 활성화 토글.
+		if (sp.kind === "homeroom") {
+			card.createDiv({ cls: "covault-dash-label", text: t("settings.classroom_modules") });
+			const modules: Array<[keyof NonNullable<CoVaultSettings["classroomModules"]>, string]> = [
+				["notices", t("dashboard.notices")],
+				["lessons", t("dashboard.lessons")],
+				["assignments", t("dashboard.assignments")],
+				["routines", t("dashboard.routines")],
+				["gradebook", t("dashboard.gradebook")],
+			];
+			for (const [key, label] of modules) {
+				new Setting(card).setName(label).addToggle((tg) =>
+					tg.setValue(s.classroomModules?.[key] !== false).onChange(async (v) => {
+						s.classroomModules = { ...(s.classroomModules ?? {}), [key]: v };
+						await this.host.saveSettings();
+					}),
+				);
+			}
+		}
+
 		const memberHead = new Setting(card).setName(t("panel.members"));
 		const membersWithId = s.members.filter((st) => st.memberId);
 		memberHead.addButton((b) =>
