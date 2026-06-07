@@ -1449,3 +1449,25 @@
 	color: var(--text-muted);
 	white-space: nowrap;
 }
+
+/* 매트릭스 행 내 미니 진행률(구성원별) */
+.covault-cr-matrix .covault-cr-progress {
+	width: 56px;
+	flex: none;
+}
+
+/* 체크리스트 항목(학생) */
+.covault-cr-check {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 3px 0;
+}
+.covault-cr-check input {
+	margin: 0;
+	flex: none;
+}
+.covault-cr-check.is-done span {
+	color: var(--text-muted);
+	text-decoration: line-through;
+}
