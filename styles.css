@@ -347,8 +347,8 @@
 .covault-dash-card {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
-	padding: 8px 10px;
-	margin: 6px 0;
+	padding: 10px 12px;
+	margin: 8px 0;
 	background: var(--background-primary);
 }
 
@@ -537,7 +537,7 @@
 .covault-feedback-card {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
-	padding: 8px 10px;
+	padding: 10px 12px;
 	margin: 8px 0;
 	background: var(--background-primary); /* 편집창과 동일 배경 */
 }
@@ -697,7 +697,7 @@
 .covault-recovery-card {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
-	padding: 8px 10px;
+	padding: 10px 12px;
 	margin: 8px 0;
 	background: var(--background-primary);
 }
@@ -970,8 +970,9 @@
 }
 .covault-dash-label {
 	font-size: 12px;
+	font-weight: 600;
 	color: var(--text-muted);
-	margin: 8px 0 4px;
+	margin: 12px 0 4px; /* 모달 섹션/필드 라벨 공통 리듬 */
 }
 
 .covault-dash-comments {
@@ -1190,7 +1191,7 @@
 	gap: 6px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
-	padding: 12px;
+	padding: 10px 12px; /* 카드 공통 여백 */
 	background: var(--background-primary); /* 편집창과 동일 배경 */
 }
 .covault-cr-card.is-clickable {
