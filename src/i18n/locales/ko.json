@@ -176,6 +176,7 @@
 		"prev_week": "이전 주",
 		"next_week": "다음 주",
 		"show_more": "더 보기 ({n}개)",
+		"reply_visibility_hint": "댓글은 학급 전체에, 질문은 교사에게만 표시됩니다.",
 		"prev_day": "이전 날",
 		"next_day": "다음 날",
 		"today": "오늘",

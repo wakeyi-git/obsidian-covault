@@ -1,6 +1,6 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
-import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId, ResponseDoc, responseId } from "./core/model/types";
+import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId, ResponseDoc, responseId, RESPONSE_ID_PREFIX } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade, assignmentId, assignmentStateId, ASSIGNMENT_STATE_ID_PREFIX } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc, routineId, routinePrefix, routineStateId, routineStatePrefix, ROUTINE_STATE_ID_PREFIX } from "./core/model/types";
 import { ensureParentFolders } from "./core/vault/folders";
@@ -880,6 +880,31 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		const sync = this.studentMirrorSync();
 		if (!sync) return [];
 		return sync.ctx.pouch.allDocsByPrefix<RoutineStateDoc>(routineStatePrefix(uid, this.settings.userId));
+	}
+
+	/** PanelHost: 비공개 응답(질문) 기록 — 학생 개인 mirror에 저장(동료 비공개, 교사만 열람). */
+	async postPrivateResponse(doc: ResponseDoc): Promise<boolean> {
+		const sync = this.studentMirrorSync();
+		if (!sync) return false;
+		await sync.ctx.pouch.put(doc as unknown as { _id: string; [k: string]: unknown });
+		return true;
+	}
+
+	/** PanelHost: 비공개 질문 수집(kind="question"). 교사=전 구성원 mirror, 학생=본인 mirror. */
+	async listPrivateQuestions(): Promise<ResponseDoc[]> {
+		const out: ResponseDoc[] = [];
+		if (this.settings.role === "manager") {
+			for (const m of this.settings.members) {
+				if (!m.memberId) continue;
+				const sync = this.memberSyncByRemoteDb(m.remoteDb);
+				if (!sync) continue;
+				out.push(...(await sync.ctx.pouch.allDocsByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX)));
+			}
+		} else {
+			const sync = this.studentMirrorSync();
+			if (sync) out.push(...(await sync.ctx.pouch.allDocsByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX)));
+		}
+		return out.filter((d) => d.kind === "question" && !d.deleted);
 	}
 
 	/**

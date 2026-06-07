@@ -124,8 +124,11 @@ export class NoticesView {
 			(n) => !n.deleted && (n.category ?? "notice") === this.category && (!this.isLesson || n.weekKey === this.weekKey),
 		);
 		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
+		// 질문은 학급 공유가 아닌 개인 mirror에 있다(동료 비공개) → 교사=전원/학생=본인 것을 합친다.
+		const privateQs = await this.host.listPrivateQuestions();
 		const byTarget = new Map<string, ResponseDoc[]>();
-		for (const r of allResponses) (byTarget.get(r.targetId) ?? byTarget.set(r.targetId, []).get(r.targetId)!).push(r);
+		for (const r of [...allResponses, ...privateQs])
+			(byTarget.get(r.targetId) ?? byTarget.set(r.targetId, []).get(r.targetId)!).push(r);
 
 		if (this.isLesson) {
 			// 선택 날짜의 요일(월=0)에 해당하는 시간표 칸의 수업을 교시순으로.
@@ -266,6 +269,8 @@ export class NoticesView {
 		const input = box.createEl("input", { cls: "covault-dash-reply-input", attr: { type: "text", placeholder: t("dashboard.write_comment") } });
 		panelButton(box, t("dashboard.comment"), () => this.submitReply(n, input, "comment"));
 		panelButton(box, t("dashboard.question"), () => this.submitReply(n, input, "question"));
+		// 가시성 안내: 댓글=학급 전체, 질문=교사만.
+		parent.createDiv({ cls: "covault-cr-muted", text: t("dashboard.reply_visibility_hint") });
 	}
 
 	private async submitReply(n: NoticeDoc, input: HTMLInputElement, kind: "comment" | "question"): Promise<void> {
@@ -290,7 +295,9 @@ export class NoticesView {
 			byRole: s.role,
 			createdAtMs: now,
 		};
-		await this.host.classroomStore.put(doc);
+		// 질문은 동료 비공개(학생 개인 mirror, 교사만 열람). 읽음/댓글은 학급 공유.
+		if (kind === "question") await this.host.postPrivateResponse(doc);
+		else await this.host.classroomStore.put(doc);
 		await this.reload();
 	}
 

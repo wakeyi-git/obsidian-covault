@@ -176,6 +176,7 @@
 		"prev_week": "Previous week",
 		"next_week": "Next week",
 		"show_more": "Show more ({n})",
+		"reply_visibility_hint": "Comments are visible to the whole class; questions are private to the teacher.",
 		"prev_day": "Previous day",
 		"next_day": "Next day",
 		"today": "Today",

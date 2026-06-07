@@ -209,6 +209,8 @@ export const DEFAULT_SETTINGS: CoVaultSettings = {
 	realtimeSnapshotSec: 0,
 	language: "auto",
 	dashboardPageSize: 10,
+	// 실시간 공간 토큰은 기본 30일 만료(주기 재배포로 회전). 0=무만료(설정에서 변경 가능).
+	yjsTokenTtlDays: 30,
 };
 
 /** 기기별 고유 ID. 기술문서 §16.3 deviceId 기반 무시에 사용. */

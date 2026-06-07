@@ -26,6 +26,12 @@ export class CouchAdmin {
 		return `${this.baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 	}
 
+	/** 서버 오류 사유를 로그/메시지에 실을 때 과도한 본문(대형 HTML 등)을 잘라 내부정보 노출을 줄인다. */
+	private reasonOf(r: { json?: any; text?: string }): string {
+		const s = String(r.json?.reason ?? r.text ?? "");
+		return s.length > 200 ? `${s.slice(0, 200)}…` : s;
+	}
+
 	private async req(
 		method: string,
 		path: string,
@@ -114,7 +120,7 @@ export class CouchAdmin {
 					ok: false,
 					error: t("couch.failed_to_create_account_http", {
 						status: putUser.status,
-						reason: putUser.json?.reason ?? putUser.text,
+						reason: this.reasonOf(putUser),
 					}),
 				};
 			}
@@ -128,7 +134,7 @@ export class CouchAdmin {
 				ok: false,
 				error: t("couch.failed_to_create_db_http", {
 					status: putDb.status,
-					reason: putDb.json?.reason ?? putDb.text,
+					reason: this.reasonOf(putDb),
 				}),
 			};
 		}
@@ -150,7 +156,7 @@ export class CouchAdmin {
 				ok: false,
 				error: t("couch.failed_to_create_shared_db_http", {
 					status: putDb.status,
-					reason: putDb.json?.reason ?? putDb.text,
+					reason: this.reasonOf(putDb),
 				}),
 			};
 		}
@@ -188,7 +194,7 @@ export class CouchAdmin {
 			if (put.status === 409) continue;
 			return {
 				ok: false,
-				error: t("couch.failed_to_write_document_http", { status: put.status, reason: put.json?.reason ?? put.text }),
+				error: t("couch.failed_to_write_document_http", { status: put.status, reason: this.reasonOf(put) }),
 			};
 		}
 		return { ok: false, error: t("couch.failed_to_write_document_repeated_rev") };
@@ -202,7 +208,7 @@ export class CouchAdmin {
 				ok: false,
 				error: t("couch.failed_to_set_permissions_http", {
 					status: putSec.status,
-					reason: putSec.json?.reason ?? putSec.text,
+					reason: this.reasonOf(putSec),
 				}),
 			};
 		}
@@ -217,7 +223,7 @@ export class CouchAdmin {
 			ok: false,
 			error: t("couch.failed_to_delete_db_http", {
 				status: res.status,
-				reason: res.json?.reason ?? res.text,
+				reason: this.reasonOf(res),
 			}),
 		};
 	}
@@ -241,7 +247,7 @@ export class CouchAdmin {
 				ok: false,
 				error: t("couch.failed_to_delete_account_http", {
 					status: del.status,
-					reason: del.json?.reason ?? del.text,
+					reason: this.reasonOf(del),
 				}),
 			};
 		}
@@ -265,7 +271,7 @@ export class CouchAdmin {
 				ok: false,
 				error: t("couch.failed_to_write_document_http", {
 					status: put.status,
-					reason: put.json?.reason ?? put.text,
+					reason: this.reasonOf(put),
 				}),
 			};
 		}
