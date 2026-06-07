@@ -1,12 +1,8 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
-import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId, ResponseDoc, responseId, RESPONSE_ID_PREFIX } from "./core/model/types";
-import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade, assignmentId, assignmentStateId, ASSIGNMENT_STATE_ID_PREFIX } from "./core/model/types";
-import { RoutineDoc, RoutineStateDoc, routineId, routinePrefix, routineStateId, routineStatePrefix, ROUTINE_STATE_ID_PREFIX } from "./core/model/types";
-import { ensureParentFolders } from "./core/vault/folders";
-import { noticeFilePath } from "./core/classroom/notices";
-import { assignmentWorkDir, substituteTemplate, slugify, rubricMax } from "./core/classroom/assignments";
-import { VersionStore } from "./core/sync/VersionStore";
+import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, ResponseDoc } from "./core/model/types";
+import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
+import { RoutineDoc, RoutineStateDoc } from "./core/model/types";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
 import { Logger } from "./core/log/Logger";
 import { CoreServices } from "./core/CoreServices";
@@ -37,6 +33,7 @@ import {
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
+import { ClassroomController } from "./modes/ClassroomController";
 import { findHomeroom, setHomeroom } from "./core/classroom/homeroom";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
@@ -67,6 +64,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private rtStatus!: HTMLElement;
 	private feedback!: FeedbackStore;
 	private classroom!: ClassroomStore;
+	private classroomCtl!: ClassroomController;
 	private applyTimer: number | null = null;
 
 	/** PanelHost: 피드백 섹션이 사용. */
@@ -108,6 +106,19 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 		// 학급 운영(대시보드) 저장소 — 학급 공유 공간 pouch에 알림장·시간표 등 공통 문서를 읽고 쓴다.
 		this.classroom = new ClassroomStore(this.core, () => this.homeroomPouch());
+		this.classroomCtl = new ClassroomController({
+			app: this.app,
+			logger: this.logger,
+			classroom: this.classroom,
+			settings: () => this.settings, // settings는 load/import에서 교체되므로 getter로
+			couchPassword: () => this.couchPassword(),
+			homeroomReady: () => this.homeroomReady(),
+			homeroomFolder: () => this.homeroomFolder(),
+			saveSettings: () => this.saveSettings(),
+			requestApply: () => this.requestApply(),
+			memberSyncByRemoteDb: (db) => this.memberSyncByRemoteDb(db),
+			studentMirrorSync: () => this.studentMirrorSync(),
+		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.onWorkspaceChange()));
 		this.registerEvent(this.app.workspace.on("file-open", () => this.onWorkspaceChange()));
@@ -474,480 +485,88 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		new SetupWizardModal(this.app, this).open();
 	}
 
-	/** 게시 본문 파일 + NoticeDoc 생성(교사). 성공 시 uid, 실패 시 null. weekKey는 수업 안내 주간 태그. */
-	private async createPost(title: string, body: string, category: "notice" | "lesson", weekKey?: string): Promise<string | null> {
-		if (this.settings.role !== "manager") {
-			this.logger.warn(t("command.available_in_manager_mode_only"), true);
-			return null;
-		}
-		if (!this.homeroomReady()) {
-			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
-			return null;
-		}
-		const folder = this.homeroomFolder();
-		if (!folder) {
-			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
-			return null;
-		}
-		const ts = Date.now();
-		const path = noticeFilePath(folder, ts, title, category === "lesson" ? "수업" : "알림장");
-		await ensureParentFolders(this.app, path);
-		if (this.app.vault.getAbstractFileByPath(path)) {
-			this.logger.warn(t("dashboard.notice_file_exists"), true);
-			return null;
-		}
-		await this.app.vault.create(path, `# ${title}\n\n${body}\n`);
-		const uid = `${ts.toString(36)}`;
-		const doc: NoticeDoc = {
-			_id: noticeId(uid),
-			type: "notice",
-			schemaVersion: 1,
-			workspaceId: this.settings.workspaceId,
-			uid,
-			title,
-			filePath: path,
-			postedAtMs: ts,
-			allowResponses: true,
-			category,
-			weekKey: category === "lesson" ? weekKey : undefined,
-			createdBy: this.settings.userId,
-			createdByRole: "manager",
-		};
-		const ok = await this.classroom.put(doc);
-		if (!ok) return null;
-		this.logger.ok(t("dashboard.notice_posted", { title }), true);
-		return uid;
-	}
-
-	/** PanelHost: 게시(교사). 본문 마크다운 파일을 학급 폴더에 만들고 NoticeDoc 메타를 학급 공유에 기록. */
-	async postNotice(title: string, body: string, category: "notice" | "lesson" = "notice", weekKey?: string): Promise<boolean> {
-		return (await this.createPost(title, body, category, weekKey)) != null;
-	}
-
-	/** PanelHost: 수업 안내 생성(교사). 성공 시 uid 반환(시간표 칸 연결용). weekKey=해당 주간 태그. */
-	async createLesson(title: string, weekKey?: string): Promise<string | null> {
-		return this.createPost(title, "", "lesson", weekKey);
-	}
-
-	/** PanelHost: 게시(알림장/수업) 삭제(교사). 메타 soft delete + 본문 파일 삭제(동기화로 학생도 제거). */
-	async deleteNotice(notice: NoticeDoc): Promise<void> {
-		await this.classroom.softDelete(notice);
-		const f = this.app.vault.getAbstractFileByPath(notice.filePath);
-		if (f instanceof TFile) {
-			try {
-				await this.app.vault.trash(f, false); // vault 내 .trash로 이동 → 폴더에서 사라져 삭제가 동기화됨
-			} catch {
-				await this.app.vault.delete(f).catch(() => {});
-			}
-		}
-	}
-
-	/** PanelHost: 수업 안내(uid) 열기. 본문 파일을 열고, 학생이면 읽음 처리. */
-	async openLesson(uid: string): Promise<void> {
-		const doc = await this.classroom.get<NoticeDoc>(noticeId(uid));
-		if (!doc) return;
-		await this.openVaultPath(doc.filePath);
-		if (this.settings.role === "member") {
-			const now = Date.now();
-			const r: ResponseDoc = {
-				_id: responseId(doc._id, this.settings.userId, "read"),
-				type: "response",
-				schemaVersion: 1,
-				workspaceId: this.settings.workspaceId,
-				targetId: doc._id,
-				kind: "read",
-				byUser: this.settings.userId,
-				byRole: "member",
-				createdAtMs: now,
-			};
-			await this.classroom.put(r);
-		}
-	}
-
-	// --- 과제(assignments) ---
-
-	/** PanelHost: 교사 과제 정의 목록(설정 보관). */
-	assignmentDefs(): AssignmentDoc[] {
-		return this.settings.assignments ?? [];
-	}
-
 	private memberSyncByRemoteDb(db: string): MirrorSync | undefined {
 		return (this.mode?.getSyncs() ?? []).find((s) => s.ctx.remoteDb === db);
 	}
 	private studentMirrorSync(): MirrorSync | undefined {
 		return this.memberSyncByRemoteDb(this.settings.remoteDb);
 	}
-	private async readVaultText(path: string): Promise<string | null> {
-		const f = this.app.vault.getAbstractFileByPath(path);
-		return f instanceof TFile ? await this.app.vault.read(f) : null;
+
+	// --- 학급 운영(대시보드): ClassroomController에 위임 ---
+	postNotice(title: string, body: string, category?: "notice" | "lesson", weekKey?: string): Promise<boolean> {
+		return this.classroomCtl.postNotice(title, body, category, weekKey);
 	}
-	private async writeFileIfAbsent(path: string, body: string): Promise<void> {
-		await ensureParentFolders(this.app, path);
-		if (!this.app.vault.getAbstractFileByPath(path)) await this.app.vault.create(path, body);
+	createLesson(title: string, weekKey?: string): Promise<string | null> {
+		return this.classroomCtl.createLesson(title, weekKey);
 	}
-
-	/** PanelHost: 과제 생성 + 배포(교사). */
-	async createAssignment(input: {
-		title: string;
-		instructions: string;
-		dueAt?: number;
-		points?: number;
-		privacy: "mirror" | "shared";
-		targetMembers: string[];
-		templatePath?: string;
-		rubric?: import("./core/model/types").RubricCriterion[];
-	}): Promise<boolean> {
-		const s = this.settings;
-		if (s.role !== "manager") {
-			this.logger.warn(t("command.available_in_manager_mode_only"), true);
-			return false;
-		}
-		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
-			this.logger.warn(t("command.enter_the_admin_account_first"), true);
-			return false;
-		}
-		if (input.privacy === "shared" && !this.homeroomReady()) {
-			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
-			return false;
-		}
-		const uid = `${Date.now().toString(36)}`;
-		const def: AssignmentDoc = {
-			_id: assignmentId(uid),
-			type: "assignment",
-			schemaVersion: 1,
-			workspaceId: s.workspaceId,
-			uid,
-			title: input.title,
-			instructions: input.instructions,
-			templatePaths: input.templatePath ? [input.templatePath] : [],
-			privacy: input.privacy,
-			targetMembers: [...input.targetMembers],
-			dueAt: input.dueAt,
-			points: input.points,
-			rubric: input.rubric && input.rubric.length > 0 ? input.rubric : undefined,
-			createdBy: s.userId,
-			createdAtMs: Date.now(),
-		};
-		s.assignments = [...(s.assignments ?? []), def];
-		await this.saveSettings();
-		await this.distributeAssignment(def);
-		return true;
+	deleteNotice(notice: NoticeDoc): Promise<void> {
+		return this.classroomCtl.deleteNotice(notice);
 	}
-
-	private async distributeAssignment(def: AssignmentDoc): Promise<void> {
-		const s = this.settings;
-		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
-		const slug = slugify(def.title);
-		const date = new Date().toISOString().slice(0, 10);
-		const templateContent = def.templatePaths[0] ? await this.readVaultText(def.templatePaths[0]) : null;
-		const templateName = def.templatePaths[0]?.split("/").pop() || "과제.md";
-		const fallback = `# ${def.title}\n\n${def.instructions || ""}\n`;
-		const homeFolder = this.homeroomFolder() ?? "";
-
-		// 공유 과제: 학급 공동 공간 폴더에 한 번만 작성(전원 공유). 경로가 교사·학생 양측 동일.
-		let sharedWorkPath: string | null = null;
-		if (def.privacy === "shared") {
-			sharedWorkPath = `${assignmentWorkDir("shared", "", homeFolder, slug)}/${templateName}`;
-			const body = templateContent != null ? substituteTemplate(templateContent, { memberId: "", memberName: "", workspaceId: s.workspaceId, date }) : fallback;
-			await this.writeFileIfAbsent(sharedWorkPath, body);
-		}
-
-		let count = 0;
-		for (const memberId of def.targetMembers) {
-			const member = s.members.find((m) => m.memberId === memberId && m.provisioned);
-			if (!member) continue;
-			let workPaths: string[];
-			if (def.privacy === "shared") {
-				workPaths = sharedWorkPath ? [sharedWorkPath] : [];
-			} else {
-				// 저장은 학생측 경로(dbPath, localRoot 상대), 파일 작성은 교사 vault의 member.localRoot 아래.
-				const studentPath = `${assignmentWorkDir("mirror", "", homeFolder, slug)}/${templateName}`;
-				const teacherPath = `${assignmentWorkDir("mirror", member.localRoot, homeFolder, slug)}/${templateName}`;
-				const body = templateContent != null ? substituteTemplate(templateContent, { memberId: member.memberId, memberName: member.memberName, workspaceId: s.workspaceId, date }) : fallback;
-				await this.writeFileIfAbsent(teacherPath, body);
-				workPaths = [studentPath];
-			}
-			const stateDoc: AssignmentStateDoc = {
-				_id: assignmentStateId(def.uid, memberId),
-				type: "assignment-state",
-				schemaVersion: 1,
-				workspaceId: s.workspaceId,
-				assignmentUid: def.uid,
-				memberId,
-				title: def.title,
-				workPaths,
-				dueAt: def.dueAt,
-				state: "assigned",
-				assignedAtMs: Date.now(),
-				maxPoints: def.rubric ? rubricMax(def.rubric) : def.points,
-			};
-			const r = await admin.putDoc(member.remoteDb, stateDoc);
-			if (!r.ok) this.logger.error(t("dashboard.assignment_distribute_failed", { id: memberId, err: r.error ?? "" }));
-			else count++;
-		}
-		this.logger.ok(t("dashboard.assignment_distributed", { title: def.title, count }), true);
-		this.requestApply();
+	openLesson(uid: string): Promise<void> {
+		return this.classroomCtl.openLesson(uid);
 	}
-
-	/** PanelHost: 학생 본인 과제 상태 목록(개인 미러). */
-	async listMyAssignments(): Promise<AssignmentStateDoc[]> {
-		const sync = this.studentMirrorSync();
-		if (!sync) return [];
-		const docs = await sync.ctx.pouch.allDocsByPrefix<AssignmentStateDoc>(ASSIGNMENT_STATE_ID_PREFIX);
-		return docs.filter((d) => !d.deleted);
+	assignmentDefs(): AssignmentDoc[] {
+		return this.classroomCtl.assignmentDefs();
 	}
-
-	/** PanelHost: 한 과제의 학생별 상태(교사, 각 학생 미러에서 수집). */
-	async listAssignmentStates(uid: string): Promise<AssignmentStateDoc[]> {
-		const def = this.assignmentDefs().find((d) => d.uid === uid);
-		if (!def) return [];
-		const out: AssignmentStateDoc[] = [];
-		for (const memberId of def.targetMembers) {
-			const member = this.settings.members.find((m) => m.memberId === memberId);
-			if (!member) continue;
-			const sync = this.memberSyncByRemoteDb(member.remoteDb);
-			if (!sync) continue;
-			const doc = await sync.ctx.pouch.get<AssignmentStateDoc>(assignmentStateId(uid, memberId));
-			if (doc && !doc.deleted) out.push(doc);
-		}
-		return out;
+	createAssignment(input: Parameters<ClassroomController["createAssignment"]>[0]): Promise<boolean> {
+		return this.classroomCtl.createAssignment(input);
 	}
-
-	/** PanelHost: 학생 제출(스냅샷 + 상태=submitted). */
-	async submitAssignment(stateDoc: AssignmentStateDoc): Promise<boolean> {
-		const sync = this.studentMirrorSync();
-		if (!sync) return false;
-		const vs = new VersionStore(sync.ctx);
-		for (const p of stateDoc.workPaths) {
-			const dbPath = sync.ctx.toDbPath(p);
-			const content = await this.readVaultText(p);
-			if (dbPath && content != null) await vs.snapshot(dbPath, content, "submit", 0);
-		}
-		const current = (await sync.ctx.pouch.get<AssignmentStateDoc>(stateDoc._id)) ?? stateDoc;
-		await sync.ctx.pouch.put({ ...current, state: "submitted", submittedAtMs: Date.now() });
-		this.logger.ok(t("dashboard.assignment_submitted", { title: stateDoc.title }), true);
-		return true;
+	listMyAssignments(): Promise<AssignmentStateDoc[]> {
+		return this.classroomCtl.listMyAssignments();
 	}
-
-	/** PanelHost: 제출 취소(반환 전, 상태=assigned). */
-	async unsubmitAssignment(stateDoc: AssignmentStateDoc): Promise<boolean> {
-		const sync = this.studentMirrorSync();
-		if (!sync) return false;
-		const current = await sync.ctx.pouch.get<AssignmentStateDoc>(stateDoc._id);
-		if (!current || current.state === "returned") return false;
-		await sync.ctx.pouch.put({ ...current, state: "assigned", submittedAtMs: undefined });
-		return true;
+	listAssignmentStates(uid: string): Promise<AssignmentStateDoc[]> {
+		return this.classroomCtl.listAssignmentStates(uid);
 	}
-
-	/** PanelHost: vault 파일 열기(작업 파일). */
-	async openVaultPath(path: string): Promise<void> {
-		const f = this.app.vault.getAbstractFileByPath(path);
-		if (f instanceof TFile) await this.app.workspace.getLeaf(false).openFile(f, { active: true });
+	listAllAssignmentStates(): Promise<AssignmentStateDoc[]> {
+		return this.classroomCtl.listAllAssignmentStates();
 	}
-
-	/** PanelHost: 채점 반환(교사). 학생 미러의 상태 문서에 grade + state=returned 기록 → 학생 수신. */
-	async returnAssignment(uid: string, memberId: string, grade: AssignmentGrade): Promise<boolean> {
-		if (this.settings.role !== "manager") return false;
-		const member = this.settings.members.find((m) => m.memberId === memberId);
-		if (!member) return false;
-		const sync = this.memberSyncByRemoteDb(member.remoteDb);
-		if (!sync) return false;
-		const cur = await sync.ctx.pouch.get<AssignmentStateDoc>(assignmentStateId(uid, memberId));
-		if (!cur) return false;
-		await sync.ctx.pouch.put({ ...cur, grade, state: "returned", returnedAtMs: Date.now() });
-		this.requestApply();
-		this.logger.ok(t("dashboard.assignment_returned", { name: member.memberName || memberId }), true);
-		return true;
+	submitAssignment(state: AssignmentStateDoc): Promise<boolean> {
+		return this.classroomCtl.submitAssignment(state);
 	}
-
-	// --- 루틴(체크리스트) ---
-
-	/** PanelHost: 루틴 정의 목록(학급 공유). */
-	async listRoutines(): Promise<RoutineDoc[]> {
-		const docs = await this.classroom.listByPrefix<RoutineDoc>(routinePrefix());
-		const ord = (r: RoutineDoc): number => r.order ?? Number.MAX_SAFE_INTEGER;
-		return docs.filter((d) => !d.deleted).sort((a, b) => ord(a) - ord(b) || a.createdAtMs - b.createdAtMs);
+	unsubmitAssignment(state: AssignmentStateDoc): Promise<boolean> {
+		return this.classroomCtl.unsubmitAssignment(state);
 	}
-
-	/** PanelHost: 루틴 표시 순서 재배치(교사). uid 순서대로 order 부여. */
-	async reorderRoutines(orderedUids: string[]): Promise<void> {
-		if (this.settings.role !== "manager") return;
-		for (let i = 0; i < orderedUids.length; i++) {
-			const doc = await this.classroom.get<RoutineDoc>(routineId(orderedUids[i]));
-			if (doc && doc.order !== i) await this.classroom.put({ ...doc, order: i });
-		}
+	openVaultPath(path: string): Promise<void> {
+		return this.classroomCtl.openVaultPath(path);
 	}
-
-	/** PanelHost: 루틴 생성(교사, 학급 공유에 기록). 반복은 항목별. */
-	async createRoutine(input: {
-		title: string;
-		items: Array<{ label: string; recurrence: "daily" | "weekly"; weekdays?: number[] }>;
-	}): Promise<boolean> {
-		const s = this.settings;
-		if (s.role !== "manager") {
-			this.logger.warn(t("command.available_in_manager_mode_only"), true);
-			return false;
-		}
-		if (!this.homeroomReady()) {
-			this.logger.warn(t("dashboard.homeroom_not_ready"), true);
-			return false;
-		}
-		const uid = `${Date.now().toString(36)}`;
-		const doc: RoutineDoc = {
-			_id: routineId(uid),
-			type: "routine",
-			schemaVersion: 1,
-			workspaceId: s.workspaceId,
-			uid,
-			title: input.title,
-			items: input.items.map((it, i) => ({
-				id: `i${i}`,
-				label: it.label,
-				recurrence: it.recurrence,
-				weekdays: it.recurrence === "weekly" ? it.weekdays : undefined,
-			})),
-			createdBy: s.userId,
-			createdAtMs: Date.now(),
-		};
-		return this.classroom.put(doc);
+	returnAssignment(uid: string, memberId: string, grade: AssignmentGrade): Promise<boolean> {
+		return this.classroomCtl.returnAssignment(uid, memberId, grade);
 	}
-
-	/** PanelHost: 루틴 편집(교사). 제목·항목 갱신. 기존 항목 id는 보존(체크 상태 연속성). */
-	async updateRoutine(
-		uid: string,
-		input: { title: string; items: Array<{ id?: string; label: string; recurrence: "daily" | "weekly"; weekdays?: number[] }> },
-	): Promise<boolean> {
-		if (this.settings.role !== "manager") {
-			this.logger.warn(t("command.available_in_manager_mode_only"), true);
-			return false;
-		}
-		const existing = await this.classroom.get<RoutineDoc>(routineId(uid));
-		if (!existing) return false;
-		const used = new Set<string>();
-		const items = input.items.map((it, idx) => {
-			const id = it.id && !used.has(it.id) ? it.id : `g${Date.now().toString(36)}${idx}`;
-			used.add(id);
-			return {
-				id,
-				label: it.label,
-				recurrence: it.recurrence,
-				weekdays: it.recurrence === "weekly" ? it.weekdays : undefined,
-			};
-		});
-		return this.classroom.put({ ...existing, title: input.title, items });
+	listRoutines(): Promise<RoutineDoc[]> {
+		return this.classroomCtl.listRoutines();
 	}
-
-	/** PanelHost: 루틴 삭제(교사, soft delete). */
-	async deleteRoutine(uid: string): Promise<void> {
-		const doc = await this.classroom.get<RoutineDoc>(routineId(uid));
-		if (doc) await this.classroom.softDelete(doc);
+	reorderRoutines(orderedUids: string[]): Promise<void> {
+		return this.classroomCtl.reorderRoutines(orderedUids);
 	}
-
-	/** PanelHost: 학생 본인의 해당 날짜 루틴 상태. */
-	async myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null> {
-		const sync = this.studentMirrorSync();
-		if (!sync) return null;
-		return sync.ctx.pouch.get<RoutineStateDoc>(routineStateId(uid, this.settings.userId, day));
+	createRoutine(input: Parameters<ClassroomController["createRoutine"]>[0]): Promise<boolean> {
+		return this.classroomCtl.createRoutine(input);
 	}
-
-	/** PanelHost: 학생 루틴 항목 체크 토글(개인 미러에 기록). */
-	async toggleRoutineItem(uid: string, day: string, itemId: string, checked: boolean): Promise<boolean> {
-		const sync = this.studentMirrorSync();
-		if (!sync) return false;
-		const id = routineStateId(uid, this.settings.userId, day);
-		const cur = await sync.ctx.pouch.get<RoutineStateDoc>(id);
-		const set = new Set(cur?.checked ?? []);
-		if (checked) set.add(itemId);
-		else set.delete(itemId);
-		const doc: RoutineStateDoc = {
-			_id: id,
-			_rev: cur?._rev,
-			type: "routine-state",
-			schemaVersion: 1,
-			workspaceId: this.settings.workspaceId,
-			routineUid: uid,
-			memberId: this.settings.userId,
-			day,
-			checked: [...set],
-			updatedAtMs: Date.now(),
-		};
-		await sync.ctx.pouch.put(doc);
-		return true;
+	updateRoutine(uid: string, input: Parameters<ClassroomController["updateRoutine"]>[1]): Promise<boolean> {
+		return this.classroomCtl.updateRoutine(uid, input);
 	}
-
-	/** PanelHost: 학생 본인의 한 루틴 전체 날짜 상태(streak 계산용). */
-	async myRoutineDays(uid: string): Promise<RoutineStateDoc[]> {
-		const sync = this.studentMirrorSync();
-		if (!sync) return [];
-		return sync.ctx.pouch.allDocsByPrefix<RoutineStateDoc>(routineStatePrefix(uid, this.settings.userId));
+	deleteRoutine(uid: string): Promise<void> {
+		return this.classroomCtl.deleteRoutine(uid);
 	}
-
-	/** PanelHost: 비공개 응답(질문) 기록 — 학생 개인 mirror에 저장(동료 비공개, 교사만 열람). */
-	async postPrivateResponse(doc: ResponseDoc): Promise<boolean> {
-		const sync = this.studentMirrorSync();
-		if (!sync) return false;
-		await sync.ctx.pouch.put(doc);
-		return true;
+	myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null> {
+		return this.classroomCtl.myRoutineState(uid, day);
 	}
-
-	/** PanelHost: 비공개 질문 수집(kind="question"). 교사=전 구성원 mirror, 학생=본인 mirror. */
-	async listPrivateQuestions(): Promise<ResponseDoc[]> {
-		const out: ResponseDoc[] = [];
-		if (this.settings.role === "manager") {
-			for (const m of this.settings.members) {
-				if (!m.memberId) continue;
-				const sync = this.memberSyncByRemoteDb(m.remoteDb);
-				if (!sync) continue;
-				out.push(...(await sync.ctx.pouch.allDocsByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX)));
-			}
-		} else {
-			const sync = this.studentMirrorSync();
-			if (sync) out.push(...(await sync.ctx.pouch.allDocsByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX)));
-		}
-		return out.filter((d) => d.kind === "question" && !d.deleted);
+	toggleRoutineItem(uid: string, day: string, itemId: string, checked: boolean): Promise<boolean> {
+		return this.classroomCtl.toggleRoutineItem(uid, day, itemId, checked);
 	}
-
-	/**
-	 * PanelHost: 전체 구성원의 모든 과제 상태(교사 통계용). 구성원 미러당 prefix 조회 1회 → O(구성원 수).
-	 * (과거: 과제×구성원 개별 get으로 O(과제·구성원). 통계 N+1 제거.)
-	 */
-	async listAllAssignmentStates(): Promise<AssignmentStateDoc[]> {
-		const out: AssignmentStateDoc[] = [];
-		for (const m of this.settings.members) {
-			if (!m.memberId) continue;
-			const sync = this.memberSyncByRemoteDb(m.remoteDb);
-			if (!sync) continue;
-			out.push(...(await sync.ctx.pouch.allDocsByPrefix<AssignmentStateDoc>(ASSIGNMENT_STATE_ID_PREFIX)));
-		}
-		return out.filter((d) => !d.deleted);
+	myRoutineDays(uid: string): Promise<RoutineStateDoc[]> {
+		return this.classroomCtl.myRoutineDays(uid);
 	}
-
-	/**
-	 * PanelHost: 전체 구성원의 모든 루틴 상태(교사 통계용). 구성원 미러당 prefix 조회 1회 → O(구성원 수).
-	 * (과거: 루틴×구성원으로 O(루틴·구성원). 통계 N+1 제거.)
-	 */
-	async listAllRoutineStates(): Promise<RoutineStateDoc[]> {
-		const out: RoutineStateDoc[] = [];
-		for (const m of this.settings.members) {
-			if (!m.memberId) continue;
-			const sync = this.memberSyncByRemoteDb(m.remoteDb);
-			if (!sync) continue;
-			out.push(...(await sync.ctx.pouch.allDocsByPrefix<RoutineStateDoc>(ROUTINE_STATE_ID_PREFIX)));
-		}
-		return out;
+	listRoutineStates(uid: string, day: string): Promise<RoutineStateDoc[]> {
+		return this.classroomCtl.listRoutineStates(uid, day);
 	}
-
-	/** PanelHost: 한 루틴의 학생별 상태(교사, 각 학생 미러에서 수집). */
-	async listRoutineStates(uid: string, day: string): Promise<RoutineStateDoc[]> {
-		const out: RoutineStateDoc[] = [];
-		for (const m of this.settings.members) {
-			if (!m.memberId) continue;
-			const sync = this.memberSyncByRemoteDb(m.remoteDb);
-			if (!sync) continue;
-			const doc = await sync.ctx.pouch.get<RoutineStateDoc>(routineStateId(uid, m.memberId, day));
-			if (doc) out.push(doc);
-		}
-		return out;
+	listAllRoutineStates(): Promise<RoutineStateDoc[]> {
+		return this.classroomCtl.listAllRoutineStates();
+	}
+	postPrivateResponse(doc: ResponseDoc): Promise<boolean> {
+		return this.classroomCtl.postPrivateResponse(doc);
+	}
+	listPrivateQuestions(): Promise<ResponseDoc[]> {
+		return this.classroomCtl.listPrivateQuestions();
 	}
 
 	/**
