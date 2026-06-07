@@ -38,6 +38,9 @@ export class ConflictManager {
 		const remote = await this.pickRemoteLeaf(dbPath, doc, doc._conflicts ?? []);
 		if (!remote) return;
 		const path = ctx.conflictLocalPath(dbPath);
+		// 이미 같은 내용의 보류본이 있으면 다시 쓰지 않는다(미해소 충돌이 매 변경/재시작마다
+		// _충돌/ 사본을 재기록해 mtime이 튀는 churn 방지).
+		if ((await ctx.readVaultFile(path)) === remote.content) return;
 		try {
 			await ctx.writeVaultFile(path, remote.content);
 		} catch (e) {
@@ -255,11 +258,20 @@ export class ConflictManager {
 		await this.removeConflictCopy(dbPath);
 	}
 
+	/** 삭제(tombstone) 적용 시 남는 _충돌/ 원격본·내편집 백업을 함께 정리(고아 사본 방지). */
+	async cleanupOnDelete(dbPath: string): Promise<void> {
+		await this.removeConflictCopy(dbPath);
+		await this.removeFileIfExists(this.ctx.localBackupPath(dbPath));
+	}
+
 	private async removeConflictCopy(dbPath: string): Promise<void> {
-		const path = this.ctx.conflictLocalPath(dbPath);
-		const file = this.ctx.getFile(path);
+		await this.removeFileIfExists(this.ctx.conflictLocalPath(dbPath));
+	}
+
+	private async removeFileIfExists(localPath: string): Promise<void> {
+		const file = this.ctx.getFile(localPath);
 		if (file) {
-			this.ctx.suppressStructural(path);
+			this.ctx.suppressStructural(localPath);
 			await this.ctx.deleteVaultFile(file);
 		}
 	}

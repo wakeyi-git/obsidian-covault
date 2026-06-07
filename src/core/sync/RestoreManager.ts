@@ -194,7 +194,24 @@ export class RestoreManager {
 		const localPath = ctx.toLocalPath(dbPath);
 
 		if (choice === "keep-remote") {
+			// 원격 수정을 유지 = 로컬에서 삭제된 파일을 원격 내용으로 vault에 되살린다.
+			// (큐 항목만 지우면 파일이 삭제된 채로 남아 "원격 유지" 선택과 어긋난다.)
+			if (ctx.isMarkdown(dbPath)) {
+				const doc = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
+				if (doc?.content != null && !doc.deleted) await this.writeAndRevive(localPath, dbPath, doc.content);
+			} else {
+				const bin = await ctx.pouch.getAssetBinary(assetId(dbPath));
+				if (bin) {
+					const prev = (await ctx.pouch.get<AssetDoc>(assetId(dbPath)))?.version ?? 0;
+					const fresh = await ctx.buildAssetDoc(dbPath, bin, prev);
+					ctx.guard.mark(localPath, fresh.contentHash);
+					await ctx.writeVaultBinary(localPath, bin);
+					ctx.guard.releaseAfterDelay(localPath);
+					await ctx.pouch.putAsset(fresh, bin);
+				}
+			}
 			await removeDeleteModify(ctx.pouch, dbPath);
+			ctx.logger.ok(t("recovery.delete_modify_conflict_resolved", { choice, path: dbPath }), true);
 			return;
 		}
 

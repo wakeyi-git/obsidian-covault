@@ -158,8 +158,11 @@ export class MirrorApplier {
 		const localPath = ctx.toLocalPath(doc.path);
 		if (ctx.isExcluded(localPath)) return "skipped-excluded"; // 보관/충돌/제외 폴더 격리
 
-		if (doc.deleted) return await this.applyDeletion(doc);
+		// 첨부 동기화를 끈 기기는 첨부를 일절 처리하지 않는다(삭제·충돌 보존 포함) — on↔off 비대칭 방지.
+		// (이전엔 tombstone만 적용하고 충돌 보존은 건너뛰어, off 기기가 로컬 첨부를 보존 없이 삭제할 수 있었다.)
 		if (!ctx.settings.syncAssets) return "skipped-nonmd";
+
+		if (doc.deleted) return await this.applyDeletion(doc);
 
 		const local = await ctx.readVaultBinary(localPath);
 		const localHash = local == null ? null : await sha256(local);
@@ -255,6 +258,11 @@ export class MirrorApplier {
 		// 실시간 세션 중인 파일은 삭제/보관을 보류 — 공동 편집 중인 라이브 파일을 _삭제됨으로 끌고 가지 않는다.
 		// (세션 종료 스냅샷이 내용을 다시 올려 삭제를 무효화한다.)
 		if (ctx.core.isRealtimeActive(localPath)) return "skipped-pending";
+
+		// 삭제를 적용하는 vault에선 더 이상 의미 없는 _충돌/ 보류본·내편집 백업을 정리(고아 사본 방지).
+		await this.conflicts.cleanupOnDelete(doc.path);
+		this.loggedConflicts.delete(doc.path);
+
 		const file = ctx.getFile(localPath);
 		if (!file) return "skipped-deleted"; // 이미 없음
 
