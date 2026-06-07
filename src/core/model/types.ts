@@ -161,6 +161,7 @@ export interface FeedbackDoc extends PouchDocBase {
 	anchor: FeedbackAnchor;
 	createdBy: string; // userId
 	createdByRole: "member" | "manager";
+	createdByName?: string; // 작성 시점의 표시 이름(설정 displayName). 작성자 표기에 우선 사용.
 	createdAt: string;
 	updatedAt: string;
 	resolved: boolean;

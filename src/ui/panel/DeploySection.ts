@@ -95,9 +95,12 @@ export class DeploySection implements PanelSection {
 		head.addButton((b) => b.setButtonText(t("deploy.select_all")).onClick(() => this.setAll(true)));
 		head.addButton((b) => b.setButtonText(t("deploy.none")).onClick(() => this.setAll(false)));
 		for (const st of members) {
+			const name = st.memberName || st.memberId;
+			// localRoot가 이름과 같으면(폴더=이름) 중복 표기되지 않도록 설명에서 생략.
+			const desc = st.localRoot && st.localRoot !== name ? st.localRoot : "";
 			new Setting(container)
-				.setName(st.memberName || st.memberId)
-				.setDesc(st.localRoot || "")
+				.setName(name)
+				.setDesc(desc)
 				.addToggle((tg) =>
 					tg.setValue(this.selected.has(st.memberId)).onChange((v) => {
 						if (v) this.selected.add(st.memberId);

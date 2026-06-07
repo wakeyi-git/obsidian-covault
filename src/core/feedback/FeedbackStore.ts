@@ -101,6 +101,7 @@ export class FeedbackStore {
 			anchor,
 			createdBy: s.userId,
 			createdByRole: s.role,
+			createdByName: s.displayName,
 			createdAt: now,
 			updatedAt: now,
 			resolved: false,

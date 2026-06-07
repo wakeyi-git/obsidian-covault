@@ -189,9 +189,9 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.addButton((b) => b.setButtonText(t("settings.run_setup_wizard")).setCta().onClick(() => this.host.openSetupWizard())),
 		);
 		this.textSetting(klass, t("settings.workspace_id"), "workspaceId", "ws_2026_1");
-		this.textSetting(klass, t("settings.display_name"), "displayName", t("common.manager"));
 
 		const admin = this.group(t("settings.admin_account"), t("settings.credentials_for_creating_member_accounts_dbs"));
+		this.textSetting(admin, t("settings.display_name"), "displayName", t("common.manager"));
 		this.textSetting(admin, "CouchDB URL", "couchdbUrl", "https://nas.example.com", { applyOnBlur: true });
 		this.textSetting(admin, t("settings.admin_username"), "username", "admin", { applyOnBlur: true });
 		this.passwordSetting(admin);

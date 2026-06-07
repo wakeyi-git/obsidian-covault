@@ -119,8 +119,10 @@ export class FeedbackSection implements PanelSection {
 		const card = this.listEl.createDiv({ cls: `covault-feedback-card${doc.resolved ? " is-resolved" : ""}` });
 
 		const head = card.createDiv({ cls: "covault-feedback-head" });
+		// 작성 시점 표시 이름이 있으면 우선 사용(없으면 역할·userId 폴백).
 		const who = doc.createdByRole === "manager" ? t("common.manager") : t("common.member");
-		head.createSpan({ cls: "covault-feedback-author", text: t("panel.msg_2", { who, by: doc.createdBy }) });
+		const author = doc.createdByName?.trim() || t("panel.msg_2", { who, by: doc.createdBy });
+		head.createSpan({ cls: "covault-feedback-author", text: author });
 		head.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(doc.createdAt)) });
 		if (doc.resolved) head.createSpan({ cls: "covault-feedback-badge", text: t("panel.resolved") });
 

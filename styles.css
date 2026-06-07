@@ -539,7 +539,7 @@
 	border-radius: 8px;
 	padding: 8px 10px;
 	margin: 8px 0;
-	background: var(--background-secondary);
+	background: var(--background-primary); /* 편집창과 동일 배경 */
 }
 
 .covault-feedback-card.is-resolved {
@@ -993,7 +993,8 @@
 }
 
 .covault-timetable-wrap {
-	overflow-x: auto;
+	overflow: auto;
+	border-radius: 8px; /* 모서리 둥글게(collapse 외곽선 클리핑) */
 }
 .covault-timetable {
 	border-collapse: collapse;
