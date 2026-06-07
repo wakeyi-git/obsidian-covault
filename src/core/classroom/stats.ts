@@ -17,10 +17,11 @@ export interface MemberStats {
 	lessonRead: Rate;
 	submit: Rate;
 	routine: Rate;
-	/** 과제 평균 점수(%) — 채점된 과제의 score/max 평균. 채점 없으면 null. */
+	/** 과제 평균 점수(%) — 채점된 과제의 만점 가중 평균(Σ득점/Σ만점). 채점 없으면 null. */
 	avgScorePct: number | null;
-	/** 평균 점수 산출에 쓰인 채점 건수(학급 가중 평균용). */
-	scoreCount: number;
+	/** 채점된 과제 득점 합·만점 합(학급 단위 풀링 평균용). */
+	scoreSum: number;
+	maxSum: number;
 }
 
 export interface StatsInput {
@@ -84,18 +85,24 @@ export function computeStats(input: StatsInput): MemberStats[] {
 
 		// 과제 제출율 + 평균 점수
 		const myStates = states.filter((s) => s.memberId === m.memberId && !s.deleted && inPeriod(s.assignedAtMs, startMs, endMs));
+		// 실제 제출(submittedAtMs)만 제출로 집계 — 교사가 미제출 과제를 바로 반환해도 제출로 잡히지 않게.
 		const submit: Rate = {
-			num: myStates.filter((s) => s.state === "submitted" || s.state === "returned").length,
+			num: myStates.filter((s) => s.submittedAtMs != null).length,
 			den: myStates.length,
 		};
-		const pcts: number[] = [];
+		// 평균 점수: 만점 가중 풀링(Σ득점/Σ만점). 만점이 다른 과제를 균등 평균하지 않는다.
+		let scoreSum = 0;
+		let maxSum = 0;
 		for (const s of myStates) {
 			if (s.state === "returned" && s.grade) {
 				const max = maxByUid.get(s.assignmentUid);
-				if (max != null && max > 0) pcts.push((gradeNum(s.grade) / max) * 100);
+				if (max != null && max > 0) {
+					scoreSum += gradeNum(s.grade);
+					maxSum += max;
+				}
 			}
 		}
-		const avgScorePct = pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
+		const avgScorePct = maxSum > 0 ? Math.round((scoreSum / maxSum) * 100) : null;
 
 		// 체크리스트 완료율(기간 내 적용 항목 합산)
 		let rNum = 0;
@@ -112,6 +119,6 @@ export function computeStats(input: StatsInput): MemberStats[] {
 			}
 		}
 
-		return { memberId: m.memberId, memberName: m.memberName, noticeRead, lessonRead, submit, routine: { num: rNum, den: rDen }, avgScorePct, scoreCount: pcts.length };
+		return { memberId: m.memberId, memberName: m.memberName, noticeRead, lessonRead, submit, routine: { num: rNum, den: rDen }, avgScorePct, scoreSum, maxSum };
 	});
 }

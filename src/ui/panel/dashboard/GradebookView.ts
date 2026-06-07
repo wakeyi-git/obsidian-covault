@@ -43,8 +43,8 @@ export class GradebookView {
 			{ key: "noticeRead", label: t("dashboard.metric_notice_read"), icon: "megaphone", get: (s) => ratePct(s.noticeRead), agg: (s) => s.noticeRead },
 			{ key: "lessonRead", label: t("dashboard.metric_lesson_read"), icon: "calendar-days", get: (s) => ratePct(s.lessonRead), agg: (s) => s.lessonRead },
 			{ key: "submit", label: t("dashboard.metric_submit"), icon: "clipboard-list", get: (s) => ratePct(s.submit), agg: (s) => s.submit },
-			// 과제 평균: 풀링(전체 채점 건수 가중). num/den 은 비율(0~1) 단위로 통일(학급 평균식이 ×100 함).
-			{ key: "avgScore", label: t("dashboard.metric_avg_score"), icon: "award", get: (s) => s.avgScorePct, agg: (s) => ({ num: ((s.avgScorePct ?? 0) / 100) * s.scoreCount, den: s.scoreCount }) },
+			// 과제 평균: 만점 가중 풀링 — Σ득점/Σ만점. (비율 단위로 통일, 학급 평균식이 ×100)
+			{ key: "avgScore", label: t("dashboard.metric_avg_score"), icon: "award", get: (s) => s.avgScorePct, agg: (s) => ({ num: s.scoreSum, den: s.maxSum }) },
 			{ key: "routine", label: t("dashboard.metric_routine"), icon: "check-square", get: (s) => ratePct(s.routine), agg: (s) => s.routine },
 		];
 	}

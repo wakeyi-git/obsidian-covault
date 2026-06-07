@@ -969,12 +969,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		}
 		const r = await admin.putDoc(st.remoteDb, { _id: SHARES_DOC_ID, type: "shares", spaces });
 		if (!r.ok) this.logger.error(t("command.failed_to_write_shares", { id: st.memberId, err: r.error ?? "" }));
+		// 레거시 전역 토큰은 더 이상 배포하지 않는다(전원에게 마스터 키를 주는 셈 → 공간 격리 붕괴).
+		// 실시간 인증은 shares.spaces[].token(공간별 HMAC)만 사용한다.
 		const rc = await admin.putDoc(st.remoteDb, {
 			_id: RTCONFIG_DOC_ID,
 			type: "rtconfig",
 			enabled: s.realtimeEnabled,
 			url: s.yjsServerUrl,
-			token: getSecretValue(this.app, YJS_TOKEN_ID, s.yjsToken),
 			snapshotSec: s.realtimeSnapshotSec,
 		});
 		if (!rc.ok) this.logger.error(t("command.failed_to_write_rtconfig", { id: st.memberId, err: rc.error ?? "" }));

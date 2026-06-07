@@ -11,8 +11,8 @@ function notice(uid: string, postedAtMs: number, category: "notice" | "lesson"):
 function read(targetId: string, byUser: string): ResponseDoc {
 	return { _id: `response:${targetId}:read:${byUser}`, type: "response", schemaVersion: 1, workspaceId: "ws", targetId, kind: "read", byUser, byRole: "member", createdAtMs: T0 } as ResponseDoc;
 }
-function state(uid: string, memberId: string, assignedAtMs: number, st: "assigned" | "submitted" | "returned", score?: number): AssignmentStateDoc {
-	return { _id: `assignment-state:${uid}:${memberId}`, type: "assignment-state", schemaVersion: 1, workspaceId: "ws", assignmentUid: uid, memberId, title: uid, workPaths: [], state: st, assignedAtMs, grade: score != null ? { score } : undefined } as AssignmentStateDoc;
+function state(uid: string, memberId: string, assignedAtMs: number, st: "assigned" | "submitted" | "returned", score?: number, submittedAtMs?: number): AssignmentStateDoc {
+	return { _id: `assignment-state:${uid}:${memberId}`, type: "assignment-state", schemaVersion: 1, workspaceId: "ws", assignmentUid: uid, memberId, title: uid, workPaths: [], state: st, assignedAtMs, submittedAtMs, grade: score != null ? { score } : undefined } as AssignmentStateDoc;
 }
 
 describe("computeStats", () => {
@@ -23,7 +23,7 @@ describe("computeStats", () => {
 		members,
 		notices: [notice("n1", T0, "notice"), notice("n2", T0 + DAY, "notice"), notice("l1", T0, "lesson")],
 		reads: [read("notice:n1", "a"), read("notice:l1", "a")],
-		states: [state("x", "a", T0, "returned", 80), state("x", "b", T0, "submitted")],
+		states: [state("x", "a", T0, "returned", 80, T0), state("x", "b", T0, "submitted", undefined, T0)],
 		maxByUid: new Map([["x", 100]]),
 		routines: [],
 		routineStates: [],
@@ -41,22 +41,35 @@ describe("computeStats", () => {
 		expect(ratePct(r[1].lessonRead)).toBe(0);
 	});
 
-	it("과제 제출율: A 반환=제출로 집계 100%, B 제출 100%", () => {
+	it("과제 제출율: 실제 제출(submittedAtMs)만 집계 — A·B 모두 100%", () => {
 		const r = computeStats(base);
 		expect(ratePct(r[0].submit)).toBe(100);
 		expect(ratePct(r[1].submit)).toBe(100);
 	});
 
-	it("평균 점수: A=80%, B=채점없음 null + 채점 건수", () => {
-		const r = computeStats(base);
-		expect(r[0].avgScorePct).toBe(80);
-		expect(r[0].scoreCount).toBe(1);
+	it("미제출인데 교사가 바로 반환한 과제는 제출로 집계되지 않는다", () => {
+		// 제출 없이 반환(submittedAtMs 없음) → 제출율 0/1
+		const r = computeStats({ ...base, states: [state("z", "a", T0, "returned", 50)] });
+		expect(r[0].submit.den).toBe(1);
+		expect(ratePct(r[0].submit)).toBe(0);
+	});
+
+	it("평균 점수: 만점 가중 풀링 — A=Σ득점/Σ만점, B=채점없음 null", () => {
+		// A: 100점만점 50점 + 10점만점 10점 → (50+10)/(100+10)=54.5% → 반올림 55
+		const r = computeStats({
+			...base,
+			states: [state("x", "a", T0, "returned", 50, T0), state("y", "a", T0, "returned", 10, T0)],
+			maxByUid: new Map([["x", 100], ["y", 10]]),
+		});
+		expect(r[0].avgScorePct).toBe(55);
+		expect(r[0].scoreSum).toBe(60);
+		expect(r[0].maxSum).toBe(110);
 		expect(r[1].avgScorePct).toBeNull();
-		expect(r[1].scoreCount).toBe(0);
+		expect(r[1].maxSum).toBe(0);
 	});
 
 	it("기간 밖 과제는 제외", () => {
-		const r = computeStats({ ...base, states: [state("y", "a", T0 - 30 * DAY, "submitted")] });
+		const r = computeStats({ ...base, states: [state("y", "a", T0 - 30 * DAY, "submitted", undefined, T0 - 30 * DAY)] });
 		expect(r[0].submit.den).toBe(0);
 		expect(ratePct(r[0].submit)).toBeNull();
 	});

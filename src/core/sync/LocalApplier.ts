@@ -13,6 +13,8 @@ import { t } from "../../i18n";
  */
 export class LocalApplier {
 	private handle: LiveHandle | null = null;
+	/** 적용 실패가 한 번 발생하면 이후 체크포인트 전진을 멈춘다(실패 지점 이후를 재시작 시 재처리 → 유실 방지). 적용은 멱등. */
+	private stalled = false;
 
 	constructor(
 		private ctx: MirrorContext,
@@ -22,6 +24,7 @@ export class LocalApplier {
 
 	start(): void {
 		if (this.handle) return;
+		this.stalled = false;
 		const since = this.parseSince(this.ctx.getLastSeq());
 		this.ctx.logger.info(
 			t("sync.localapplier_started_since", {
@@ -32,6 +35,7 @@ export class LocalApplier {
 
 		this.handle = this.ctx.pouch.localChanges<NoteDoc & { _conflicts?: string[] }>(
 			async (change) => {
+				let ok = true;
 				try {
 					if (change.deleted) {
 						// PouchDB hard-remove(purge)가 전파됨 → 아카이브 사본 정리
@@ -47,15 +51,18 @@ export class LocalApplier {
 						this.ctx.core.onFeedbackChange();
 					}
 				} catch (e) {
+					ok = false;
 					this.ctx.logger.error(
 						t("sync.failed_to_apply_local_change", {
 							id: change.id,
 							err: e instanceof Error ? e.message : String(e),
 						}),
 					);
-				} finally {
-					this.ctx.setLastSeq(String(change.seq));
 				}
+				// 성공한 변경만 체크포인트 전진. 한 번 실패하면(stalled) 이후 전진을 멈춰,
+				// 재시작 시 실패 지점부터 다시 처리되게 한다(applyDoc/Asset은 멱등).
+				if (ok && !this.stalled) this.ctx.setLastSeq(String(change.seq));
+				else if (!ok) this.stalled = true;
 			},
 			{
 				since,

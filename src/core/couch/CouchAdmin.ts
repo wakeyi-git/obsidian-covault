@@ -154,7 +154,44 @@ export class CouchAdmin {
 				}),
 			};
 		}
-		return this.setSecurity(remoteDb, memberUsernames);
+		const sec = await this.setSecurity(remoteDb, memberUsernames);
+		if (!sec.ok) return sec;
+		// 서버측 쓰기 권한 강제(학생=member): 교사 게시물(메타) 보호 + 응답은 본인 것만.
+		// 교사는 server-admin 자격증명으로 쓰므로 validate를 우회한다. note/asset(파일) 협업은 영향 없음.
+		return this.putValidateDesignDoc(remoteDb);
+	}
+
+	/**
+	 * 공유 DB에 validate_doc_update 디자인 문서를 배포(멱등). 서버 admin(_admin=교사)은 우회.
+	 * member(학생)는: notice/timetable/routine/assignment(교사 메타) 쓰기 금지, response는 byUser=본인만.
+	 * note/asset/feedback 등 협업 콘텐츠는 제한하지 않는다(모둠 공유 공간 호환).
+	 */
+	private async putValidateDesignDoc(remoteDb: string): Promise<{ ok: boolean; error?: string }> {
+		const validate =
+			"function (newDoc, oldDoc, userCtx) {\n" +
+			"  if (userCtx && userCtx.roles && userCtx.roles.indexOf('_admin') >= 0) return;\n" +
+			"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
+			"  var teacherOnly = ['notice','timetable','routine','assignment'];\n" +
+			"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
+			"  if (t === 'response') {\n" +
+			"    var owner = newDoc._deleted ? (oldDoc && oldDoc.byUser) : newDoc.byUser;\n" +
+			"    if (owner && owner !== userCtx.name) throw({ forbidden: 'own response only' });\n" +
+			"  }\n" +
+			"}";
+		const path = `${encodeURIComponent(remoteDb)}/_design/auth`;
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const existing = await this.req("GET", path);
+			const body: Record<string, unknown> = { _id: "_design/auth", language: "javascript", validate_doc_update: validate };
+			if (existing.status === 200 && existing.json?._rev) body._rev = existing.json._rev;
+			const put = await this.req("PUT", path, body);
+			if (put.status < 300) return { ok: true };
+			if (put.status === 409) continue;
+			return {
+				ok: false,
+				error: t("couch.failed_to_write_document_http", { status: put.status, reason: put.json?.reason ?? put.text }),
+			};
+		}
+		return { ok: false, error: t("couch.failed_to_write_document_repeated_rev") };
 	}
 
 	private async setSecurity(remoteDb: string, members: string[]): Promise<{ ok: boolean; error?: string }> {

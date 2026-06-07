@@ -119,7 +119,8 @@ export interface RtConfigDoc extends PouchDocBase {
 	type: "rtconfig";
 	enabled: boolean;
 	url: string;
-	token: string;
+	/** 레거시 전역 토큰. 보안상 더는 배포하지 않음(공간별 HMAC 토큰 사용). 과거 문서 호환용으로만 optional 유지. */
+	token?: string;
 	/** 실시간 세션 중 CouchDB 스냅샷 주기(초). 0/미설정=끔(§19.2). */
 	snapshotSec?: number;
 }

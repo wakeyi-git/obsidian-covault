@@ -147,9 +147,10 @@ export class RealtimeManager {
 		if (!room) return undefined;
 		const dbPath = this.relUnder(path, space.folder) ?? path;
 
-		// 공간별 토큰(HMAC 모드)이 있으면 그것을, 없으면 레거시 전역 토큰(Secret Storage/평문)을 쓴다.
-		const token = space.token || getSecretValue(this.app, YJS_TOKEN_ID, this.settings.yjsToken);
-		if (!token) return undefined; // 토큰 없으면 이 공간 실시간 비활성
+		// 공간별 HMAC 토큰만 사용한다(room-scoped). 레거시 전역 토큰 폴백은 제거 —
+		// 전역 토큰은 모든 room 접근을 허용해 공간 격리를 깨므로 더는 쓰지 않는다.
+		const token = space.token;
+		if (!token) return undefined; // 공간 토큰 없으면 이 공간 실시간 비활성(HMAC 시크릿 필요)
 
 		const ydoc = new Y.Doc();
 		const provider = new WebsocketProvider(this.settings.yjsServerUrl, room, ydoc, {
