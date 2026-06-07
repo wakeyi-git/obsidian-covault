@@ -1471,3 +1471,26 @@
 	color: var(--text-muted);
 	text-decoration: line-through;
 }
+
+/* 성적부 점수 색 스케일 + 요약 평균 */
+.covault-gradebook td.score-hi {
+	color: var(--color-green);
+	font-weight: 600;
+}
+.covault-gradebook td.score-mid {
+	color: var(--text-normal);
+	font-weight: 600;
+}
+.covault-gradebook td.score-lo {
+	color: var(--color-red);
+	font-weight: 600;
+}
+.covault-gradebook th.covault-gradebook-avg,
+.covault-gradebook td.covault-gradebook-avg {
+	background: var(--background-secondary);
+}
+.covault-gradebook tr.covault-gradebook-foot th,
+.covault-gradebook tr.covault-gradebook-foot td {
+	background: var(--background-secondary);
+	font-weight: 600;
+}

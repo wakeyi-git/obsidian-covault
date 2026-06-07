@@ -143,6 +143,7 @@
 		"gradebook_desc": "전체 구성원·과제의 점수 한눈에.",
 		"gradebook_empty": "아직 과제나 구성원이 없습니다.",
 		"member": "구성원",
+		"average": "평균",
 		"lessons": "수업 안내",
 		"lessons_desc": "수업 안내를 게시하고 구성원이 읽고 응답합니다.",
 		"lessons_with_timetable_desc": "주간 시간표 + 수업 안내.",

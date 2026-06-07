@@ -143,6 +143,7 @@
 		"gradebook_desc": "Scores across all members and assignments.",
 		"gradebook_empty": "No assignments or members yet.",
 		"member": "Member",
+		"average": "Avg",
 		"lessons": "Lessons",
 		"lessons_desc": "Lesson guides; members read and respond.",
 		"lessons_with_timetable_desc": "Weekly timetable + lesson guides.",
