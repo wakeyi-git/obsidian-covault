@@ -950,6 +950,11 @@
 	flex: 1;
 	text-align: center;
 }
+.covault-dash-dateinput {
+	flex: 1;
+	min-width: 0;
+	text-align: center;
+}
 .covault-dash-empty {
 	color: var(--text-muted);
 	padding: 12px 0;

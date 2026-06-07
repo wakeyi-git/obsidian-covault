@@ -9,11 +9,21 @@ import {
 	responseId,
 	timetableId,
 } from "../../../core/model/types";
-import { sortNotices, summarizeResponses, sortLessonsBySchedule, LessonSlot } from "../../../core/classroom/notices";
-import { weekStart, addWeeks, weekRangeLabel } from "../../../core/classroom/week";
+import { sortNotices, summarizeResponses, LessonSlot } from "../../../core/classroom/notices";
+import { weekStart } from "../../../core/classroom/week";
 import { NoticeComposeModal } from "../../NoticeComposeModal";
 import { TimetableView } from "./TimetableView";
 import { t, formatDate } from "../../../i18n";
+
+/** 로컬 YYYY-MM-DD. */
+function localDateStr(d: Date): string {
+	const m = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${d.getFullYear()}-${m}-${day}`;
+}
+function parseDateMs(s: string): number {
+	return new Date(`${s}T00:00`).getTime();
+}
 
 /** 알림장/수업안내 모듈 — 목록 + (교사)게시/집계 + (학생)읽음·댓글. category로 분리. 수업안내는 주간 시간표 임베드 + 주간 필터. */
 export class NoticesView {
@@ -21,6 +31,7 @@ export class NoticesView {
 	private timetable: TimetableView | null = null;
 	private weekKey = weekStart(Date.now());
 	private limit = 0;
+	private selectedDate = ""; // 수업 안내: 선택한 날짜(YYYY-MM-DD, 기본 오늘)
 
 	constructor(private host: PanelHost, private onBack: () => void, private category: "notice" | "lesson" = "notice") {}
 
@@ -75,53 +86,83 @@ export class NoticesView {
 			return;
 		}
 
-		// 수업 안내: 주간 네비게이션 + 상단 주간 시간표 임베드(시간표 패널 통합).
+		// 수업 안내: 상단 = 선택 날짜가 속한 주의 시간표, 하단 = 그날의 수업.
 		if (this.isLesson) {
-			const nav = c.createDiv({ cls: "covault-dash-weeknav" });
-			iconButton(nav, "chevron-left", t("dashboard.prev_week"), () => this.shiftWeek(-1));
-			nav.createSpan({ cls: "covault-dash-weeklabel", text: weekRangeLabel(this.weekKey) });
-			iconButton(nav, "chevron-right", t("dashboard.next_week"), () => this.shiftWeek(1));
-			panelButton(nav, t("dashboard.this_week"), () => {
-				this.weekKey = weekStart(Date.now());
-				void this.reload();
-			});
+			if (!this.selectedDate) this.selectedDate = localDateStr(new Date());
+			this.weekKey = weekStart(parseDateMs(this.selectedDate));
+
 			const ttBox = c.createDiv({ cls: "covault-dash-timetable-embed" });
 			this.timetable = new TimetableView(this.host, this.weekKey);
 			this.timetable.render(ttBox);
+
+			const nav = c.createDiv({ cls: "covault-dash-weeknav" });
+			iconButton(nav, "chevron-left", t("dashboard.prev_day"), () => this.shiftDay(-1));
+			const di = nav.createEl("input", { cls: "covault-dash-dateinput", attr: { type: "date" } });
+			di.value = this.selectedDate;
+			di.onchange = () => {
+				if (di.value) {
+					this.selectedDate = di.value;
+					void this.reload();
+				}
+			};
+			iconButton(nav, "chevron-right", t("dashboard.next_day"), () => this.shiftDay(1));
+			panelButton(nav, t("dashboard.today"), () => {
+				this.selectedDate = localDateStr(new Date());
+				void this.reload();
+			});
 		}
 
 		const raw = (await store.listByPrefix<NoticeDoc>(noticePrefix())).filter(
 			(n) => !n.deleted && (n.category ?? "notice") === this.category && (!this.isLesson || n.weekKey === this.weekKey),
 		);
-		// 수업 안내: 오늘 요일 우선 + 교시 순(시간표 슬롯 기준). 알림장: 고정/최신순.
-		let notices: NoticeDoc[];
+		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
+		const byTarget = new Map<string, ResponseDoc[]>();
+		for (const r of allResponses) (byTarget.get(r.targetId) ?? byTarget.set(r.targetId, []).get(r.targetId)!).push(r);
+
 		if (this.isLesson) {
+			// 선택 날짜의 요일(월=0)에 해당하는 시간표 칸의 수업을 교시순으로.
 			const tt = await store.get<TimetableDoc>(timetableId(this.weekKey));
 			const slotByUid = new Map<string, LessonSlot>();
 			for (const [cellKey, uid] of Object.entries(tt?.lessons ?? {})) {
 				const [day, period] = cellKey.split(":").map(Number);
 				slotByUid.set(uid, { day, period });
 			}
-			const todayIdx = (new Date().getDay() + 6) % 7; // 월=0
-			notices = sortLessonsBySchedule(raw, slotByUid, todayIdx, tt?.days.length ?? 5);
-		} else {
-			notices = sortNotices(raw);
-		}
-		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
-		if (notices.length === 0) {
-			this.empty(c, this.label(t("dashboard.no_notices"), t("dashboard.no_lessons")), this.isLesson ? "calendar-days" : "megaphone");
+			const weekday = (new Date(parseDateMs(this.selectedDate)).getDay() + 6) % 7;
+			const dayLessons = raw
+				.filter((n) => slotByUid.get(n.uid)?.day === weekday)
+				.sort((a, b) => (slotByUid.get(a.uid)!.period - slotByUid.get(b.uid)!.period));
+			const unplaced = raw.filter((n) => !slotByUid.has(n.uid));
+
+			if (dayLessons.length === 0 && unplaced.length === 0) {
+				this.empty(c, t("dashboard.no_lessons_day"), "calendar-days");
+				return;
+			}
+			if (dayLessons.length > 0) {
+				const list = c.createDiv({ cls: "covault-dash-list" });
+				for (const n of dayLessons) this.renderNotice(list, n, byTarget.get(n._id) ?? []);
+			} else {
+				this.empty(c, t("dashboard.no_lessons_day"), "calendar-days");
+			}
+			if (unplaced.length > 0) {
+				c.createDiv({ cls: "covault-cr-muted", text: t("dashboard.unplaced_lessons", { n: unplaced.length }) });
+				const ul = c.createDiv({ cls: "covault-dash-list" });
+				for (const n of unplaced) this.renderNotice(ul, n, byTarget.get(n._id) ?? []);
+			}
 			return;
 		}
-		const byTarget = new Map<string, ResponseDoc[]>();
-		for (const r of allResponses) (byTarget.get(r.targetId) ?? byTarget.set(r.targetId, []).get(r.targetId)!).push(r);
 
+		// 알림장: 고정/최신순 + 페이지네이션("더 보기").
+		const notices = sortNotices(raw);
+		if (notices.length === 0) {
+			this.empty(c, t("dashboard.no_notices"), "megaphone");
+			return;
+		}
 		const pageSize = this.host.settings.dashboardPageSize ?? 10;
 		if (!this.limit) this.limit = pageSize;
-		// 수업 안내는 그 주의 전체를 보여주고, 알림장만 "더 보기"로 점진 표시.
-		const shown = this.isLesson ? notices : notices.slice(0, this.limit);
+		const shown = notices.slice(0, this.limit);
 		const list = c.createDiv({ cls: "covault-dash-list" });
 		for (const n of shown) this.renderNotice(list, n, byTarget.get(n._id) ?? []);
-		if (!this.isLesson && notices.length > shown.length) {
+		if (notices.length > shown.length) {
 			const remaining = notices.length - shown.length;
 			panelButton(c, t("dashboard.show_more", { n: Math.min(pageSize, remaining) }), () => {
 				this.limit += pageSize;
@@ -130,8 +171,10 @@ export class NoticesView {
 		}
 	}
 
-	private shiftWeek(n: number): void {
-		this.weekKey = addWeeks(this.weekKey, n);
+	private shiftDay(n: number): void {
+		const d = new Date(parseDateMs(this.selectedDate || localDateStr(new Date())));
+		d.setDate(d.getDate() + n);
+		this.selectedDate = localDateStr(d);
 		void this.reload();
 	}
 
