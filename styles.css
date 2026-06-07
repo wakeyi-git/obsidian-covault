@@ -1408,3 +1408,44 @@
 .covault-timetable td.is-today {
 	background: var(--background-modifier-hover);
 }
+
+/* 배지 내 아이콘 크기 */
+.covault-cr-badge .svg-icon {
+	width: 12px;
+	height: 12px;
+}
+
+/* 제출 현황 매트릭스(교사) */
+.covault-cr-matrix {
+	display: flex;
+	flex-direction: column;
+	margin-top: 4px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.covault-cr-matrix-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 2px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.covault-cr-matrix-row:last-child {
+	border-bottom: none;
+}
+.covault-cr-matrix-row:hover {
+	background: var(--background-modifier-hover);
+}
+.covault-cr-matrix-name {
+	flex: 1;
+	min-width: 0;
+	font-size: 13px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.covault-cr-score {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
