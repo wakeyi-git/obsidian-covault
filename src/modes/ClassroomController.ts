@@ -14,7 +14,7 @@ import {
 	noticeFieldsFromFrontmatter,
 	NoticeTemplateKind,
 } from "../core/classroom/templates";
-import { defaultTimetableDays, DEFAULT_PERIODS, resolveTimetableSlot } from "../core/classroom/timetable";
+import { defaultTimetableDays, DEFAULT_PERIODS, resolveTimetableSlot, placeLessonSlot } from "../core/classroom/timetable";
 import { assignmentWorkDir, substituteTemplate, slugify, rubricMax } from "../core/classroom/assignments";
 import {
 	NoticeDoc,
@@ -204,8 +204,21 @@ export class ClassroomController {
 		}
 	}
 
-	/** 수업(uid)을 그 주 시간표의 day/period 칸에 연결(교사). 유효한 칸이 아니면 미배치 유지. */
-	private async placeLessonInTimetable(uid: string, weekKey: string, dayRaw: unknown, periodRaw: unknown): Promise<void> {
+	/**
+	 * 수업(uid)을 그 주 시간표의 day/period 칸에 연결(교사). 유효한 칸이 아니면 미배치 유지.
+	 *
+	 * 여러 수업 파일이 동시에 저장되면(예: 외부/Cowork가 한꺼번에 생성) 한 주의 TimetableDoc을 동시에
+	 * read-modify-write 하다가 서로 덮어써 일부 배치가 유실된다(put이 충돌 시 last-write-wins). 이를 막기 위해
+	 * 배치 쓰기를 **직렬화**해 항상 최신 문서를 읽고 한 칸씩 누적 반영한다.
+	 */
+	private placeQueue: Promise<unknown> = Promise.resolve();
+	private placeLessonInTimetable(uid: string, weekKey: string, dayRaw: unknown, periodRaw: unknown): Promise<void> {
+		const run = this.placeQueue.then(() => this.doPlaceLessonInTimetable(uid, weekKey, dayRaw, periodRaw));
+		this.placeQueue = run.catch(() => {}); // 한 건 실패가 큐를 끊지 않도록
+		return run;
+	}
+
+	private async doPlaceLessonInTimetable(uid: string, weekKey: string, dayRaw: unknown, periodRaw: unknown): Promise<void> {
 		const existing = await this.d.classroom.get<TimetableDoc>(timetableId(weekKey));
 		const days = existing?.days ?? defaultTimetableDays();
 		const periods = existing?.periods ?? [...DEFAULT_PERIODS];
@@ -225,19 +238,7 @@ export class ClassroomController {
 				updatedAtMs: 0,
 				updatedBy: this.d.settings().userId,
 			};
-		const lessons = { ...(doc.lessons ?? {}) };
-		let changed = false;
-		// 같은 수업이 다른 칸에 연결돼 있으면 정리(이동 지원).
-		for (const [k, v] of Object.entries(lessons)) {
-			if (v === uid && k !== cellKey) {
-				delete lessons[k];
-				changed = true;
-			}
-		}
-		if (lessons[cellKey] !== uid) {
-			lessons[cellKey] = uid;
-			changed = true;
-		}
+		const { lessons, changed } = placeLessonSlot(doc.lessons ?? {}, uid, cellKey);
 		if (!changed) return;
 		await this.d.classroom.put({ ...doc, lessons, updatedAtMs: Date.now(), updatedBy: this.d.settings().userId });
 	}

@@ -31,3 +31,23 @@ export function resolveTimetableSlot(dayRaw: unknown, periodRaw: unknown, days: 
 	if (dayIdx == null || perIdx == null) return null;
 	return `${dayIdx}:${perIdx}`;
 }
+
+/**
+ * 수업(uid)을 시간표 lessons 맵의 cellKey에 연결한다(순수). 같은 uid가 다른 칸에 있으면 옮긴다(이전 칸 제거).
+ * 변경이 없으면 changed=false. 호출자는 changed일 때만 저장한다.
+ */
+export function placeLessonSlot(lessons: Record<string, string>, uid: string, cellKey: string): { lessons: Record<string, string>; changed: boolean } {
+	const next = { ...lessons };
+	let changed = false;
+	for (const [k, v] of Object.entries(next)) {
+		if (v === uid && k !== cellKey) {
+			delete next[k];
+			changed = true;
+		}
+	}
+	if (next[cellKey] !== uid) {
+		next[cellKey] = uid;
+		changed = true;
+	}
+	return { lessons: next, changed };
+}
