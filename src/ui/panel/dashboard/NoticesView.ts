@@ -258,9 +258,9 @@ export class NoticesView {
 		const wrap = parent.createDiv({ cls: "covault-dash-comments" });
 		for (const cmt of comments) {
 			const row = wrap.createDiv({ cls: "covault-dash-comment" });
-			const tag = cmt.kind === "question" ? "❓ " : "";
+			if (cmt.kind === "question") setIcon(row.createSpan({ cls: "covault-dash-qicon" }), "help-circle");
 			row.createSpan({ cls: "covault-feedback-author", text: cmt.byUser });
-			row.createSpan({ text: ` ${tag}${cmt.body ?? ""}` });
+			row.createSpan({ text: ` ${cmt.body ?? ""}` });
 		}
 	}
 

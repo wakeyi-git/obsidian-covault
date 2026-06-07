@@ -20,7 +20,7 @@ export class RoleSetupModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl("h2", { text: t("role.choose_covault_role") });
+		contentEl.createEl("h3", { text: t("role.choose_covault_role") });
 		contentEl.createEl("p", {
 			text: t("role.choose_the_role_to_use_in",
 			),

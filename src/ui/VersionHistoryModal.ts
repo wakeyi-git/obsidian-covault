@@ -42,7 +42,7 @@ export class VersionHistoryModal extends Modal {
 	private async render(): Promise<void> {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.createEl("h2", { text: t("version.version_history_2") });
+		contentEl.createEl("h3", { text: t("version.version_history_2") });
 		contentEl.createEl("p", { cls: "setting-item-description", text: this.localPath });
 
 		let versions: VersionDoc[] = [];

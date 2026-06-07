@@ -159,7 +159,7 @@
 		"lessons_with_timetable_desc": "Weekly timetable + lesson guides.",
 		"new_lesson": "New lesson",
 		"no_lessons": "No lessons yet.",
-		"streak": "🔥 {n}d",
+		"streak": "{n}d",
 		"export_csv": "Export CSV",
 		"csv_copied": "Gradebook CSV copied to clipboard.",
 		"csv_copy_failed": "Could not copy CSV.",

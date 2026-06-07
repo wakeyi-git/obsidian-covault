@@ -1,9 +1,11 @@
+import { setIcon } from "obsidian";
 import { PanelHost } from "../PanelSection";
 import { TimetableDoc, NoticeDoc, timetableId, noticePrefix } from "../../../core/model/types";
 import { weekStart } from "../../../core/classroom/week";
 import { t } from "../../../i18n";
 
-const DEFAULT_DAYS = ["월", "화", "수", "목", "금"];
+/** 신규 시간표 기본 요일(로케일). 생성 시점에 t()로 평가 → en/ko 모두 자연스러운 라벨. */
+const defaultDays = (): string[] => [t("dashboard.wd_mon"), t("dashboard.wd_tue"), t("dashboard.wd_wed"), t("dashboard.wd_thu"), t("dashboard.wd_fri")];
 const DEFAULT_PERIODS = ["1", "2", "3", "4", "5", "6"];
 
 /** 시간표 — 주간 그리드(요일×교시). 주(週)별 문서. 수업 안내 뷰에 임베드되며 주는 NoticesView가 제어. */
@@ -50,7 +52,7 @@ export class TimetableView {
 			schemaVersion: 1,
 			workspaceId: this.host.settings.workspaceId,
 			weekKey: this.weekKey,
-			days: [...DEFAULT_DAYS],
+			days: defaultDays(),
 			periods: [...DEFAULT_PERIODS],
 			cells: {},
 			updatedAtMs: 0,
@@ -98,11 +100,11 @@ export class TimetableView {
 					input.tabIndex = di * periods + pi + 1; // 열 우선 순서(요일 di, 교시 pi)
 					input.onchange = () => void this.setCell(key, input.value);
 					Object.assign(input.style, { flex: "1 1 0", minWidth: "0", width: "auto", border: "none", background: "transparent", textAlign: "center" });
-					// 수업 안내 연결: 있으면 열기(📄), 없으면 생성(＋). 입력칸과 나란히 배치(겹침 방지).
+					// 수업 안내 연결: 있으면 열기(file-text), 없으면 생성(plus). 입력칸과 나란히 배치(겹침 방지).
 					const btn = cell.createEl("button", {
 						cls: `covault-tt-lesson${lessonUid ? " is-linked" : ""}`,
-						text: lessonUid ? "📄" : "＋",
 					});
+					setIcon(btn, lessonUid ? "file-text" : "plus");
 					btn.tabIndex = -1;
 					btn.title = lessonUid ? t("dashboard.open_lesson") : t("dashboard.add_lesson");
 					Object.assign(btn.style, {

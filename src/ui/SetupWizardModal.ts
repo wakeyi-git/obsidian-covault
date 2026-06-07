@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, Modal, Notice, Setting, setIcon } from "obsidian";
 import { CoVaultSettings } from "../settings/types";
 import { PanelTab } from "./panel/PanelSection";
 import { getSecretValue, COUCH_PASSWORD_ID } from "../core/secret";
@@ -93,7 +93,7 @@ export class SetupWizardModal extends Modal {
 		for (const step of steps) {
 			const card = c.createDiv({ cls: `covault-setup-step${step.done ? " is-done" : ""}` });
 			const head = card.createDiv({ cls: "covault-setup-head" });
-			head.createSpan({ cls: "covault-setup-check", text: step.done ? "✓" : "○" });
+			setIcon(head.createSpan({ cls: "covault-setup-check" }), step.done ? "check-circle" : "circle");
 			head.createSpan({ cls: "covault-setup-title", text: step.title });
 			card.createDiv({ cls: "covault-panel-hint", text: step.desc });
 			if (!step.done) {

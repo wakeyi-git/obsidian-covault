@@ -22,7 +22,7 @@ export class InviteModal extends Modal {
 		const uri = buildInviteUri(this.payload);
 		const code = encodeInvite(this.payload);
 
-		contentEl.createEl("h2", {
+		contentEl.createEl("h3", {
 			text: t("invite.invite_member", { name: this.payload.memberName || this.payload.memberId }),
 		});
 		contentEl.createEl("p", {

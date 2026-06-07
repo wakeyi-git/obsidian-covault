@@ -95,33 +95,6 @@ export function buildMatrix(
 		});
 }
 
-/** CSV 셀 이스케이프(따옴표/쉼표/줄바꿈 안전). */
-function csvCell(v: string | number): string {
-	const s = String(v);
-	return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-/**
- * 성적부 CSV(순수). 첫 행=헤더(구성원 + 과제 제목), 이후 구성원별 점수 행.
- * 점수는 grade가 있으면 총점, 없으면 빈칸. defs/members/stateMap 순서를 그대로 따른다.
- */
-export function gradebookCsv(
-	defs: Array<Pick<AssignmentDoc, "uid" | "title" | "rubric" | "points">>,
-	members: Array<{ memberId: string; memberName: string }>,
-	stateByDefMember: Map<string, Map<string, AssignmentStateDoc>>,
-): string {
-	const header = [csvCell("member"), ...defs.map((d) => csvCell(d.title))].join(",");
-	const rows = members.map((m) => {
-		const cells = defs.map((d) => {
-			const st = stateByDefMember.get(d.uid)?.get(m.memberId);
-			if (!st?.grade) return "";
-			return csvCell(st.grade.score ?? gradeTotal(st.grade, d.rubric));
-		});
-		return [csvCell(m.memberName || m.memberId), ...cells].join(",");
-	});
-	return [header, ...rows].join("\n");
-}
-
 /** 상태별 카운트 요약(교사 카드 헤더용). */
 export function statusCounts(rows: MatrixRow[]): Record<AssignmentDisplayStatus, number> {
 	const c: Record<AssignmentDisplayStatus, number> = {

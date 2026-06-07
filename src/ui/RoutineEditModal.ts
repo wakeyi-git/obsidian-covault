@@ -118,7 +118,9 @@ export class RoutineEditModal extends Modal {
 				[this.items[i + 1], this.items[i]] = [this.items[i], this.items[i + 1]];
 				this.renderItems(box);
 			};
-			const del = top.createEl("button", { cls: "mod-warning", text: "✕" });
+			const del = top.createEl("button", { cls: "clickable-icon covault-icon-danger" });
+			setIcon(del, "x");
+			del.setAttr("aria-label", t("common.delete"));
 			del.onclick = () => {
 				this.items.splice(i, 1);
 				if (this.items.length === 0) this.items.push({ label: "", recurrence: "daily", weekdays: new Set([1, 2, 3, 4, 5]) });

@@ -34,7 +34,7 @@ export class ConflictModal extends Modal {
 	private async render(): Promise<void> {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.createEl("h2", { text: t("panel.conflicts") });
+		contentEl.createEl("h3", { text: t("panel.conflicts") });
 
 		let rows: ConflictRow[] = [];
 		try {

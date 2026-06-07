@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, Modal, Notice, Setting, setIcon } from "obsidian";
 import { CoVaultSettings } from "../settings/types";
 import { RubricCriterion } from "../core/model/types";
 import { PathSuggest } from "./PathSuggest";
@@ -128,7 +128,9 @@ export class AssignmentCreateModal extends Modal {
 			const pi = row.createEl("input", { cls: "covault-dash-rubric-pts", attr: { type: "number", placeholder: t("dashboard.max") } });
 			pi.value = cr.max;
 			pi.oninput = () => (cr.max = pi.value);
-			const del = row.createEl("button", { cls: "mod-warning", text: "✕" });
+			const del = row.createEl("button", { cls: "clickable-icon covault-icon-danger" });
+			setIcon(del, "x");
+			del.setAttr("aria-label", t("common.delete"));
 			del.onclick = () => {
 				this.criteria.splice(i, 1);
 				this.renderRubric(box);
