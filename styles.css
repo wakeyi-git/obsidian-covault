@@ -40,15 +40,22 @@
 
 .covault-panel-tabs {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	gap: 2px;
 	border-bottom: 1px solid var(--background-modifier-border);
 	padding: 4px 6px 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: thin;
+}
+.covault-panel-tabs::-webkit-scrollbar {
+	height: 4px;
 }
 
 .covault-panel-tab {
 	display: flex;
 	align-items: center;
+	gap: 5px;
 	min-height: 36px; /* 터치 타겟 */
 	padding: 6px 10px;
 	font-size: 13px;
@@ -57,6 +64,14 @@
 	border-bottom: 2px solid transparent;
 	border-radius: 4px 4px 0 0;
 	white-space: nowrap;
+	flex: 0 0 auto;
+}
+.covault-panel-tab-icon {
+	display: inline-flex;
+}
+.covault-panel-tab-icon .svg-icon {
+	width: 15px;
+	height: 15px;
 }
 
 .covault-panel-tab:hover {

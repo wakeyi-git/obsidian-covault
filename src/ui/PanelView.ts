@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import { PanelHost, PanelSection, PanelTab } from "./panel/PanelSection";
 import { DashboardSection } from "./panel/DashboardSection";
 import { FeedbackSection } from "./panel/FeedbackSection";
@@ -31,6 +31,27 @@ function tabLabel(tab: PanelTab): string {
 			return t("version.version_history_2");
 		case "log":
 			return t("panel.log");
+	}
+}
+
+function tabIcon(tab: PanelTab): string {
+	switch (tab) {
+		case "dashboard":
+			return "layout-dashboard";
+		case "feedback":
+			return "message-square";
+		case "deploy":
+			return "send";
+		case "sync":
+			return "refresh-cw";
+		case "manage":
+			return "users";
+		case "recovery":
+			return "archive-restore";
+		case "history":
+			return "history";
+		case "log":
+			return "scroll-text";
 	}
 }
 
@@ -102,8 +123,10 @@ export class CoVaultPanelView extends ItemView {
 		for (const tab of this.tabs()) {
 			const el = this.tabBar.createDiv({
 				cls: `covault-panel-tab${tab === this.activeTab ? " is-active" : ""}`,
-				text: tabLabel(tab),
 			});
+			setIcon(el.createSpan({ cls: "covault-panel-tab-icon" }), tabIcon(tab));
+			el.createSpan({ cls: "covault-panel-tab-label", text: tabLabel(tab) });
+			el.setAttr("aria-label", tabLabel(tab));
 			el.onclick = () => {
 				if (this.activeTab === tab) return;
 				this.activeTab = tab;
