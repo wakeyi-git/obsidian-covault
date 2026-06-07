@@ -6,7 +6,7 @@ import { MemberBulkImportModal } from "../ui/MemberBulkImportModal";
 import { validateFolderName, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
 import { sharedSpaceStatus } from "./sharedSpaceStatus";
-import { getSecretValue, setSecretValue, YJS_SECRET_ID, YJS_TOKEN_ID, COUCH_PASSWORD_ID } from "../core/secret";
+import { getSecretValue, setSecretValue, hasSecretStorage, YJS_SECRET_ID, YJS_TOKEN_ID, COUCH_PASSWORD_ID } from "../core/secret";
 import { t } from "../i18n";
 
 // SettingGroup.listEl은 Obsidian 런타임에 1.11.0부터 존재하지만(공식 @since 1.11.0),
@@ -101,6 +101,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		// 탭 제목이 이미 플러그인 이름을 표시하므로 상단 제목/그룹 헤딩은 두지 않는다(Obsidian 가이드).
 		this.renderRole(s);
 		this.renderLanguage(s);
+		this.renderSecretWarning();
 		this.renderIssues(s);
 
 		if (s.role === "manager") this.renderManager(s);
@@ -133,6 +134,14 @@ export class CoVaultSettingTab extends PluginSettingTab {
 	}
 
 	// --- 설정 검증 경고(상단 지속 표시) ---
+	/** 보안 저장소(Secret Storage) 미지원 환경 경고 — 비밀번호·토큰이 data.json에 평문 저장됨. */
+	private renderSecretWarning(): void {
+		if (hasSecretStorage(this.app)) return;
+		const box = this.containerEl.createDiv({ cls: "covault-issues" });
+		box.createDiv({ cls: "covault-issues-title", text: t("settings.plaintext_secret_title") });
+		box.createDiv({ cls: "covault-issue is-warn", text: t("settings.plaintext_secret_desc") });
+	}
+
 	private renderIssues(s: CoVaultSettings): void {
 		// 실시간 자격증명은 marker가 아니라 실제 Secret Storage 값으로 판단(지워진 비밀값을 marker가 가리지 않게).
 		const realtimeCredPresent =
