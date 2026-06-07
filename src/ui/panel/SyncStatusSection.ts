@@ -89,7 +89,11 @@ export class SyncStatusSection implements PanelSection {
 
 		this.tableWrap = container.createDiv();
 		void this.renderTable();
-		this.timer = window.setInterval(() => void this.renderTable(), 3000);
+		// 폴링 갱신: 백그라운드(document.hidden)에선 건너뛰어 충돌 전수 스캔 비용을 줄인다.
+		// 간격도 3초→5초로 완화(상태 표는 즉시성보다 부하가 중요).
+		this.timer = window.setInterval(() => {
+			if (!document.hidden) void this.renderTable();
+		}, 5000);
 	}
 
 	dispose(): void {

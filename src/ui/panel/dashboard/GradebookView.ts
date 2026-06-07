@@ -113,11 +113,10 @@ export class GradebookView {
 			members = this.host.settings.members
 				.filter((m) => m.memberId && m.provisioned)
 				.map((m) => ({ memberId: m.memberId, memberName: m.memberName || m.memberId }));
-			for (const def of this.host.assignmentDefs()) {
-				maxByUid.set(def.uid, def.rubric ? rubricMax(def.rubric) : def.points);
-				states.push(...(await this.host.listAssignmentStates(def.uid)));
-			}
-			for (const r of routines) routineStates.push(...(await this.host.listRoutineStatesAll(r.uid)));
+			for (const def of this.host.assignmentDefs()) maxByUid.set(def.uid, def.rubric ? rubricMax(def.rubric) : def.points);
+			// 구성원당 prefix 조회 1회로 일괄 수집(과제·루틴 N+1 제거).
+			states.push(...(await this.host.listAllAssignmentStates()));
+			routineStates.push(...(await this.host.listAllRoutineStates()));
 		} else {
 			members = [{ memberId: this.host.settings.userId, memberName: this.host.settings.displayName || this.host.settings.userId }];
 			const my = await this.host.listMyAssignments();

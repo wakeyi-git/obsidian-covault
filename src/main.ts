@@ -2,7 +2,7 @@ import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, noticeId, ResponseDoc, responseId } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade, assignmentId, assignmentStateId, ASSIGNMENT_STATE_ID_PREFIX } from "./core/model/types";
-import { RoutineDoc, RoutineStateDoc, routineId, routinePrefix, routineStateId, routineStatePrefix } from "./core/model/types";
+import { RoutineDoc, RoutineStateDoc, routineId, routinePrefix, routineStateId, routineStatePrefix, ROUTINE_STATE_ID_PREFIX } from "./core/model/types";
 import { ensureParentFolders } from "./core/vault/folders";
 import { noticeFilePath } from "./core/classroom/notices";
 import { assignmentWorkDir, substituteTemplate, slugify, rubricMax } from "./core/classroom/assignments";
@@ -882,14 +882,32 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return sync.ctx.pouch.allDocsByPrefix<RoutineStateDoc>(routineStatePrefix(uid, this.settings.userId));
 	}
 
-	/** PanelHost: 한 루틴의 학생별 모든 날짜 상태(교사, 통계 기간 집계용). */
-	async listRoutineStatesAll(uid: string): Promise<RoutineStateDoc[]> {
+	/**
+	 * PanelHost: 전체 구성원의 모든 과제 상태(교사 통계용). 구성원 미러당 prefix 조회 1회 → O(구성원 수).
+	 * (과거: 과제×구성원 개별 get으로 O(과제·구성원). 통계 N+1 제거.)
+	 */
+	async listAllAssignmentStates(): Promise<AssignmentStateDoc[]> {
+		const out: AssignmentStateDoc[] = [];
+		for (const m of this.settings.members) {
+			if (!m.memberId) continue;
+			const sync = this.memberSyncByRemoteDb(m.remoteDb);
+			if (!sync) continue;
+			out.push(...(await sync.ctx.pouch.allDocsByPrefix<AssignmentStateDoc>(ASSIGNMENT_STATE_ID_PREFIX)));
+		}
+		return out.filter((d) => !d.deleted);
+	}
+
+	/**
+	 * PanelHost: 전체 구성원의 모든 루틴 상태(교사 통계용). 구성원 미러당 prefix 조회 1회 → O(구성원 수).
+	 * (과거: 루틴×구성원으로 O(루틴·구성원). 통계 N+1 제거.)
+	 */
+	async listAllRoutineStates(): Promise<RoutineStateDoc[]> {
 		const out: RoutineStateDoc[] = [];
 		for (const m of this.settings.members) {
 			if (!m.memberId) continue;
 			const sync = this.memberSyncByRemoteDb(m.remoteDb);
 			if (!sync) continue;
-			out.push(...(await sync.ctx.pouch.allDocsByPrefix<RoutineStateDoc>(routineStatePrefix(uid, m.memberId))));
+			out.push(...(await sync.ctx.pouch.allDocsByPrefix<RoutineStateDoc>(ROUTINE_STATE_ID_PREFIX)));
 		}
 		return out;
 	}

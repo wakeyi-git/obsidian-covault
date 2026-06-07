@@ -14,7 +14,6 @@ export class RoutinesView {
 	private readonly today = Date.now();
 	// 교사: 조회 날짜 / 항목 상세 펼침
 	private selectedDay = dayStr(Date.now());
-	private openItem: string | null = null; // `${routineUid}::${itemId}`
 	// 학생: 달력 월 / 펼친 날짜
 	private calYear = new Date().getFullYear();
 	private calMonth0 = new Date().getMonth();
@@ -141,23 +140,23 @@ export class RoutinesView {
 			for (const item of items) {
 				const doneMembers = members.filter((m) => checkedBy.get(m.memberId)?.has(item.id));
 				const notDone = members.filter((m) => !checkedBy.get(m.memberId)?.has(item.id));
-				const key = `${r.uid}::${item.id}`;
 				const row = matrix.createDiv({ cls: "covault-cr-matrix-row is-clickable" });
 				row.createSpan({ cls: "covault-cr-matrix-name", text: item.label });
 				const mp = row.createDiv({ cls: "covault-cr-progress" });
 				mp.createEl("i").style.width = `${members.length ? Math.round((doneMembers.length / members.length) * 100) : 0}%`;
 				row.createSpan({ cls: "covault-cr-score", text: `${doneMembers.length}/${members.length}` });
 				const chev = row.createSpan({ cls: "covault-cr-rowchev" });
-				setIcon(chev, this.openItem === key ? "chevron-down" : "chevron-right");
+				setIcon(chev, "chevron-right");
+				// 상세(완료/미완료 명단)는 미리 만들어 두고 토글만 한다 — 펼칠 때마다 전수 재조회(reload) 제거.
+				const detail = matrix.createDiv({ cls: "covault-cr-itemdetail" });
+				detail.style.display = "none";
+				this.namesGroup(detail, t("dashboard.completed_n", { n: doneMembers.length }), doneMembers.map((m) => m.memberName), "is-ok");
+				this.namesGroup(detail, t("dashboard.incomplete_n", { n: notDone.length }), notDone.map((m) => m.memberName), "is-warn");
 				row.onclick = () => {
-					this.openItem = this.openItem === key ? null : key;
-					void this.reload();
+					const open = detail.style.display === "none";
+					detail.style.display = open ? "" : "none";
+					setIcon(chev, open ? "chevron-down" : "chevron-right");
 				};
-				if (this.openItem === key) {
-					const detail = card.createDiv({ cls: "covault-cr-itemdetail" });
-					this.namesGroup(detail, t("dashboard.completed_n", { n: doneMembers.length }), doneMembers.map((m) => m.memberName), "is-ok");
-					this.namesGroup(detail, t("dashboard.incomplete_n", { n: notDone.length }), notDone.map((m) => m.memberName), "is-warn");
-				}
 			}
 		}
 	}
