@@ -1169,7 +1169,7 @@
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	padding: 12px;
-	background: var(--background-secondary);
+	background: var(--background-primary); /* 편집창과 동일 배경 */
 }
 .covault-cr-card.is-clickable {
 	cursor: pointer;

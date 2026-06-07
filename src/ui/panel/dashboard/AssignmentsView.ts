@@ -52,8 +52,24 @@ function statusIcon(s: AssignmentDisplayStatus): string {
 /** 과제 모듈 — 교사: 정의 목록 + 생성 + 제출 현황 매트릭스 / 학생: 내 과제 + 제출. */
 export class AssignmentsView {
 	private container: HTMLElement | null = null;
+	private limit = 0;
 
 	constructor(private host: PanelHost, private onBack: () => void) {}
+
+	/** 목록에 페이지 크기를 적용하고 "더 보기" 버튼을 단다. 표시할 항목 배열 반환. */
+	private paginate<T>(items: T[], moreParent: HTMLElement): T[] {
+		const pageSize = this.host.settings.dashboardPageSize ?? 10;
+		if (!this.limit) this.limit = pageSize;
+		const shown = items.slice(0, this.limit);
+		if (items.length > shown.length) {
+			const remaining = items.length - shown.length;
+			panelButton(moreParent, t("dashboard.show_more", { n: Math.min(pageSize, remaining) }), () => {
+				this.limit += pageSize;
+				void this.reload();
+			});
+		}
+		return shown;
+	}
 
 	render(container: HTMLElement): void {
 		this.container = container;
@@ -113,7 +129,7 @@ export class AssignmentsView {
 			.map((m) => ({ memberId: m.memberId, memberName: m.memberName || m.memberId }));
 		const now = Date.now();
 		const list = c.createDiv({ cls: "covault-dash-list" });
-		for (const def of defs.slice().reverse()) {
+		for (const def of this.paginate(defs.slice().reverse(), c)) {
 			const states = await this.host.listAssignmentStates(def.uid);
 			const rows = buildMatrix(def, members, states, now);
 			const counts = statusCounts(rows);
@@ -182,7 +198,7 @@ export class AssignmentsView {
 		}
 		const now = Date.now();
 		const list = c.createDiv({ cls: "covault-dash-list" });
-		for (const st of states) {
+		for (const st of this.paginate(states, c)) {
 			const status = displayStatus(st, now);
 			const card = list.createDiv({ cls: "covault-cr-card" });
 			const top = card.createDiv({ cls: "covault-cr-card-head" });

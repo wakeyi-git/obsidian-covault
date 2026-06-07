@@ -702,6 +702,21 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 		g.addSetting((set) =>
 			set
+				.setName(t("settings.dashboard_page_size"))
+				.setDesc(t("settings.dashboard_page_size_desc"))
+				.addText((txt) => {
+					txt.setPlaceholder("10").setValue(String(s.dashboardPageSize ?? 10));
+					txt.inputEl.type = "number";
+					txt.onChange(async (v) => {
+						const n = parseInt(v, 10);
+						s.dashboardPageSize = Number.isFinite(n) && n > 0 ? n : 10;
+						await this.host.saveSettings();
+					});
+				}),
+		);
+
+		g.addSetting((set) =>
+			set
 				.setName(t("settings.archive_folder"))
 				.setDesc(t("settings.deleted_files_collect_here_under_the"))
 				.addText((txt) =>

@@ -153,6 +153,19 @@ export interface CoVaultSettings {
 	versionMaxCount?: number;
 	/** 버전 최대 보존 일수(기본 30). 최근 N개 또는 N일 합집합으로 유지. */
 	versionMaxAgeDays?: number;
+
+	/** 학급 대시보드: 알림장/과제 한 화면 표시 개수(이후 "더 보기"). 기본 10. */
+	dashboardPageSize?: number;
+	/** 학급 대시보드: 모듈 카드 표시 순서(모듈 키 배열). 비면 기본 순서. */
+	dashboardOrder?: string[];
+	/** 학급 운영 모듈 활성화 플래그(학급 공동 공간 사용 시). 미설정=전부 활성. */
+	classroomModules?: {
+		notices?: boolean;
+		lessons?: boolean;
+		assignments?: boolean;
+		routines?: boolean;
+		gradebook?: boolean;
+	};
 }
 
 export const DEFAULT_SETTINGS: CoVaultSettings = {
@@ -195,6 +208,7 @@ export const DEFAULT_SETTINGS: CoVaultSettings = {
 	yjsToken: "",
 	realtimeSnapshotSec: 0,
 	language: "auto",
+	dashboardPageSize: 10,
 };
 
 /** 기기별 고유 ID. 기술문서 §16.3 deviceId 기반 무시에 사용. */

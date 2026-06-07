@@ -20,6 +20,7 @@ export class NoticesView {
 	private container: HTMLElement | null = null;
 	private timetable: TimetableView | null = null;
 	private weekKey = weekStart(Date.now());
+	private limit = 0;
 
 	constructor(private host: PanelHost, private onBack: () => void, private category: "notice" | "lesson" = "notice") {}
 
@@ -114,8 +115,19 @@ export class NoticesView {
 		const byTarget = new Map<string, ResponseDoc[]>();
 		for (const r of allResponses) (byTarget.get(r.targetId) ?? byTarget.set(r.targetId, []).get(r.targetId)!).push(r);
 
+		const pageSize = this.host.settings.dashboardPageSize ?? 10;
+		if (!this.limit) this.limit = pageSize;
+		// 수업 안내는 그 주의 전체를 보여주고, 알림장만 "더 보기"로 점진 표시.
+		const shown = this.isLesson ? notices : notices.slice(0, this.limit);
 		const list = c.createDiv({ cls: "covault-dash-list" });
-		for (const n of notices) this.renderNotice(list, n, byTarget.get(n._id) ?? []);
+		for (const n of shown) this.renderNotice(list, n, byTarget.get(n._id) ?? []);
+		if (!this.isLesson && notices.length > shown.length) {
+			const remaining = notices.length - shown.length;
+			panelButton(c, t("dashboard.show_more", { n: Math.min(pageSize, remaining) }), () => {
+				this.limit += pageSize;
+				void this.reload();
+			});
+		}
 	}
 
 	private shiftWeek(n: number): void {
