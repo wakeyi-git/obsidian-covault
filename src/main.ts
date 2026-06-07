@@ -506,8 +506,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	postPrivateResponse(doc: ResponseDoc): Promise<boolean> {
 		return this.classroomCtl.postPrivateResponse(doc);
 	}
-	listPrivateQuestions(): Promise<ResponseDoc[]> {
-		return this.classroomCtl.listPrivateQuestions();
+	postPrivateResponseTo(remoteDb: string, doc: ResponseDoc): Promise<boolean> {
+		return this.classroomCtl.postPrivateResponseTo(remoteDb, doc);
+	}
+	listPrivateResponses(): Promise<ResponseDoc[]> {
+		return this.classroomCtl.listPrivateResponses();
 	}
 
 	/**

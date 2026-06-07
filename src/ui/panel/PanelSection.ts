@@ -60,8 +60,10 @@ export interface NoticeHost {
 	deleteNotice(notice: NoticeDoc): Promise<void>;
 	/** 비공개 응답(질문) 기록 — 학생 개인 mirror(동료 비공개, 교사만 열람). */
 	postPrivateResponse(doc: ResponseDoc): Promise<boolean>;
-	/** 비공개 질문 수집(교사=전 구성원, 학생=본인). */
-	listPrivateQuestions(): Promise<ResponseDoc[]>;
+	/** 특정 구성원 mirror에 비공개 응답 기록(교사가 학생 질문에 답글). */
+	postPrivateResponseTo(remoteDb: string, doc: ResponseDoc): Promise<boolean>;
+	/** 비공개 응답 수집(질문 + 교사 답글). 교사=전 구성원, 학생=본인. */
+	listPrivateResponses(): Promise<ResponseDoc[]>;
 	/** 수업 안내(uid) 열기(+학생 읽음 처리). */
 	openLesson(uid: string): Promise<void>;
 }

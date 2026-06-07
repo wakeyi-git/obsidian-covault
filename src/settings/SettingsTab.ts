@@ -298,22 +298,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				),
 		);
 		this.textSetting(rt, t("settings.yjs_server_url"), "yjsServerUrl", "wss://yjs.example.com");
-		rt.addSetting((set) =>
-			set
-				.setName(t("settings.yjs_token"))
-				.setDesc(t("settings.the_value_is_stored_in_obsidian"))
-				.addText((txt) => {
-					txt.setPlaceholder(t("settings.shared_secret_token")).setValue(getSecretValue(this.host.app, YJS_TOKEN_ID, s.yjsToken)).onChange(async (v) => {
-						const val = v.trim();
-						setSecretValue(this.host.app, YJS_TOKEN_ID, val);
-						s.yjsTokenSet = !!val;
-						s.yjsToken = ""; // 평문 제거(secretStorage로 이전)
-						await this.host.saveSettings();
-					});
-					txt.inputEl.type = "password";
-					noAutoCorrect(txt.inputEl);
-				}),
-		);
+		// 레거시 전역 Yjs 토큰 입력은 제거됨 — 실시간 인증은 공간별 HMAC 토큰(아래 시크릿으로 발급)만 사용.
 		rt.addSetting((set) =>
 			set
 				.setName(t("settings.yjs_space_secret_hmac_recommended"))

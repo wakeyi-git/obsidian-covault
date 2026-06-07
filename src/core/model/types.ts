@@ -222,6 +222,8 @@ export interface ResponseDoc extends PouchDocBase {
 	body?: string; // comment/question 본문
 	byUser: string;
 	byRole: "member" | "manager";
+	/** 답글이면 부모 응답(_id). 교사가 학생 질문에 다는 답글 등. 최상위면 미설정. */
+	parentId?: string;
 	createdAtMs: number;
 	deleted?: boolean;
 }

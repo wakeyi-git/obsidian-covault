@@ -452,6 +452,7 @@ export class ClassroomController {
 
 	// --- 응답(질문) + 통계 수집 ---
 
+	/** 비공개 응답 기록 — 학생 본인 mirror에 저장(학생 질문 등). */
 	async postPrivateResponse(doc: ResponseDoc): Promise<boolean> {
 		const sync = this.d.studentMirrorSync();
 		if (!sync) return false;
@@ -459,7 +460,16 @@ export class ClassroomController {
 		return true;
 	}
 
-	async listPrivateQuestions(): Promise<ResponseDoc[]> {
+	/** 특정 구성원 mirror에 비공개 응답 기록(교사가 그 학생의 질문에 답글). */
+	async postPrivateResponseTo(remoteDb: string, doc: ResponseDoc): Promise<boolean> {
+		const sync = this.d.memberSyncByRemoteDb(remoteDb);
+		if (!sync) return false;
+		await sync.ctx.pouch.put(doc);
+		return true;
+	}
+
+	/** 비공개 응답 수집(질문 + 교사 답글). 교사=전 구성원 mirror, 학생=본인 mirror. */
+	async listPrivateResponses(): Promise<ResponseDoc[]> {
 		const out: ResponseDoc[] = [];
 		if (this.d.settings().role === "manager") {
 			for (const m of this.d.settings().members) {
@@ -472,7 +482,7 @@ export class ClassroomController {
 			const sync = this.d.studentMirrorSync();
 			if (sync) out.push(...(await sync.ctx.pouch.allDocsByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX)));
 		}
-		return out.filter((d) => d.kind === "question" && !d.deleted);
+		return out.filter((d) => (d.kind === "question" || d.kind === "comment") && !d.deleted);
 	}
 
 	async listAllAssignmentStates(): Promise<AssignmentStateDoc[]> {

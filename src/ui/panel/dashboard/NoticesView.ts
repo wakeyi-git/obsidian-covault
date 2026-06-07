@@ -124,10 +124,10 @@ export class NoticesView {
 			(n) => !n.deleted && (n.category ?? "notice") === this.category && (!this.isLesson || n.weekKey === this.weekKey),
 		);
 		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
-		// 질문은 학급 공유가 아닌 개인 mirror에 있다(동료 비공개) → 교사=전원/학생=본인 것을 합친다.
-		const privateQs = await this.host.listPrivateQuestions();
+		// 질문·교사 답글은 학급 공유가 아닌 개인 mirror에 있다(동료 비공개) → 교사=전원/학생=본인 것을 합친다.
+		const privateResp = await this.host.listPrivateResponses();
 		const byTarget = new Map<string, ResponseDoc[]>();
-		for (const r of [...allResponses, ...privateQs])
+		for (const r of [...allResponses, ...privateResp])
 			(byTarget.get(r.targetId) ?? byTarget.set(r.targetId, []).get(r.targetId)!).push(r);
 
 		if (this.isLesson) {
@@ -233,13 +233,15 @@ export class NoticesView {
 			prog.createEl("i").style.width = total > 0 ? `${Math.round((sum.readCount / total) * 100)}%` : "0%";
 			if (sum.unread.length > 0)
 				card.createDiv({ cls: "covault-cr-muted", text: t("dashboard.unread_list", { names: sum.unread.join(", ") }) });
-			this.renderComments(card, sum.comments);
+			this.renderComments(card, n, sum.comments);
+			// 교사도 학급 전체 댓글을 달 수 있다(질문 답글은 각 질문 아래 인라인).
+			this.renderCommentBox(card, n);
 		} else {
 			// 학생: 읽음 배지/확인 + 댓글/질문
 			const acted = card.createDiv({ cls: "covault-dash-actions" });
 			if (sum.readUsers.includes(me)) acted.createSpan({ cls: "covault-cr-badge is-ok", text: t("dashboard.read_done") });
 			else panelButton(acted, t("dashboard.mark_read"), () => this.respond(n, "read"), { cta: true });
-			this.renderComments(card, sum.comments);
+			this.renderComments(card, n, sum.comments);
 			this.renderReplyBox(card, n);
 		}
 
@@ -253,15 +255,47 @@ export class NoticesView {
 		}
 	}
 
-	private renderComments(parent: HTMLElement, comments: ResponseDoc[]): void {
+	private renderComments(parent: HTMLElement, n: NoticeDoc, comments: ResponseDoc[]): void {
 		if (comments.length === 0) return;
+		// 최상위(댓글·질문) + 답글(parentId)로 분리해 답글을 부모 아래 들여쓴다.
+		const repliesByParent = new Map<string, ResponseDoc[]>();
+		const tops: ResponseDoc[] = [];
+		for (const c of comments) {
+			if (c.parentId) (repliesByParent.get(c.parentId) ?? repliesByParent.set(c.parentId, []).get(c.parentId)!).push(c);
+			else tops.push(c);
+		}
 		const wrap = parent.createDiv({ cls: "covault-dash-comments" });
-		for (const cmt of comments) {
+		for (const cmt of tops) {
 			const row = wrap.createDiv({ cls: "covault-dash-comment" });
 			if (cmt.kind === "question") setIcon(row.createSpan({ cls: "covault-dash-qicon" }), "help-circle");
 			row.createSpan({ cls: "covault-feedback-author", text: cmt.byUser });
 			row.createSpan({ text: ` ${cmt.body ?? ""}` });
+			for (const rep of (repliesByParent.get(cmt._id) ?? []).sort((a, b) => a.createdAtMs - b.createdAtMs)) {
+				const rr = wrap.createDiv({ cls: "covault-dash-comment covault-dash-reply-row" });
+				rr.createSpan({ cls: "covault-feedback-author", text: rep.byUser });
+				rr.createSpan({ text: ` ${rep.body ?? ""}` });
+			}
+			// 교사: 학생 질문에 답글(해당 학생 mirror에 비공개로 기록).
+			if (this.manager && cmt.kind === "question") {
+				const member = this.host.settings.members.find((m) => m.memberId === cmt.byUser);
+				if (member?.remoteDb) {
+					const rbox = wrap.createDiv({ cls: "covault-dash-reply covault-dash-reply-row" });
+					const ri = rbox.createEl("input", { cls: "covault-dash-reply-input", attr: { type: "text", placeholder: t("dashboard.write_reply") } });
+					panelButton(rbox, t("dashboard.reply"), async () => {
+						const body = ri.value.trim();
+						if (!body) return;
+						await this.respond(n, "comment", body, { parentId: cmt._id, toRemoteDb: member.remoteDb });
+					});
+				}
+			}
 		}
+	}
+
+	/** 교사 학급 전체 댓글 입력(공유 DB). */
+	private renderCommentBox(parent: HTMLElement, n: NoticeDoc): void {
+		const box = parent.createDiv({ cls: "covault-dash-reply" });
+		const input = box.createEl("input", { cls: "covault-dash-reply-input", attr: { type: "text", placeholder: t("dashboard.write_comment_only") } });
+		panelButton(box, t("dashboard.comment"), () => this.submitReply(n, input, "comment"));
 	}
 
 	private renderReplyBox(parent: HTMLElement, n: NoticeDoc): void {
@@ -279,7 +313,12 @@ export class NoticesView {
 		await this.respond(n, kind, body);
 	}
 
-	private async respond(n: NoticeDoc, kind: "read" | "comment" | "question", body?: string): Promise<void> {
+	private async respond(
+		n: NoticeDoc,
+		kind: "read" | "comment" | "question",
+		body?: string,
+		opts?: { parentId?: string; toRemoteDb?: string },
+	): Promise<void> {
 		const s = this.host.settings;
 		const now = Date.now();
 		const uid = kind === "read" ? undefined : `${now.toString(36)}`;
@@ -293,10 +332,12 @@ export class NoticesView {
 			body,
 			byUser: s.userId,
 			byRole: s.role,
+			parentId: opts?.parentId,
 			createdAtMs: now,
 		};
-		// 질문은 동료 비공개(학생 개인 mirror, 교사만 열람). 읽음/댓글은 학급 공유.
-		if (kind === "question") await this.host.postPrivateResponse(doc);
+		// 교사 답글은 해당 학생 mirror(비공개), 학생 질문은 본인 mirror(비공개), 읽음/댓글은 학급 공유.
+		if (opts?.toRemoteDb) await this.host.postPrivateResponseTo(opts.toRemoteDb, doc);
+		else if (kind === "question") await this.host.postPrivateResponse(doc);
 		else await this.host.classroomStore.put(doc);
 		await this.reload();
 	}

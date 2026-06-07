@@ -1544,3 +1544,8 @@
 .covault-icon-danger:hover {
 	color: var(--text-error);
 }
+
+/* 답글(질문 아래) 들여쓰기 */
+.covault-dash-reply-row {
+	margin-left: 16px;
+}
