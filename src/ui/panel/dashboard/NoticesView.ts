@@ -221,7 +221,8 @@ export class NoticesView {
 		if (n.pinned) setIcon(top.createSpan({ cls: "covault-cr-card-icon" }), "pin");
 		top.createSpan({ cls: "covault-cr-card-title", text: n.title });
 		if (this.manager && n.published === false) top.createSpan({ cls: "covault-cr-badge is-warn", text: t("dashboard.draft") });
-		top.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(n.postedAtMs)) });
+		// 수업 안내는 시간표/주 기준으로 배치되므로 작성일자는 표시하지 않는다(알림장만 시간순 게시 → 날짜 표시).
+		if (!this.isLesson) top.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(n.postedAtMs)) });
 
 		const sum = summarizeResponses(responses, this.memberIds());
 		const me = this.host.settings.userId;
