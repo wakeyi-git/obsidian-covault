@@ -992,12 +992,15 @@
 	min-width: 0;
 }
 
+/* 외곽 프레임 + 둥근 모서리는 래퍼가 담당(셀은 안쪽 격자선만). */
 .covault-timetable-wrap {
-	overflow: auto;
-	border-radius: 8px; /* 모서리 둥글게(collapse 외곽선 클리핑) */
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
 }
 .covault-timetable {
-	border-collapse: collapse;
+	border-collapse: separate;
+	border-spacing: 0;
 	font-size: 12px;
 	width: 100%;
 	table-layout: fixed;
@@ -1009,11 +1012,19 @@
 }
 .covault-timetable th,
 .covault-timetable td {
-	border: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--background-modifier-border);
 	padding: 1px 2px;
 	text-align: center;
 	overflow: hidden;
 	background: var(--background-primary); /* 편집창과 동일 배경 */
+}
+/* 마지막 열/행은 래퍼 테두리와 겹치지 않도록 안쪽 선 제거 */
+.covault-timetable tr > *:last-child {
+	border-right: none;
+}
+.covault-timetable tr:last-child > * {
+	border-bottom: none;
 }
 .covault-tt-cell {
 	display: flex;
