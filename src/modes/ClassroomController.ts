@@ -180,10 +180,11 @@ export class ClassroomController {
 			weekKey: f.weekKey,
 			createdBy: existing?.createdBy ?? this.d.settings().userId,
 			createdByRole: existing?.createdByRole ?? "manager",
-			deleted: existing?.deleted,
+			// 파일이 존재하고 covault 프론트매터가 유효하면 항상 살아있는 글로 취급(soft-delete된 글도 재저장으로 복구).
+			deleted: undefined,
 		};
-		// 변경 없는 빈번한 metadataCache 이벤트에선 쓰기를 생략(동기화 잡음 방지).
-		if (existing && existing.title === doc.title && existing.filePath === doc.filePath && !!existing.pinned === doc.pinned && (existing.published ?? false) === doc.published && (existing.allowResponses ?? true) === doc.allowResponses && (existing.weekKey ?? undefined) === doc.weekKey) {
+		// 변경 없는 빈번한 metadataCache 이벤트에선 쓰기를 생략(동기화 잡음 방지). 단, soft-delete된 글은 반드시 되살린다.
+		if (existing && !existing.deleted && existing.title === doc.title && existing.filePath === doc.filePath && !!existing.pinned === doc.pinned && (existing.published ?? false) === doc.published && (existing.allowResponses ?? true) === doc.allowResponses && (existing.weekKey ?? undefined) === doc.weekKey) {
 			return;
 		}
 		await this.d.classroom.put(doc);
