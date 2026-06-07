@@ -7,7 +7,6 @@ import { App, SecretStorage } from "obsidian";
  */
 
 export const YJS_SECRET_ID = "covault-yjs-secret";
-export const YJS_TOKEN_ID = "covault-yjs-token";
 /** 활성 CouchDB 계정 비밀번호(교사 admin / 학생 본인). replication·프로비저닝에 사용. */
 export const COUCH_PASSWORD_ID = "covault-couch-password";
 

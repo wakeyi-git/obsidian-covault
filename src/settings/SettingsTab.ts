@@ -6,7 +6,7 @@ import { MemberBulkImportModal } from "../ui/MemberBulkImportModal";
 import { validateFolderName, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
 import { sharedSpaceStatus } from "./sharedSpaceStatus";
-import { getSecretValue, setSecretValue, hasSecretStorage, YJS_SECRET_ID, YJS_TOKEN_ID, COUCH_PASSWORD_ID } from "../core/secret";
+import { getSecretValue, setSecretValue, hasSecretStorage, YJS_SECRET_ID, COUCH_PASSWORD_ID } from "../core/secret";
 import { t } from "../i18n";
 
 // SettingGroup.listEl은 Obsidian 런타임에 1.11.0부터 존재하지만(공식 @since 1.11.0),
@@ -144,9 +144,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 	private renderIssues(s: CoVaultSettings): void {
 		// 실시간 자격증명은 marker가 아니라 실제 Secret Storage 값으로 판단(지워진 비밀값을 marker가 가리지 않게).
-		const realtimeCredPresent =
-			!!getSecretValue(this.app, YJS_TOKEN_ID, s.yjsToken) ||
-			!!getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
+		const realtimeCredPresent = !!getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
 		const issues = validateSettings(s, { realtimeCredPresent });
 		if (issues.length === 0) return;
 		const box = this.containerEl.createDiv({ cls: "covault-issues" });

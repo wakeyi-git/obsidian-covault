@@ -8,7 +8,6 @@ function s(over: Partial<CoVaultSettings> = {}): CoVaultSettings {
 		couchdbUrl: "https://nas.example.com",
 		realtimeEnabled: false,
 		yjsServerUrl: "",
-		yjsToken: "",
 		yjsSecret: "",
 		members: [],
 		sharedSpaces: [],
@@ -63,11 +62,10 @@ describe("validateSettings", () => {
 	});
 
 	it("marker가 true여도 런타임 자격증명이 없으면 rt-no-token 경고 유지", () => {
-		// marker(yjsTokenSet/yjsSecretSet)만 true이고 실제 Secret Storage 값은 비어 있는 edge case.
+		// marker(yjsSecretSet)만 true이고 실제 Secret Storage 값은 비어 있는 edge case.
 		const withMarkers = s({
 			realtimeEnabled: true,
 			yjsServerUrl: "wss://x",
-			yjsTokenSet: true,
 			yjsSecretSet: true,
 		});
 		// 기본(marker 휴리스틱)이면 경고가 사라진다.

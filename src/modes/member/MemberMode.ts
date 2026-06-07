@@ -5,7 +5,6 @@ import { SyncDirection } from "../../core/sync/FullSync";
 import { computeChildRoots } from "../../core/sync/childRoots";
 import { SharesDoc, SHARES_DOC_ID, RtConfigDoc, RTCONFIG_DOC_ID } from "../../core/model/types";
 import { CoVaultMode } from "../CoVaultMode";
-import { getSecretValue, setSecretValue, YJS_TOKEN_ID } from "../../core/secret";
 import { t } from "../../i18n";
 
 /**
@@ -132,7 +131,7 @@ export class MemberMode implements CoVaultMode {
 		}
 	}
 
-	/** 교사가 배포한 rtconfig(실시간 서버/토큰)를 받아 설정에 반영. */
+	/** 교사가 배포한 rtconfig(실시간 서버/스냅샷 주기)를 받아 설정에 반영. 실시간 인증은 shares의 공간별 HMAC 토큰을 사용. */
 	private async applyRtConfig(): Promise<void> {
 		const pouch = this.core.createPouch(this.core.settings.remoteDb);
 		try {
@@ -140,25 +139,9 @@ export class MemberMode implements CoVaultMode {
 			if (!doc) return;
 			const s = this.core.settings;
 			const snapshotSec = doc.snapshotSec ?? 0;
-			const app = this.core.app;
-			// 레거시 전역 토큰은 Secret Storage에 보관(data.json 평문 회피). 미지원 환경만 평문 폴백.
-			const currentToken = getSecretValue(app, YJS_TOKEN_ID, s.yjsToken);
-			if (
-				s.realtimeEnabled !== doc.enabled ||
-				s.yjsServerUrl !== doc.url ||
-				currentToken !== doc.token ||
-				s.realtimeSnapshotSec !== snapshotSec
-			) {
+			if (s.realtimeEnabled !== doc.enabled || s.yjsServerUrl !== doc.url || s.realtimeSnapshotSec !== snapshotSec) {
 				s.realtimeEnabled = doc.enabled;
 				s.yjsServerUrl = doc.url;
-				if (doc.token && setSecretValue(app, YJS_TOKEN_ID, doc.token)) {
-					s.yjsToken = "";
-					s.yjsTokenSet = true;
-				} else {
-					// 빈 토큰이면 Secret Storage 저장이 성공해도 "토큰 있음"으로 표시하지 않는다.
-					s.yjsToken = doc.token ?? "";
-					s.yjsTokenSet = !!doc.token;
-				}
 				s.realtimeSnapshotSec = snapshotSec;
 				await this.core.save();
 			}

@@ -19,15 +19,7 @@ import { ResolveChoice } from "./core/sync/ConflictManager";
 import { BulkCopy, CopyOptions, CopyResult, CopyPlan } from "./modes/manager/BulkCopy";
 import { RealtimeManager } from "./core/realtime/RealtimeManager";
 import { isValidCouchName } from "./core/path/path";
-import {
-	getSecretValue,
-	setSecretValue,
-	hasSecretStorage,
-	YJS_SECRET_ID,
-	YJS_TOKEN_ID,
-	COUCH_PASSWORD_ID,
-	setMemberPassword,
-} from "./core/secret";
+import { getSecretValue, setSecretValue, YJS_SECRET_ID, COUCH_PASSWORD_ID } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
@@ -82,8 +74,6 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		initI18n(this.settings.language); // 모든 t() 이전에 로케일 확정
-		this.migrateSecrets(); // 평문 yjsSecret/yjsToken을 Secret Storage로 1회 이전(교사)
-		this.migrateCouchPassword(); // 평문 CouchDB 비밀번호(활성 + 학생별)를 Secret Storage로 1회 이전
 
 		this.core = new CoreServices(this.app, this.settings, this.logger);
 		this.core.save = () => this.saveData(this.settings);
@@ -178,46 +168,6 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	// --- 설정 ---
 	async loadSettings(): Promise<void> {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
-
-	/** 교사의 평문 Yjs 비밀값을 Secret Storage로 1회 이전하고 data.json에서 제거(평문 노출 방지). */
-	private migrateSecrets(): void {
-		if (this.settings.role !== "manager" || !hasSecretStorage(this.app)) return;
-		let changed = false;
-		if (this.settings.yjsSecret) {
-			setSecretValue(this.app, YJS_SECRET_ID, this.settings.yjsSecret);
-			this.settings.yjsSecretSet = true;
-			this.settings.yjsSecret = undefined;
-			changed = true;
-		}
-		if (this.settings.yjsToken) {
-			setSecretValue(this.app, YJS_TOKEN_ID, this.settings.yjsToken);
-			this.settings.yjsTokenSet = true;
-			this.settings.yjsToken = "";
-			changed = true;
-		}
-		if (changed) void this.saveSettings();
-	}
-
-	/** 평문 CouchDB 비밀번호를 Secret Storage로 1회 이전(교사 admin/학생 본인 + 교사 보유 학생별). data.json 평문 제거. */
-	private migrateCouchPassword(): void {
-		if (!hasSecretStorage(this.app)) return;
-		const s = this.settings;
-		let changed = false;
-		if (s.password) {
-			if (setSecretValue(this.app, COUCH_PASSWORD_ID, s.password)) {
-				s.passwordSet = true;
-				s.password = "";
-				changed = true;
-			}
-		}
-		for (const st of s.members) {
-			if (st.password && st.memberId && setMemberPassword(this.app, st.memberId, st.password)) {
-				st.password = undefined;
-				changed = true;
-			}
-		}
-		if (changed) void this.saveSettings();
 	}
 
 	/** 활성 CouchDB 비밀번호(Secret Storage 우선, 평문 폴백). */

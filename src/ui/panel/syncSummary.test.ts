@@ -9,7 +9,6 @@ function settings(over: Partial<CoVaultSettings> = {}): CoVaultSettings {
 		autoSync: true,
 		realtimeEnabled: false,
 		yjsServerUrl: "",
-		yjsToken: "",
 		members: [],
 		sharedSpaces: [],
 		...over,
@@ -62,24 +61,22 @@ describe("computeSyncSummary", () => {
 		expect(computeSyncSummary([row()], s).overall).toBe("autosync-off");
 	});
 
-	it("실시간 토큰 누락 감지(HMAC 공간 토큰 없음 + 전역 토큰 없음)", () => {
+	it("실시간 토큰 누락 감지(HMAC 공간 토큰 없음)", () => {
 		const s = settings({
 			realtimeEnabled: true,
 			yjsServerUrl: "wss://x",
-			yjsToken: "",
 			members: [{ memberId: "a", provisioned: true }] as any,
 			sharedSpaces: [{ id: "s1", token: undefined } as any],
 		});
 		expect(computeSyncSummary([row()], s).realtimeTokenMissing).toBe(true);
 	});
 
-	it("전역 토큰이 있으면 실시간 토큰 누락 아님", () => {
+	it("모든 공간에 HMAC 토큰이 있으면 실시간 토큰 누락 아님", () => {
 		const s = settings({
 			realtimeEnabled: true,
 			yjsServerUrl: "wss://x",
-			yjsToken: "legacy",
 			members: [{ memberId: "a", provisioned: true }] as any,
-			sharedSpaces: [{ id: "s1" } as any],
+			sharedSpaces: [{ id: "s1", token: "hmac" } as any],
 		});
 		expect(computeSyncSummary([row()], s).realtimeTokenMissing).toBe(false);
 	});

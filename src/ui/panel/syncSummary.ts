@@ -32,8 +32,6 @@ export function computeSyncSummary(rows: DashboardRow[], s: CoVaultSettings): Sy
 		!!s.realtimeEnabled &&
 		!!s.yjsServerUrl &&
 		shared > 0 &&
-		!s.yjsToken &&
-		!s.yjsTokenSet &&
 		s.sharedSpaces.some((sp) => !sp.token);
 
 	const autoSyncOff = !s.autoSync;

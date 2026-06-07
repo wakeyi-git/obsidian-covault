@@ -87,9 +87,7 @@ export function validateSettings(s: CoVaultSettings, opts?: ValidateOptions): Se
 		else {
 			// UI가 런타임 자격증명 존재 여부를 넘기면 그것을 신뢰한다(Secret Storage가 비었는데 marker만 남은 경우 대비).
 			// 미지정이면 평문/marker 휴리스틱으로 판단.
-			const hasCred =
-				opts?.realtimeCredPresent ??
-				!!(s.yjsToken || s.yjsSecret || s.yjsTokenSet || s.yjsSecretSet);
+			const hasCred = opts?.realtimeCredPresent ?? !!(s.yjsSecret || s.yjsSecretSet);
 			if (!hasCred) issues.push({ level: "warn", code: "rt-no-token" });
 		}
 	}

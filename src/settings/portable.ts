@@ -2,9 +2,9 @@ import { CoVaultSettings } from "./types";
 import { t } from "../i18n";
 
 /** 내보낼 때 제외할 자격증명/기기 고유 키. 기술문서 §22.4. */
-const SECRET_KEYS: Array<keyof CoVaultSettings> = ["password", "yjsToken", "yjsSecret"];
+const SECRET_KEYS: Array<keyof CoVaultSettings> = ["password", "yjsSecret"];
 // 비밀값은 Secret Storage에 있고 이전 여부(*Set) 마커는 기기별 상태이므로 내보내지 않는다.
-const DEVICE_KEYS: Array<keyof CoVaultSettings> = ["deviceId", "lastSeqByDb", "yjsSecretSet", "yjsTokenSet", "passwordSet"];
+const DEVICE_KEYS: Array<keyof CoVaultSettings> = ["deviceId", "lastSeqByDb", "yjsSecretSet", "passwordSet"];
 
 /** 가져올 때 구조/옵션으로 병합할 키(현재 기기의 secret·device·role은 보존). */
 const IMPORT_KEYS: Array<keyof CoVaultSettings> = [
@@ -46,7 +46,7 @@ export interface PortablePayload {
 
 /**
  * 설정을 자격증명·기기 고유값을 제외하고 직렬화(JSON 문자열). 기술문서 §22.4.
- * password·yjsToken·deviceId·lastSeqByDb 제거, members[].password 제거.
+ * password·yjsSecret·deviceId·lastSeqByDb 제거, members[].password 제거.
  */
 export function exportSettings(s: CoVaultSettings): string {
 	const copy: any = JSON.parse(JSON.stringify(s));
@@ -66,7 +66,7 @@ export function exportSettings(s: CoVaultSettings): string {
 
 /**
  * 가져온 JSON을 현재 설정에 병합한 새 설정을 반환. 구조/옵션만 반영하고
- * 현재 기기의 secret(password·yjsToken·members[].password)·device(deviceId·lastSeqByDb)·role·setupComplete는 보존.
+ * 현재 기기의 secret(password·yjsSecret·members[].password)·device(deviceId·lastSeqByDb)·role·setupComplete는 보존.
  */
 export function importSettings(
 	current: CoVaultSettings,

@@ -7,7 +7,6 @@ import { CoreServices } from "../CoreServices";
 import { bindView, unbindView } from "./editorBinding";
 import { PresenceChips } from "./presenceChips";
 import { clientColor } from "./clientColor";
-import { getSecretValue, YJS_TOKEN_ID } from "../secret";
 import { ExcalidrawBinding, ExcalidrawImperativeApi } from "./excalidrawBinding";
 import { relUnder, roomName, pickSpace } from "./room";
 import { t } from "../../i18n";
@@ -277,7 +276,6 @@ export class RealtimeManager {
 			t("realtime.realtime_check_enabled_url_globaltoken_spacetoke", {
 				enabled: String(s.realtimeEnabled),
 				url: s.yjsServerUrl ? t("common.set") : t("common.none"),
-				legacy: getSecretValue(this.app, YJS_TOKEN_ID, s.yjsToken) ? t("common.set") : t("common.none"),
 				spaceTokens: `${withToken}/${spaces.length}`,
 			}),
 			true,
@@ -293,13 +291,7 @@ export class RealtimeManager {
 			t("realtime.active_file_shared_space_spacetoken", {
 				file: f?.path ?? t("common.none_2"),
 				space: f ? (space?.id ?? t("realtime.no_outside_shared_folder")) : "-",
-				spaceToken: space
-					? space.token
-						? t("common.set")
-						: getSecretValue(this.app, YJS_TOKEN_ID, s.yjsToken)
-							? t("realtime.using_global")
-							: t("common.none")
-					: "-",
+				spaceToken: space ? (space.token ? t("common.set") : t("common.none")) : "-",
 			}),
 		);
 		// room 이름(교사·학생이 정확히 같아야 실시간 공유됨)
