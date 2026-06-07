@@ -1,4 +1,4 @@
-import { App, MarkdownView, Modal, Notice, Setting, TFile } from "obsidian";
+import { App, MarkdownView, Modal, Notice, Platform, Setting, TFile } from "obsidian";
 import { FeedbackStore } from "../core/feedback/FeedbackStore";
 import { getSelectedExcalidrawElements, isExcalidrawFile } from "./excalidrawFocus";
 import { t } from "../i18n";
@@ -95,7 +95,7 @@ class FeedbackInputModal extends Modal {
 		ta.rows = 4;
 		ta.placeholder = t("feedback.enter_your_feedback");
 		ta.oninput = () => (this.value = ta.value);
-		window.setTimeout(() => ta.focus(), 0);
+		if (!Platform.isMobile) window.setTimeout(() => ta.focus(), 0);
 
 		new Setting(contentEl)
 			.addButton((b) => b.setButtonText(t("common.cancel")).onClick(() => this.close()))

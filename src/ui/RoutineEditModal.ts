@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting, setIcon } from "obsidian";
+import { App, Modal, Notice, Platform, Setting, setIcon } from "obsidian";
 import { t } from "../i18n";
 
 export interface RoutineItemInput {
@@ -51,7 +51,7 @@ export class RoutineEditModal extends Modal {
 
 		new Setting(contentEl).setName(t("dashboard.routine_title")).addText((tx) => {
 			tx.setPlaceholder(t("dashboard.routine_title_placeholder")).setValue(this.title).onChange((v) => (this.title = v));
-			window.setTimeout(() => tx.inputEl.focus(), 0);
+			if (!Platform.isMobile) window.setTimeout(() => tx.inputEl.focus(), 0);
 		});
 
 		contentEl.createDiv({ cls: "covault-dash-label", text: t("dashboard.routine_items") });

@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting, setIcon } from "obsidian";
+import { App, Modal, Notice, Platform, Setting, setIcon } from "obsidian";
 import { CoVaultSettings } from "../settings/types";
 import { RubricCriterion } from "../core/model/types";
 import { PathSuggest } from "./PathSuggest";
@@ -65,7 +65,8 @@ export class AssignmentCreateModal extends Modal {
 
 		new Setting(contentEl).setName(t("dashboard.assignment_title")).addText((tx) => {
 			tx.setPlaceholder(t("dashboard.assignment_title_placeholder")).setValue(this.title).onChange((v) => (this.title = v));
-			window.setTimeout(() => tx.inputEl.focus(), 0);
+			// 모바일: 자동 포커스로 키보드가 즉시 올라와 하단 버튼을 가리지 않게 데스크톱에서만 포커스.
+			if (!Platform.isMobile) window.setTimeout(() => tx.inputEl.focus(), 0);
 		});
 
 		contentEl.createDiv({ cls: "covault-dash-label", text: t("dashboard.assignment_instructions") });

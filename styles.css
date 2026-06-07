@@ -407,6 +407,16 @@
 	.covault-dash-cards {
 		display: block;
 	}
+	/* 좁은 폭(모바일 패널 등)에서 버튼·네비·댓글 입력 줄이 넘치지 않고 줄바꿈되도록. */
+	.covault-dash-weeknav,
+	.covault-dash-rowactions,
+	.covault-dash-reply {
+		flex-wrap: wrap;
+	}
+	/* 카드 액션 버튼은 줄바꿈 시에도 왼쪽 정렬 유지. */
+	.covault-dash-rowactions {
+		justify-content: flex-start;
+	}
 }
 
 .covault-dash-table {

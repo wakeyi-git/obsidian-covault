@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, Modal, Notice, Platform, Setting } from "obsidian";
 import { t } from "../i18n";
 
 const confirmWord = (): string => t("common.reset_2");
@@ -53,7 +53,7 @@ export class ResetModal extends Modal {
 					this.confirmValue = v.trim();
 					runBtn?.setDisabled(this.confirmValue !== word);
 				});
-				window.setTimeout(() => txt.inputEl.focus(), 0);
+				if (!Platform.isMobile) window.setTimeout(() => txt.inputEl.focus(), 0);
 			});
 
 		new Setting(contentEl)

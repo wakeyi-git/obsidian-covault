@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting } from "obsidian";
+import { App, Modal, Notice, Platform, Setting } from "obsidian";
 import { MemberConfig } from "../settings/types";
 import { parseMemberRoster, finalizeRoster, RosterEntry } from "../settings/memberRoster";
 import { t } from "../i18n";
@@ -32,7 +32,7 @@ export class MemberBulkImportModal extends Modal {
 			this.text = ta.value;
 			this.renderPreview();
 		});
-		window.setTimeout(() => ta.focus(), 0);
+		if (!Platform.isMobile) window.setTimeout(() => ta.focus(), 0);
 
 		new Setting(contentEl)
 			.setName(t("settings.base_folder_optional"))
