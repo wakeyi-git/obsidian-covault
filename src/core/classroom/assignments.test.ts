@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
 	assignmentWorkDir,
+	assignmentFileName,
 	substituteTemplate,
 	displayStatus,
 	buildMatrix,
@@ -11,11 +12,16 @@ import {
 } from "./assignments";
 import { AssignmentStateDoc, AssignmentDoc, RubricCriterion } from "../model/types";
 
-describe("assignmentWorkDir / substituteTemplate", () => {
-	it("개인=교사측 <root>/_과제, 학생측(root='')은 _과제, 공유=학급/과제", () => {
-		expect(assignmentWorkDir("mirror", "학생A", "_학급", "s1")).toBe("학생A/_과제/s1");
-		expect(assignmentWorkDir("mirror", "", "_학급", "s1")).toBe("_과제/s1");
-		expect(assignmentWorkDir("shared", "학생A", "_학급", "s1")).toBe("_학급/과제/s1");
+describe("assignmentWorkDir / assignmentFileName / substituteTemplate", () => {
+	it("폴더: 개인=교사측 <root>/_과제, 학생측(root='')은 _과제, 공유=학급/과제 (과제별 하위폴더 없음)", () => {
+		expect(assignmentWorkDir("mirror", "학생A", "_학급")).toBe("학생A/_과제");
+		expect(assignmentWorkDir("mirror", "", "_학급")).toBe("_과제");
+		expect(assignmentWorkDir("shared", "학생A", "_학급")).toBe("_학급/과제");
+	});
+	it("파일명: <slug>+템플릿 확장자(.md, .excalidraw.md 유지)", () => {
+		expect(assignmentFileName("독서감상문", "과제.md")).toBe("독서감상문.md");
+		expect(assignmentFileName("그리기", "template.excalidraw.md")).toBe("그리기.excalidraw.md");
+		expect(assignmentFileName("s1", "확장자없음")).toBe("s1.md");
 	});
 	it("템플릿 변수 치환", () => {
 		const out = substituteTemplate("안녕 {{memberName}}({{memberId}}) {{date}}", {

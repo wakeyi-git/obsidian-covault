@@ -15,7 +15,7 @@ import {
 	NoticeTemplateKind,
 } from "../core/classroom/templates";
 import { defaultTimetableDays, DEFAULT_PERIODS, resolveTimetableSlot, placeLessonSlot } from "../core/classroom/timetable";
-import { assignmentWorkDir, substituteTemplate, slugify, rubricMax } from "../core/classroom/assignments";
+import { assignmentWorkDir, assignmentFileName, substituteTemplate, slugify, rubricMax } from "../core/classroom/assignments";
 import {
 	NoticeDoc,
 	noticeId,
@@ -506,13 +506,14 @@ export class ClassroomController {
 		const tplPath = def.templatePaths[0] || s.assignmentTemplate;
 		const templateContent = tplPath ? (await this.readVaultText(tplPath)) ?? defaultTemplate("assignment") : defaultTemplate("assignment");
 		const templateName = tplPath?.split("/").pop() || "과제.md";
+		const fileName = assignmentFileName(slug, templateName);
 		const subst = (memberId: string, memberName: string): string =>
 			substituteTemplate(applyNoticeVars(templateContent, { title: def.title, date }), { memberId, memberName, workspaceId: s.workspaceId, date });
 		const homeFolder = this.d.homeroomFolder() ?? "";
 
 		let sharedWorkPath: string | null = null;
 		if (def.privacy === "shared") {
-			sharedWorkPath = `${assignmentWorkDir("shared", "", homeFolder, slug)}/${templateName}`;
+			sharedWorkPath = `${assignmentWorkDir("shared", "", homeFolder)}/${fileName}`;
 			await this.writeFileIfAbsent(sharedWorkPath, subst("", ""));
 		}
 
@@ -528,8 +529,8 @@ export class ClassroomController {
 			} else if (def.privacy === "shared") {
 				workPaths = sharedWorkPath ? [sharedWorkPath] : [];
 			} else {
-				const studentPath = `${assignmentWorkDir("mirror", "", homeFolder, slug)}/${templateName}`;
-				const teacherPath = `${assignmentWorkDir("mirror", member.localRoot, homeFolder, slug)}/${templateName}`;
+				const studentPath = `${assignmentWorkDir("mirror", "", homeFolder)}/${fileName}`;
+				const teacherPath = `${assignmentWorkDir("mirror", member.localRoot, homeFolder)}/${fileName}`;
 				await this.writeFileIfAbsent(teacherPath, subst(member.memberId, member.memberName));
 				workPaths = [studentPath];
 			}

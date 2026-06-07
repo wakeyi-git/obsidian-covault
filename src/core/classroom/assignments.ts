@@ -23,17 +23,20 @@ export function gradeTotal(grade: AssignmentGrade | undefined, rubric: RubricCri
 }
 
 /**
- * 과제 작업 폴더 base. 개인=<root>/_과제/<slug>(root="" 학생 측이면 _과제/<slug>), 공유=<학급>/과제/<slug>.
+ * 과제 작업 폴더. 개인=<root>/_과제(root="" 학생 측이면 _과제), 공유=<학급>/과제.
+ * 과제 파일은 이 폴더 바로 아래 `<slug>.<ext>`로 생성한다(과제별 하위 폴더를 만들지 않음).
  * 개인 과제의 파일은 dbPath(localRoot 상대)로 저장하므로 학생 측은 root="", 교사 측은 member.localRoot로 해석한다.
  */
-export function assignmentWorkDir(
-	privacy: "mirror" | "shared",
-	root: string,
-	homeroomFolder: string,
-	slug: string,
-): string {
-	if (privacy === "shared") return `${homeroomFolder}/과제/${slug}`;
-	return root ? `${root}/_과제/${slug}` : `_과제/${slug}`;
+export function assignmentWorkDir(privacy: "mirror" | "shared", root: string, homeroomFolder: string): string {
+	if (privacy === "shared") return `${homeroomFolder}/과제`;
+	return root ? `${root}/_과제` : `_과제`;
+}
+
+/** 과제 파일명: <slug><ext>. ext는 템플릿 파일명의 첫 점 이후(.md, .excalidraw.md 등)를 유지. */
+export function assignmentFileName(slug: string, templateName: string): string {
+	const dot = templateName.indexOf(".");
+	const ext = dot >= 0 ? templateName.slice(dot) : ".md";
+	return `${slug}${ext}`;
 }
 
 /** 템플릿 치환({{memberName}}/{{memberId}}/{{workspaceId}}/{{date}}). BulkCopy와 동일 규칙. */
