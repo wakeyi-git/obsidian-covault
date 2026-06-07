@@ -91,7 +91,8 @@
 .covault-panel-body {
 	flex: 1;
 	overflow-y: auto;
-	padding: 8px 12px;
+	/* 하단: 옵시디언 상태 표시줄 + 모바일 세이프 영역만큼 더 띄워 가려지지 않게. */
+	padding: 8px 12px calc(28px + env(safe-area-inset-bottom, 0px));
 }
 
 /* 패널 액션 버튼 묶음 */
