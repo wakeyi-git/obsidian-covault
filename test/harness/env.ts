@@ -4,6 +4,8 @@ import { CoreServices } from "../../src/core/CoreServices";
 import { MirrorContext } from "../../src/core/sync/MirrorContext";
 import { MirrorApplier } from "../../src/core/sync/MirrorApplier";
 import { ConflictManager } from "../../src/core/sync/ConflictManager";
+import { LocalApplier } from "../../src/core/sync/LocalApplier";
+import { ClassroomStore } from "../../src/core/classroom/ClassroomStore";
 import { Uploader } from "../../src/core/sync/Uploader";
 import { FullSync } from "../../src/core/sync/FullSync";
 import { DEFAULT_SETTINGS, CoVaultSettings, Role } from "../../src/settings/types";
@@ -85,6 +87,20 @@ export class Device {
 		this.applier = new MirrorApplier(this.ctx, this.conflicts);
 		this.uploader = new Uploader(this.ctx);
 		this.fullSync = new FullSync(this.ctx, this.applier, this.uploader);
+	}
+
+	/**
+	 * 로컬 changes 구독 → vault 적용기(실엔진). 증분 재개(lastSeq)·적용 실패 시나리오 검증용.
+	 * 반환된 핸들을 start()로 켜고 settle() 후 stop()한다.
+	 */
+	makeLocalApplier(opts?: { applier?: MirrorApplier; onConfigChange?: () => void }): LocalApplier {
+		return new LocalApplier(this.ctx, opts?.applier ?? this.applier, opts?.onConfigChange);
+	}
+
+	/** 이 디바이스의 한 pouch 위에 학급 저장소(ClassroomStore)를 구성(학급 운영 로직 테스트용). */
+	makeClassroomStore(homeroomDb: string): ClassroomStore {
+		const pouch = this.core.createPouch(homeroomDb);
+		return new ClassroomStore(this.core, () => pouch);
 	}
 
 	// --- 전체 동기화 단축 ---
@@ -175,6 +191,9 @@ export function buildLink(
 	const fullSync = new FullSync(ctx, applier, uploader);
 	return { ctx, conflicts, applier, uploader, fullSync };
 }
+
+/** 라이브 changes 피드가 처리될 시간을 준다(인메모리 PouchDB는 마이크로태스크로 흘러든다). */
+export const settle = (ms = 25): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 let nsCounter = 0;
 
