@@ -146,6 +146,7 @@
 		"average": "평균",
 		"this_month": "이번 달",
 		"class_average": "학급 평균 {pct}%",
+		"drag_to_reorder": "드래그하여 순서 변경",
 		"metric_notice_read": "알림장 확인율",
 		"metric_lesson_read": "수업 안내 확인율",
 		"metric_submit": "과제 제출율",

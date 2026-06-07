@@ -88,6 +88,8 @@ export interface PanelHost {
 	realtimeStatus(): Promise<void>;
 	openResetModal(): void;
 	refreshShares(): Promise<void>;
+	/** 설정 저장(대시보드 카드 배치 등 UI에서 직접 갱신용). */
+	saveSettings(): Promise<void>;
 	/** 플러그인 설정 탭 열기(대시보드 조치 카드 CTA용). */
 	openSettings(): void;
 	/** 통합 패널의 특정 탭 열기(마법사 → 대시보드 등). */

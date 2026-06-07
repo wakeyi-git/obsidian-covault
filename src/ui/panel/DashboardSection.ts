@@ -92,11 +92,47 @@ export class DashboardSection implements PanelSection {
 		}
 
 		const grid = c.createDiv({ cls: "covault-cr-grid" });
-		this.moduleCard(grid, "megaphone", t("dashboard.notices"), t("dashboard.notices_desc"), () => this.go("notices"), () => this.noticeSummary("notice"));
-		this.moduleCard(grid, "calendar-days", t("dashboard.lessons"), t("dashboard.lessons_with_timetable_desc"), () => this.go("lessons"), () => this.noticeSummary("lesson"));
-		this.moduleCard(grid, "clipboard-list", t("dashboard.assignments"), t("dashboard.assignments_desc"), () => this.go("assignments"), () => this.assignmentsSummary());
-		this.moduleCard(grid, "check-square", t("dashboard.routines"), t("dashboard.routines_desc"), () => this.go("routines"), () => this.routinesSummary());
-		this.moduleCard(grid, "table-2", t("dashboard.gradebook"), t("dashboard.gradebook_desc"), () => this.go("gradebook"), () => this.gradebookSummary());
+		const fullKeys = this.orderedKeys();
+		const mods = this.moduleDefs();
+		const enabled = this.host.settings.classroomModules;
+		const visible = fullKeys.filter((k) => enabled?.[k as keyof typeof enabled] !== false);
+		for (const key of visible) {
+			const m = mods[key];
+			if (m) this.moduleCard(grid, key, m.icon, m.title, m.desc, m.open, m.summary, fullKeys);
+		}
+	}
+
+	/** 모듈 키 → 표시 정보. */
+	private moduleDefs(): Record<string, { icon: string; title: string; desc: string; open: () => void; summary: () => Promise<string> }> {
+		return {
+			notices: { icon: "megaphone", title: t("dashboard.notices"), desc: t("dashboard.notices_desc"), open: () => this.go("notices"), summary: () => this.noticeSummary("notice") },
+			lessons: { icon: "calendar-days", title: t("dashboard.lessons"), desc: t("dashboard.lessons_with_timetable_desc"), open: () => this.go("lessons"), summary: () => this.noticeSummary("lesson") },
+			assignments: { icon: "clipboard-list", title: t("dashboard.assignments"), desc: t("dashboard.assignments_desc"), open: () => this.go("assignments"), summary: () => this.assignmentsSummary() },
+			routines: { icon: "check-square", title: t("dashboard.routines"), desc: t("dashboard.routines_desc"), open: () => this.go("routines"), summary: () => this.routinesSummary() },
+			gradebook: { icon: "table-2", title: t("dashboard.gradebook"), desc: t("dashboard.gradebook_desc"), open: () => this.go("gradebook"), summary: () => this.gradebookSummary() },
+		};
+	}
+
+	private static readonly DEFAULT_ORDER = ["notices", "lessons", "assignments", "routines", "gradebook"];
+
+	/** 저장된 순서를 적용한 전체 모듈 키(미지정·신규 키는 기본 순서로 뒤에 보충). */
+	private orderedKeys(): string[] {
+		const saved = this.host.settings.dashboardOrder ?? [];
+		const all = DashboardSection.DEFAULT_ORDER;
+		const ordered = saved.filter((k) => all.includes(k));
+		for (const k of all) if (!ordered.includes(k)) ordered.push(k);
+		return ordered;
+	}
+
+	private async reorder(dragKey: string, targetKey: string): Promise<void> {
+		const keys = this.orderedKeys();
+		const from = keys.indexOf(dragKey);
+		const to = keys.indexOf(targetKey);
+		if (from < 0 || to < 0 || from === to) return;
+		keys.splice(to, 0, keys.splice(from, 1)[0]);
+		this.host.settings.dashboardOrder = keys;
+		await this.host.saveSettings();
+		this.draw();
 	}
 
 	private get manager(): boolean {
@@ -105,16 +141,41 @@ export class DashboardSection implements PanelSection {
 
 	private moduleCard(
 		parent: HTMLElement,
+		key: string,
 		icon: string,
 		title: string,
 		desc: string,
 		open: (() => void) | null,
 		summary?: () => Promise<string>,
+		dragKeys?: string[],
 	): void {
 		const card = parent.createDiv({ cls: `covault-cr-card${open ? " is-clickable" : ""}` });
 		const head = card.createDiv({ cls: "covault-cr-card-head" });
 		setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), icon);
 		head.createSpan({ cls: "covault-cr-card-title", text: title });
+		// 드래그 배치(허브)
+		if (dragKeys) {
+			const grip = head.createSpan({ cls: "covault-cr-drag", attr: { "aria-label": t("dashboard.drag_to_reorder") } });
+			setIcon(grip, "grip-vertical");
+			grip.onclick = (e) => e.stopPropagation(); // 그립 클릭이 카드 열기로 번지지 않게
+			card.draggable = true;
+			card.addEventListener("dragstart", (e) => {
+				e.dataTransfer?.setData("text/plain", key);
+				card.addClass("is-dragging");
+			});
+			card.addEventListener("dragend", () => card.removeClass("is-dragging"));
+			card.addEventListener("dragover", (e) => {
+				e.preventDefault();
+				card.addClass("is-dragover");
+			});
+			card.addEventListener("dragleave", () => card.removeClass("is-dragover"));
+			card.addEventListener("drop", (e) => {
+				e.preventDefault();
+				card.removeClass("is-dragover");
+				const src = e.dataTransfer?.getData("text/plain");
+				if (src && src !== key) void this.reorder(src, key);
+			});
+		}
 		card.createDiv({ cls: "covault-cr-card-desc", text: desc });
 		if (summary) {
 			const sumEl = card.createDiv({ cls: "covault-cr-card-summary" });

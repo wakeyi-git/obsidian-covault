@@ -1485,3 +1485,25 @@
 	gap: 6px;
 	flex-wrap: wrap;
 }
+
+/* 대시보드 카드 드래그 배치 */
+.covault-cr-card-head {
+	/* 그립을 오른쪽 끝으로 */
+}
+.covault-cr-drag {
+	margin-left: auto;
+	display: inline-flex;
+	color: var(--text-faint);
+	cursor: grab;
+}
+.covault-cr-drag .svg-icon {
+	width: 16px;
+	height: 16px;
+}
+.covault-cr-card.is-dragging {
+	opacity: 0.5;
+}
+.covault-cr-card.is-dragover {
+	border-color: var(--interactive-accent);
+	border-style: dashed;
+}
