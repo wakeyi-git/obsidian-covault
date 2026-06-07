@@ -1411,3 +1411,77 @@
 .covault-suggest-folder {
 	color: var(--text-muted);
 }
+
+/* 체크리스트 달력(학생 누가기록) */
+.covault-cal {
+	margin-top: 4px;
+}
+.covault-cal-grid {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	gap: 2px;
+}
+.covault-cal-head {
+	font-size: 10px;
+	color: var(--text-muted);
+	text-align: center;
+	padding-bottom: 2px;
+}
+.covault-cal-cell {
+	aspect-ratio: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 11px;
+	border-radius: 4px;
+	cursor: pointer;
+	border: 1px solid transparent;
+	background: var(--background-secondary);
+}
+.covault-cal-cell.is-out {
+	color: var(--text-faint);
+	opacity: 0.5;
+}
+.covault-cal-cell.is-today {
+	border-color: var(--interactive-accent);
+}
+.covault-cal-cell.is-sel {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -1px;
+}
+.covault-cal-cell.lvl-zero {
+	background: var(--background-modifier-border);
+}
+.covault-cal-cell.lvl-partial {
+	background: var(--color-orange);
+	color: var(--text-on-accent);
+}
+.covault-cal-cell.lvl-full {
+	background: var(--color-green);
+	color: var(--text-on-accent);
+}
+
+/* 항목 상세(교사 명단 / 학생 그날 체크) */
+.covault-cr-rowchev {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-muted);
+}
+.covault-cr-rowchev .svg-icon {
+	width: 14px;
+	height: 14px;
+}
+.covault-cr-itemdetail {
+	margin-top: 6px;
+	padding-top: 6px;
+	border-top: 1px solid var(--background-modifier-border);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.covault-cr-namesgroup {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	flex-wrap: wrap;
+}
