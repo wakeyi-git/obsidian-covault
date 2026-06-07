@@ -231,7 +231,7 @@
 
 /* 대시보드 */
 .covault-dashboard {
-	padding: 8px 12px;
+	padding: 8px 0;
 	overflow: auto;
 	container-type: inline-size; /* 패널 폭 기준 표↔카드 전환(@container) */
 }
@@ -300,7 +300,7 @@
 	padding: 6px 10px;
 	border-radius: 8px;
 	font-size: 13px;
-	background: var(--background-secondary);
+	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 }
 
@@ -349,7 +349,7 @@
 	border-radius: 8px;
 	padding: 8px 10px;
 	margin: 6px 0;
-	background: var(--background-secondary);
+	background: var(--background-primary);
 }
 
 .covault-dash-card-head {
@@ -419,7 +419,7 @@
 	border-radius: 8px;
 	padding: 4px 12px;
 	margin: 10px 0;
-	background: var(--background-secondary);
+	background: var(--background-primary);
 }
 
 .covault-conflict-card .setting-item {
@@ -519,12 +519,12 @@
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
-	padding: 6px 12px;
+	padding: 6px 0;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .covault-feedback-list {
-	padding: 8px 12px;
+	padding: 8px 0;
 	overflow-y: auto;
 }
 
@@ -663,12 +663,12 @@
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
-	padding: 6px 12px;
+	padding: 6px 0;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .covault-recovery-list {
-	padding: 8px 12px;
+	padding: 8px 0;
 	overflow-y: auto;
 }
 
@@ -699,7 +699,7 @@
 	border-radius: 8px;
 	padding: 8px 10px;
 	margin: 8px 0;
-	background: var(--background-secondary);
+	background: var(--background-primary);
 }
 
 .covault-recovery-head {
@@ -709,6 +709,8 @@
 }
 
 .covault-recovery-path {
+	flex: 1;
+	min-width: 0;
 	font-weight: 600;
 	color: var(--text-normal);
 	word-break: break-all;
@@ -716,6 +718,8 @@
 
 .covault-recovery-badge {
 	margin-left: auto;
+	flex: none;
+	white-space: nowrap;
 	padding: 1px 6px;
 	border-radius: 4px;
 	font-size: 11px;
@@ -847,7 +851,7 @@
 	border-radius: 8px;
 	padding: 4px 10px;
 	margin: 8px 0;
-	background: var(--background-secondary);
+	background: var(--background-primary);
 }
 
 .covault-version-preview {
