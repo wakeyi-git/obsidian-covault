@@ -1,8 +1,24 @@
+import { setIcon } from "obsidian";
 import { LinkStatus } from "../../core/sync/MirrorContext";
 import { computeChildRoots } from "../../core/sync/childRoots";
 import { DashboardRow, PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { computeSyncSummary, SyncSummary } from "./syncSummary";
 import { t } from "../../i18n";
+
+function overallIcon(o: SyncSummary["overall"]): string {
+	switch (o) {
+		case "ok":
+			return "circle-check";
+		case "attention":
+			return "alert-triangle";
+		case "offline":
+			return "wifi-off";
+		case "autosync-off":
+			return "pause";
+		case "empty":
+			return "inbox";
+	}
+}
 
 function overallLabel(o: SyncSummary["overall"]): string {
 	switch (o) {
@@ -154,7 +170,9 @@ export class SyncStatusSection implements PanelSection {
 
 	private renderBanner(wrap: HTMLElement, s: SyncSummary): void {
 		const banner = wrap.createDiv({ cls: `covault-dash-banner is-${s.overall}` });
-		banner.createSpan({ cls: "covault-dash-banner-status", text: overallLabel(s.overall) });
+		const status = banner.createSpan({ cls: "covault-dash-banner-status" });
+		setIcon(status.createSpan({ cls: "covault-dash-banner-icon" }), overallIcon(s.overall));
+		status.createSpan({ text: overallLabel(s.overall) });
 		const parts =
 			this.host.settings.role === "manager"
 				? [
@@ -188,7 +206,9 @@ export class SyncStatusSection implements PanelSection {
 		const box = wrap.createDiv({ cls: "covault-dash-cards-actions" });
 		for (const c of cards) {
 			const card = box.createDiv({ cls: `covault-action-card${c.warn ? " is-warn" : ""}` });
-			card.createSpan({ text: c.text });
+			const main = card.createDiv({ cls: "covault-action-card-main" });
+			setIcon(main.createSpan({ cls: "covault-action-card-icon" }), c.warn ? "alert-triangle" : "info");
+			main.createSpan({ text: c.text });
 			panelButton(card, c.cta, c.run);
 		}
 	}

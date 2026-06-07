@@ -260,7 +260,23 @@
 }
 
 .covault-dash-banner-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
 	font-weight: 600;
+}
+.covault-dash-banner-icon {
+	display: inline-flex;
+}
+.covault-dash-banner-icon .svg-icon {
+	width: 15px;
+	height: 15px;
+}
+.covault-dash-banner.is-ok .covault-dash-banner-icon {
+	color: var(--text-success);
+}
+.covault-dash-banner.is-attention .covault-dash-banner-icon {
+	color: var(--text-warning);
 }
 
 .covault-dash-banner-meta {
@@ -290,6 +306,25 @@
 
 .covault-action-card.is-warn {
 	border-color: var(--text-warning);
+}
+
+.covault-action-card-main {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+.covault-action-card-icon {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-muted);
+}
+.covault-action-card.is-warn .covault-action-card-icon {
+	color: var(--text-warning);
+}
+.covault-action-card-icon .svg-icon {
+	width: 15px;
+	height: 15px;
 }
 
 .covault-action-card button {
@@ -344,22 +379,6 @@
 	.covault-dash-cards {
 		display: block;
 	}
-}
-
-.covault-dash-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-}
-
-.covault-dash-summary {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	margin: 6px 0 10px;
-	font-size: 13px;
-	color: var(--text-muted);
 }
 
 .covault-dash-table {
@@ -898,74 +917,22 @@
 	padding: 2px 8px;
 }
 
-/* --- 학급 운영 대시보드 --- */
-.covault-dash-title {
-	font-weight: 700;
-	font-size: 15px;
-	margin: 4px 0 10px;
-}
-
-.covault-dash-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-	gap: 8px;
-	margin-top: 8px;
-}
-
-.covault-dash-card {
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	padding: 10px;
-	background: var(--background-secondary);
-}
-
-.covault-dash-card-title {
-	font-weight: 600;
-	margin-bottom: 4px;
-}
-
+/* --- 학급 운영 대시보드 (모달·목록 잔여 유틸) --- */
 .covault-dash-card-desc {
 	font-size: 12px;
 	color: var(--text-muted);
-}
-
-.covault-dash-card-summary {
-	margin-top: 8px;
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--text-accent);
-}
-
-.covault-dash-card-soon {
-	margin-top: 8px;
-	font-size: 10px;
-	color: var(--text-faint);
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-}
-
-.covault-dash-card.is-clickable {
-	cursor: pointer;
-}
-.covault-dash-card.is-clickable:hover {
-	border-color: var(--interactive-accent);
-}
-
-.covault-dash-modhead {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 10px;
-}
-.covault-dash-modtitle {
-	font-weight: 700;
-	flex: 1;
 }
 
 .covault-dash-list {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
+}
+.covault-dash-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 8px;
 }
 .covault-dash-timetable-embed {
 	margin-bottom: 12px;
@@ -986,12 +953,6 @@
 .covault-dash-empty {
 	color: var(--text-muted);
 	padding: 12px 0;
-}
-.covault-dash-card-row {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 8px;
 }
 .covault-dash-rowactions {
 	display: flex;
@@ -1087,39 +1048,6 @@
 	text-decoration: underline;
 }
 
-.covault-dash-matrix-row {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 2px 0;
-	font-size: 12px;
-}
-.covault-dash-matrix-name {
-	flex: 1;
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.covault-dash-status {
-	font-size: 11px;
-	padding: 1px 6px;
-	border-radius: 6px;
-	background: var(--background-modifier-border);
-	color: var(--text-muted);
-	white-space: nowrap;
-}
-.covault-dash-status.is-submitted,
-.covault-dash-status.is-returned {
-	background: var(--color-green);
-	color: var(--text-on-accent);
-}
-.covault-dash-status.is-overdue,
-.covault-dash-status.is-submitted-late {
-	background: var(--color-orange);
-	color: var(--text-on-accent);
-}
-
 .covault-dash-targets {
 	max-height: 160px;
 	overflow: auto;
@@ -1133,18 +1061,6 @@
 	align-items: center;
 	gap: 6px;
 	padding: 2px 0;
-}
-
-.covault-dash-score {
-	font-size: 11px;
-	font-weight: 600;
-	color: var(--text-accent);
-	white-space: nowrap;
-}
-.covault-dash-grade {
-	margin-top: 4px;
-	font-weight: 600;
-	color: var(--text-accent);
 }
 
 .covault-dash-rubric {
@@ -1177,18 +1093,6 @@
 	align-items: center;
 	gap: 3px;
 	font-size: 12px;
-}
-.covault-dash-check {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 3px 0;
-}
-.covault-dash-streak {
-	font-size: 11px;
-	font-weight: 600;
-	color: var(--color-orange);
-	white-space: nowrap;
 }
 .covault-dash-itemrow {
 	border: 1px solid var(--background-modifier-border);
