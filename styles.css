@@ -1413,3 +1413,8 @@
 	background: var(--background-secondary);
 	font-weight: 600;
 }
+
+/* 경로 자동완성: 폴더 항목 구분 */
+.covault-suggest-folder {
+	color: var(--text-muted);
+}

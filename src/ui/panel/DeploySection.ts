@@ -1,6 +1,7 @@
 import { Notice, Setting, TFile, TFolder } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { ExistingPolicy, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
+import { PathSuggest } from "../PathSuggest";
 import { t } from "../../i18n";
 
 /** 배포 탭(교사) — 경로 선택 복사(현재 파일/폴더 빠른 입력) + 공유 공간 배포. 기술문서 §20. */
@@ -47,15 +48,16 @@ export class DeploySection implements PanelSection {
 		new Setting(container)
 			.setName(t("deploy.source_path"))
 			.setDesc(t("deploy.path_of_the_file_or_folder"))
-			.addText((txt) =>
+			.addText((txt) => {
 				txt
 					.setPlaceholder(t("deploy.e_g_templates_today_md"))
 					.setValue(this.sourcePath)
 					.onChange((v) => {
 						this.sourcePath = v.trim();
 						this.updateInfo();
-					}),
-			);
+					});
+				new PathSuggest(this.host.app, txt.inputEl, { files: true, folders: true });
+			});
 
 		const quick = container.createDiv({ cls: "covault-panel-actions" });
 		panelButton(quick, t("deploy.current_file"), () => this.fillCurrent("file"));

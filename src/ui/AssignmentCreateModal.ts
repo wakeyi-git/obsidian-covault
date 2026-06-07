@@ -1,6 +1,7 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import { CoVaultSettings } from "../settings/types";
 import { RubricCriterion } from "../core/model/types";
+import { PathSuggest } from "./PathSuggest";
 import { t } from "../i18n";
 
 export interface AssignmentInput {
@@ -62,7 +63,10 @@ export class AssignmentCreateModal extends Modal {
 		new Setting(contentEl)
 			.setName(t("dashboard.template_path"))
 			.setDesc(t("dashboard.template_path_desc"))
-			.addText((tx) => tx.setPlaceholder("템플릿/과제.md").onChange((v) => (this.templatePath = v)));
+			.addText((tx) => {
+				tx.setPlaceholder("템플릿/과제.md").onChange((v) => (this.templatePath = v));
+				new PathSuggest(this.app, tx.inputEl, { extensions: ["md", "excalidraw"] });
+			});
 
 		// 루브릭(기준 × 배점)
 		contentEl.createDiv({ cls: "covault-dash-label", text: t("dashboard.rubric") });
