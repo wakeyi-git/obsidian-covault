@@ -25,8 +25,13 @@ export interface DashboardRow extends LinkStatus {
 /**
  * 패널 섹션이 플러그인에 요구하는 동작 모음. CoVaultPlugin이 구현한다.
  * 명령(cmd+P)과 패널 버튼이 같은 메서드를 공유한다.
+ *
+ * 도메인별 하위 인터페이스로 분리하고 PanelHost로 합성한다(가독성·역할 구분).
+ * 구현(CoVaultPlugin)은 구조적 타이핑으로 전체를 만족한다.
  */
-export interface PanelHost {
+
+/** 공통: 앱/설정/로그/저장소 + 패널·온보딩 제어. */
+export interface CoreHost {
 	app: App;
 	settings: CoVaultSettings;
 	logger: Logger;
@@ -35,6 +40,18 @@ export interface PanelHost {
 	classroomStore: ClassroomStore;
 	/** 학급 공동 공간이 지정·배포·수신되어 사용 가능한지. */
 	homeroomReady(): boolean;
+	/** 설정 저장(대시보드 카드 배치 등 UI에서 직접 갱신용). */
+	saveSettings(): Promise<void>;
+	/** 플러그인 설정 탭 열기(대시보드 조치 카드 CTA용). */
+	openSettings(): void;
+	/** 통합 패널의 특정 탭 열기(마법사 → 대시보드 등). */
+	activatePanel(tab?: PanelTab): Promise<void>;
+	/** 교사 온보딩 완료 표시(마법사 자동 노출 중단). */
+	completeOnboarding(): Promise<void>;
+}
+
+/** 알림장·수업 안내(게시·응답). */
+export interface NoticeHost {
 	/** 게시(교사): 본문 파일 생성 + NoticeDoc 기록. category=알림장/수업, weekKey=수업 주간 태그. */
 	postNotice(title: string, body: string, category?: "notice" | "lesson", weekKey?: string): Promise<boolean>;
 	/** 수업 안내 생성(교사) → uid 반환(시간표 칸 연결용). weekKey=해당 주간 태그. */
@@ -47,7 +64,10 @@ export interface PanelHost {
 	listPrivateQuestions(): Promise<ResponseDoc[]>;
 	/** 수업 안내(uid) 열기(+학생 읽음 처리). */
 	openLesson(uid: string): Promise<void>;
-	// 과제(assignments)
+}
+
+/** 과제(배포·제출·채점). */
+export interface AssignmentHost {
 	assignmentDefs(): AssignmentDoc[];
 	createAssignment(input: {
 		title: string;
@@ -61,11 +81,16 @@ export interface PanelHost {
 	}): Promise<boolean>;
 	listMyAssignments(): Promise<AssignmentStateDoc[]>;
 	listAssignmentStates(uid: string): Promise<AssignmentStateDoc[]>;
+	/** 전체 구성원의 모든 과제 상태(교사 통계용, 구성원당 prefix 조회 1회). */
+	listAllAssignmentStates(): Promise<AssignmentStateDoc[]>;
 	submitAssignment(state: AssignmentStateDoc): Promise<boolean>;
 	unsubmitAssignment(state: AssignmentStateDoc): Promise<boolean>;
 	returnAssignment(uid: string, memberId: string, grade: AssignmentGrade): Promise<boolean>;
 	openVaultPath(path: string): Promise<void>;
-	// 루틴(체크리스트)
+}
+
+/** 루틴(체크리스트). */
+export interface RoutineHost {
 	listRoutines(): Promise<RoutineDoc[]>;
 	createRoutine(input: {
 		title: string;
@@ -82,10 +107,12 @@ export interface PanelHost {
 	myRoutineDays(uid: string): Promise<RoutineStateDoc[]>;
 	toggleRoutineItem(uid: string, day: string, itemId: string, checked: boolean): Promise<boolean>;
 	listRoutineStates(uid: string, day: string): Promise<RoutineStateDoc[]>;
-	/** 전체 구성원의 모든 과제 상태(교사 통계용, 구성원당 prefix 조회 1회). */
-	listAllAssignmentStates(): Promise<AssignmentStateDoc[]>;
 	/** 전체 구성원의 모든 루틴 상태(교사 통계용, 구성원당 prefix 조회 1회). */
 	listAllRoutineStates(): Promise<RoutineStateDoc[]>;
+}
+
+/** 동기화 상태·배포. */
+export interface SyncHost {
 	getDashboardRows(): Promise<DashboardRow[]>;
 	openConflictModal(): void;
 	fullSync(dir: "both" | "up" | "down"): Promise<void>;
@@ -96,19 +123,15 @@ export interface PanelHost {
 	realtimeStatus(): Promise<void>;
 	openResetModal(): void;
 	refreshShares(): Promise<void>;
-	/** 설정 저장(대시보드 카드 배치 등 UI에서 직접 갱신용). */
-	saveSettings(): Promise<void>;
-	/** 플러그인 설정 탭 열기(대시보드 조치 카드 CTA용). */
-	openSettings(): void;
-	/** 통합 패널의 특정 탭 열기(마법사 → 대시보드 등). */
-	activatePanel(tab?: PanelTab): Promise<void>;
-	/** 교사 온보딩 완료 표시(마법사 자동 노출 중단). */
-	completeOnboarding(): Promise<void>;
 	/** 원본 경로(파일/폴더)를 선택 학생들에게 복사. 기술문서 §20. */
 	bulkCopy(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyResult & { error?: string }>;
 	/** 배포 미리보기(dry-run). */
 	bulkCopyPreview(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyPlan & { error?: string }>;
 	deployShared(space: SharedSpace): Promise<void>;
+}
+
+/** 삭제 복구·삭제/수정 충돌·버전 히스토리. */
+export interface RecoveryHost {
 	/** 모든 링크의 삭제된(tombstone) 파일 목록. 복구 패널용(보고서 §2 P1). */
 	listDeletedFiles(): Promise<DeletedItem[]>;
 	/** 삭제 파일 복구(remoteDb로 담당 링크 라우팅). */
@@ -125,6 +148,8 @@ export interface PanelHost {
 	versionHistoryFor(localPath: string): Promise<VersionDoc[]>;
 	restoreVersion(localPath: string, versionDocId: string, opts: { backupCurrent?: boolean }): Promise<"restored" | "missing">;
 }
+
+export interface PanelHost extends CoreHost, NoticeHost, AssignmentHost, RoutineHost, SyncHost, RecoveryHost {}
 
 /** 링크 라벨이 붙은 삭제/수정 충돌 항목. */
 export interface DeleteModifyRow extends DeleteModifyItem {

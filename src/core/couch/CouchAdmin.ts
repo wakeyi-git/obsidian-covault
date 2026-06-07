@@ -258,7 +258,7 @@ export class CouchAdmin {
 	}
 
 	/** 임의 DB에 문서 upsert(멱등). 학생 mirror DB에 shares 문서를 기록하는 데 사용. */
-	async putDoc(db: string, doc: { _id: string; [k: string]: unknown }): Promise<{ ok: boolean; error?: string }> {
+	async putDoc<T extends { _id: string }>(db: string, doc: T): Promise<{ ok: boolean; error?: string }> {
 		const path = `${encodeURIComponent(db)}/${encodeURIComponent(doc._id)}`;
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const existing = await this.req("GET", path);

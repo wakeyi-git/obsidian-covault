@@ -681,7 +681,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				assignedAtMs: Date.now(),
 				maxPoints: def.rubric ? rubricMax(def.rubric) : def.points,
 			};
-			const r = await admin.putDoc(member.remoteDb, stateDoc as unknown as { _id: string; [k: string]: unknown });
+			const r = await admin.putDoc(member.remoteDb, stateDoc);
 			if (!r.ok) this.logger.error(t("dashboard.assignment_distribute_failed", { id: memberId, err: r.error ?? "" }));
 			else count++;
 		}
@@ -886,7 +886,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	async postPrivateResponse(doc: ResponseDoc): Promise<boolean> {
 		const sync = this.studentMirrorSync();
 		if (!sync) return false;
-		await sync.ctx.pouch.put(doc as unknown as { _id: string; [k: string]: unknown });
+		await sync.ctx.pouch.put(doc);
 		return true;
 	}
 
