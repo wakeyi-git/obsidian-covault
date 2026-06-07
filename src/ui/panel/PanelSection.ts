@@ -153,7 +153,9 @@ export function iconButton(
 	label: string,
 	onClick: () => void | Promise<void>,
 ): HTMLButtonElement {
-	const b = parent.createEl("button", { cls: "covault-cr-iconbtn" });
+	// clickable-icon: 옵시디언 기본 아이콘 버튼 클래스. 데스크톱/모바일 모두에서
+	// 아이콘 크기(--icon-size)·색(--icon-color)을 일관되게 적용한다.
+	const b = parent.createEl("button", { cls: "clickable-icon covault-cr-iconbtn" });
 	setIcon(b, icon);
 	b.setAttr("aria-label", label);
 	b.title = label;

@@ -1232,31 +1232,11 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.covault-cr-iconbtn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
+/* 아이콘 버튼: 옵시디언 기본 clickable-icon 위에 플렉스 동작만 보강.
+   크기·색·hover·모바일 아이콘 렌더는 clickable-icon이 담당한다. */
+.covault-cr-iconbtn.clickable-icon {
 	flex: 0 0 auto; /* 플렉스 헤더/주 네비에서 찌그러지지 않게 */
-	width: 28px;
-	height: 28px;
-	min-width: 28px; /* 모바일 기본 버튼 스타일이 줄여도 유지 */
-	padding: 0;
-	border-radius: 6px;
-	background: transparent;
-	border: none;
 	box-shadow: none;
-	color: var(--text-muted);
-	cursor: pointer;
-}
-/* setIcon SVG에 명시 크기 부여 — 모바일/태블릿에서 --icon-size 미해석으로
-   아이콘이 0 크기가 되어 버튼이 빈칸으로 보이는 문제 방지. */
-.covault-cr-iconbtn .svg-icon {
-	width: 18px;
-	height: 18px;
-}
-.covault-cr-iconbtn:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
 }
 
 /* 상태 배지 */
