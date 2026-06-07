@@ -96,7 +96,7 @@ export class DashboardSection implements PanelSection {
 		this.moduleCard(grid, "calendar-days", t("dashboard.lessons"), t("dashboard.lessons_with_timetable_desc"), () => this.go("lessons"), () => this.noticeSummary("lesson"));
 		this.moduleCard(grid, "clipboard-list", t("dashboard.assignments"), t("dashboard.assignments_desc"), () => this.go("assignments"), () => this.assignmentsSummary());
 		this.moduleCard(grid, "check-square", t("dashboard.routines"), t("dashboard.routines_desc"), () => this.go("routines"), () => this.routinesSummary());
-		if (manager) this.moduleCard(grid, "table-2", t("dashboard.gradebook"), t("dashboard.gradebook_desc"), () => this.go("gradebook"), () => this.gradebookSummary());
+		this.moduleCard(grid, "table-2", t("dashboard.gradebook"), t("dashboard.gradebook_desc"), () => this.go("gradebook"), () => this.gradebookSummary());
 	}
 
 	private get manager(): boolean {

@@ -310,6 +310,8 @@ export interface AssignmentStateDoc extends PouchDocBase {
 	dueAt?: number;
 	state: AssignmentState;
 	assignedAtMs: number;
+	/** 만점(배포 시 def.points 또는 rubric 합). 학생이 점수를 정규화(%)할 수 있도록 상태에 동봉. */
+	maxPoints?: number;
 	submittedAtMs?: number;
 	submittedSnapshotIds?: string[]; // VersionDoc id(제출 스냅샷)
 	grade?: AssignmentGrade;

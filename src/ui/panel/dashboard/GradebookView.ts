@@ -1,26 +1,48 @@
 import { Notice, setIcon } from "obsidian";
 import { PanelHost, panelButton, iconButton } from "../PanelSection";
-import { AssignmentStateDoc } from "../../../core/model/types";
-import { gradeTotal, rubricMax, displayStatus, gradebookCsv } from "../../../core/classroom/assignments";
+import { NoticeDoc, ResponseDoc, AssignmentStateDoc, RoutineStateDoc, noticePrefix, RESPONSE_ID_PREFIX } from "../../../core/model/types";
+import { rubricMax } from "../../../core/classroom/assignments";
+import { computeStats, ratePct, MemberStats } from "../../../core/classroom/stats";
 import { t } from "../../../i18n";
 
-/** 점수 비율 → 색 등급 클래스(높음/중간/낮음). max 미상이면 색 없음. */
-function scoreClass(ratio: number | null): string {
-	if (ratio == null) return "";
-	if (ratio >= 0.8) return "score-hi";
-	if (ratio >= 0.5) return "score-mid";
-	return "score-lo";
+function localDateStr(d: Date): string {
+	const m = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${d.getFullYear()}-${m}-${day}`;
 }
 
-/** 통합 성적부(교사) — 학생 × 과제 점수 매트릭스. */
+interface Metric {
+	key: string;
+	label: string;
+	icon: string;
+	get: (s: MemberStats) => number | null;
+}
+
+/** 종합 통계(성적부) — 기간별 지표(알림장/수업 확인율·과제 제출율·평균 점수·체크리스트 완료율). 교사=전원, 학생=본인. */
 export class GradebookView {
 	private container: HTMLElement | null = null;
+	private startDate = "";
+	private endDate = "";
 
 	constructor(private host: PanelHost, private onBack: () => void) {}
 
 	render(container: HTMLElement): void {
 		this.container = container;
 		void this.reload();
+	}
+
+	private get manager(): boolean {
+		return this.host.settings.role === "manager";
+	}
+
+	private metrics(): Metric[] {
+		return [
+			{ key: "noticeRead", label: t("dashboard.metric_notice_read"), icon: "megaphone", get: (s) => ratePct(s.noticeRead) },
+			{ key: "lessonRead", label: t("dashboard.metric_lesson_read"), icon: "calendar-days", get: (s) => ratePct(s.lessonRead) },
+			{ key: "submit", label: t("dashboard.metric_submit"), icon: "clipboard-list", get: (s) => ratePct(s.submit) },
+			{ key: "avgScore", label: t("dashboard.metric_avg_score"), icon: "award", get: (s) => s.avgScorePct },
+			{ key: "routine", label: t("dashboard.metric_routine"), icon: "check-square", get: (s) => ratePct(s.routine) },
+		];
 	}
 
 	private async reload(): Promise<void> {
@@ -32,126 +54,130 @@ export class GradebookView {
 		iconButton(head, "arrow-left", t("dashboard.back"), () => this.onBack());
 		head.createSpan({ cls: "covault-cr-modtitle", text: t("dashboard.gradebook") });
 
-		const defs = this.host.assignmentDefs();
-		const members = this.host.settings.members.filter((m) => m.memberId);
-		if (defs.length === 0 || members.length === 0) {
+		const store = this.host.classroomStore;
+		if (!store.ready()) {
+			const box = c.createDiv({ cls: "covault-cr-empty" });
+			setIcon(box.createSpan(), "table-2");
+			box.createDiv({ text: t("dashboard.homeroom_not_ready") });
+			return;
+		}
+
+		// 기간 기본값: 이번 달 1일 ~ 오늘
+		if (!this.startDate) this.startDate = localDateStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+		if (!this.endDate) this.endDate = localDateStr(new Date());
+
+		// 기간 선택
+		const period = c.createDiv({ cls: "covault-dash-weeknav" });
+		const si = period.createEl("input", { cls: "covault-dash-dateinput", attr: { type: "date" } });
+		si.value = this.startDate;
+		si.onchange = () => {
+			if (si.value) {
+				this.startDate = si.value;
+				void this.reload();
+			}
+		};
+		period.createSpan({ cls: "covault-cr-muted", text: "~" });
+		const ei = period.createEl("input", { cls: "covault-dash-dateinput", attr: { type: "date" } });
+		ei.value = this.endDate;
+		ei.onchange = () => {
+			if (ei.value) {
+				this.endDate = ei.value;
+				void this.reload();
+			}
+		};
+		panelButton(period, t("dashboard.this_month"), () => {
+			this.startDate = localDateStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+			this.endDate = localDateStr(new Date());
+			void this.reload();
+		});
+
+		const startMs = new Date(`${this.startDate}T00:00`).getTime();
+		const endMs = new Date(`${this.endDate}T23:59:59`).getTime();
+
+		// 공통 데이터(학급 공유)
+		const notices = await store.listByPrefix<NoticeDoc>(noticePrefix());
+		const reads = (await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX)).filter((r) => r.kind === "read");
+		const routines = await this.host.listRoutines();
+
+		// 역할별 구성원/과제상태/루틴상태 수집
+		let members: Array<{ memberId: string; memberName: string }>;
+		const states: AssignmentStateDoc[] = [];
+		const maxByUid = new Map<string, number | undefined>();
+		const routineStates: RoutineStateDoc[] = [];
+
+		if (this.manager) {
+			members = this.host.settings.members
+				.filter((m) => m.memberId && m.provisioned)
+				.map((m) => ({ memberId: m.memberId, memberName: m.memberName || m.memberId }));
+			for (const def of this.host.assignmentDefs()) {
+				maxByUid.set(def.uid, def.rubric ? rubricMax(def.rubric) : def.points);
+				states.push(...(await this.host.listAssignmentStates(def.uid)));
+			}
+			for (const r of routines) routineStates.push(...(await this.host.listRoutineStatesAll(r.uid)));
+		} else {
+			members = [{ memberId: this.host.settings.userId, memberName: this.host.settings.displayName || this.host.settings.userId }];
+			const my = await this.host.listMyAssignments();
+			for (const s of my) maxByUid.set(s.assignmentUid, s.maxPoints);
+			states.push(...my);
+			for (const r of routines) routineStates.push(...(await this.host.myRoutineDays(r.uid)));
+		}
+
+		const stats = computeStats({ startMs, endMs, members, notices, reads, states, maxByUid, routines, routineStates });
+
+		if (members.length === 0) {
 			const box = c.createDiv({ cls: "covault-cr-empty" });
 			setIcon(box.createSpan(), "table-2");
 			box.createDiv({ text: t("dashboard.gradebook_empty") });
 			return;
 		}
 
-		// def별 상태 수집: uid → (memberId → state)
-		const now = Date.now();
-		const stateMap = new Map<string, Map<string, AssignmentStateDoc>>();
-		for (const def of defs) {
-			const states = await this.host.listAssignmentStates(def.uid);
-			stateMap.set(def.uid, new Map(states.map((s) => [s.memberId, s])));
-		}
+		// 지표별 카드
+		const grid = c.createDiv({ cls: "covault-dash-list" });
+		for (const metric of this.metrics()) this.renderMetricCard(grid, metric, stats);
 
-		// CSV 내보내기(클립보드 복사).
-		panelButton(head, t("dashboard.export_csv"), async () => {
-			const csv = gradebookCsv(
-				defs.map((d) => ({ uid: d.uid, title: d.title, rubric: d.rubric, points: d.points })),
-				members.map((m) => ({ memberId: m.memberId, memberName: m.memberName || m.memberId })),
-				stateMap,
-			);
-			try {
-				await navigator.clipboard.writeText(csv);
-				new Notice(t("dashboard.csv_copied"));
-			} catch {
-				new Notice(t("dashboard.csv_copy_failed"));
-			}
-		});
-
-		const maxOf = (def: (typeof defs)[number]): number | undefined => (def.rubric ? rubricMax(def.rubric) : def.points);
-		const scoreOf = (st: AssignmentStateDoc | undefined, def: (typeof defs)[number]): number | null =>
-			st?.grade ? st.grade.score ?? gradeTotal(st.grade, def.rubric) : null;
-
-		const wrap = c.createDiv({ cls: "covault-gradebook-wrap" });
-		const table = wrap.createEl("table", { cls: "covault-gradebook" });
-		const hr = table.createEl("tr");
-		hr.createEl("th", { text: t("dashboard.member") });
-		for (const def of defs) {
-			const max = maxOf(def);
-			hr.createEl("th", { text: max != null ? `${def.title} (/${max})` : def.title });
-		}
-		hr.createEl("th", { cls: "covault-gradebook-avg", text: t("dashboard.average") });
-
-		for (const m of members) {
-			const row = table.createEl("tr");
-			row.createEl("th", { cls: "covault-gradebook-name", text: m.memberName || m.memberId });
-			const pcts: number[] = [];
-			for (const def of defs) {
-				const st = stateMap.get(def.uid)?.get(m.memberId);
-				const td = row.createEl("td");
-				const score = scoreOf(st, def);
-				if (score != null) {
-					const max = maxOf(def);
-					const ratio = max != null && max > 0 ? score / max : null;
-					if (ratio != null) pcts.push(ratio);
-					td.setText(String(score));
-					td.addClass("is-graded");
-					const cls = scoreClass(ratio);
-					if (cls) td.addClass(cls);
-				} else if (st) {
-					const ds = displayStatus(st, now);
-					td.setText(ds === "submitted" || ds === "submitted-late" ? "○" : "·");
-					td.setAttr("title", ds);
-				} else {
-					td.setText("·");
+		// CSV 내보내기(교사)
+		if (this.manager) {
+			panelButton(c, t("dashboard.export_csv"), async () => {
+				const csv = this.buildCsv(stats);
+				try {
+					await navigator.clipboard.writeText(csv);
+					new Notice(t("dashboard.csv_copied"));
+				} catch {
+					new Notice(t("dashboard.csv_copy_failed"));
 				}
-			}
-			// 학생 평균(%) — max 알 수 있는 채점 과제 기준.
-			const avgTd = row.createEl("td", { cls: "covault-gradebook-avg" });
-			if (pcts.length > 0) {
-				const avg = pcts.reduce((a, b) => a + b, 0) / pcts.length;
-				avgTd.setText(`${Math.round(avg * 100)}%`);
-				const cls = scoreClass(avg);
-				if (cls) avgTd.addClass(cls);
-			} else {
-				avgTd.setText("—");
-			}
+			});
 		}
+	}
 
-		// 과제별 평균 행(채점된 점수 기준).
-		const foot = table.createEl("tr", { cls: "covault-gradebook-foot" });
-		foot.createEl("th", { cls: "covault-gradebook-name", text: t("dashboard.average") });
-		const allPcts: number[] = [];
-		for (const def of defs) {
-			const scores: number[] = [];
-			const ratios: number[] = [];
-			const max = maxOf(def);
-			for (const m of members) {
-				const score = scoreOf(stateMap.get(def.uid)?.get(m.memberId), def);
-				if (score != null) {
-					scores.push(score);
-					if (max != null && max > 0) ratios.push(score / max);
-				}
-			}
-			const td = foot.createEl("td");
-			if (scores.length > 0) {
-				const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-				td.setText(avg.toFixed(1));
-				if (ratios.length > 0) {
-					const ra = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-					allPcts.push(...ratios);
-					const cls = scoreClass(ra);
-					if (cls) td.addClass(cls);
-				}
-			} else {
-				td.setText("—");
-			}
+	private renderMetricCard(parent: HTMLElement, metric: Metric, stats: MemberStats[]): void {
+		const card = parent.createDiv({ cls: "covault-cr-card" });
+		const head = card.createDiv({ cls: "covault-cr-card-head" });
+		setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), metric.icon);
+		head.createSpan({ cls: "covault-cr-card-title", text: metric.label });
+
+		const vals: number[] = [];
+		const matrix = card.createDiv({ cls: "covault-cr-matrix" });
+		for (const s of stats) {
+			const v = metric.get(s);
+			if (v != null) vals.push(v);
+			const row = matrix.createDiv({ cls: "covault-cr-matrix-row" });
+			row.createSpan({ cls: "covault-cr-matrix-name", text: s.memberName });
+			const prog = row.createDiv({ cls: "covault-cr-progress" });
+			prog.createEl("i").style.width = `${v ?? 0}%`;
+			row.createSpan({ cls: "covault-cr-score", text: v == null ? "—" : `${v}%` });
 		}
-		const overall = foot.createEl("td", { cls: "covault-gradebook-avg" });
-		if (allPcts.length > 0) {
-			const avg = allPcts.reduce((a, b) => a + b, 0) / allPcts.length;
-			overall.setText(`${Math.round(avg * 100)}%`);
-			const cls = scoreClass(avg);
-			if (cls) overall.addClass(cls);
-		} else {
-			overall.setText("—");
+		// 학급 평균(교사, 2명 이상)
+		if (this.manager && vals.length > 0 && stats.length > 1) {
+			const avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+			card.createDiv({ cls: "covault-cr-muted", text: t("dashboard.class_average", { pct: avg }) });
 		}
+	}
+
+	private buildCsv(stats: MemberStats[]): string {
+		const ms = this.metrics();
+		const header = [t("dashboard.member"), ...ms.map((m) => m.label)].join(",");
+		const rows = stats.map((s) => [s.memberName, ...ms.map((m) => { const v = m.get(s); return v == null ? "" : String(v); })].join(","));
+		return [header, ...rows].join("\n");
 	}
 
 	dispose(): void {

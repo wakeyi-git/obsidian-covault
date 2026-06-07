@@ -5,7 +5,7 @@ import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade, assignmentId, assig
 import { RoutineDoc, RoutineStateDoc, routineId, routinePrefix, routineStateId, routineStatePrefix } from "./core/model/types";
 import { ensureParentFolders } from "./core/vault/folders";
 import { noticeFilePath } from "./core/classroom/notices";
-import { assignmentWorkDir, substituteTemplate, slugify } from "./core/classroom/assignments";
+import { assignmentWorkDir, substituteTemplate, slugify, rubricMax } from "./core/classroom/assignments";
 import { VersionStore } from "./core/sync/VersionStore";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
 import { Logger } from "./core/log/Logger";
@@ -679,6 +679,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				dueAt: def.dueAt,
 				state: "assigned",
 				assignedAtMs: Date.now(),
+				maxPoints: def.rubric ? rubricMax(def.rubric) : def.points,
 			};
 			const r = await admin.putDoc(member.remoteDb, stateDoc as unknown as { _id: string; [k: string]: unknown });
 			if (!r.ok) this.logger.error(t("dashboard.assignment_distribute_failed", { id: memberId, err: r.error ?? "" }));
@@ -869,6 +870,18 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		const sync = this.studentMirrorSync();
 		if (!sync) return [];
 		return sync.ctx.pouch.allDocsByPrefix<RoutineStateDoc>(routineStatePrefix(uid, this.settings.userId));
+	}
+
+	/** PanelHost: 한 루틴의 학생별 모든 날짜 상태(교사, 통계 기간 집계용). */
+	async listRoutineStatesAll(uid: string): Promise<RoutineStateDoc[]> {
+		const out: RoutineStateDoc[] = [];
+		for (const m of this.settings.members) {
+			if (!m.memberId) continue;
+			const sync = this.memberSyncByRemoteDb(m.remoteDb);
+			if (!sync) continue;
+			out.push(...(await sync.ctx.pouch.allDocsByPrefix<RoutineStateDoc>(routineStatePrefix(uid, m.memberId))));
+		}
+		return out;
 	}
 
 	/** PanelHost: 한 루틴의 학생별 상태(교사, 각 학생 미러에서 수집). */

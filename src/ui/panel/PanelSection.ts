@@ -76,6 +76,8 @@ export interface PanelHost {
 	myRoutineDays(uid: string): Promise<RoutineStateDoc[]>;
 	toggleRoutineItem(uid: string, day: string, itemId: string, checked: boolean): Promise<boolean>;
 	listRoutineStates(uid: string, day: string): Promise<RoutineStateDoc[]>;
+	/** 한 루틴의 전체 학생·전체 날짜 상태(교사 통계 기간 집계용). */
+	listRoutineStatesAll(uid: string): Promise<RoutineStateDoc[]>;
 	getDashboardRows(): Promise<DashboardRow[]>;
 	openConflictModal(): void;
 	fullSync(dir: "both" | "up" | "down"): Promise<void>;
