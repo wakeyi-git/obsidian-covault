@@ -58,6 +58,8 @@ export interface SettingsHost extends Plugin {
 	requestApply(): void;
 	resetSetup(): Promise<void>;
 	inviteMember(member: MemberConfig): Promise<boolean>;
+	/** 프로비저닝되지 않은 모든 구성원을 일괄 초대. 프로비저닝된 수를 반환. */
+	inviteAllMembers(): Promise<number>;
 	rotateMemberPassword(member: MemberConfig): Promise<void>;
 	ingestInvite(code: string): Promise<void>;
 	deployShared(space: SharedSpace): Promise<void>;
@@ -259,6 +261,21 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					),
 				),
 		);
+		const pending = s.members.filter((st) => st.memberId && !st.provisioned).length;
+		if (pending > 0) {
+			members.addSetting((set) =>
+				set
+					.setClass("covault-add-row")
+					.setName(t("settings.invite_all_pending", { n: pending }))
+					.setDesc(t("settings.invite_all_desc"))
+					.addButton((b) =>
+						b
+							.setButtonText(t("settings.invite_all"))
+							.setCta()
+							.onClick(() => this.runAsync(b, async () => { await this.host.inviteAllMembers(); this.display(); })),
+					),
+			);
+		}
 
 		// 공유 공간 (모둠/학급)
 		const shared = this.group(t("settings.shared_spaces_group_workspace"), t("settings.pick_members_and_deploy_to_create"));

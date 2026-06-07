@@ -3,6 +3,7 @@ import { CoVaultSettings, MemberConfig } from "../settings/types";
 import { Logger } from "../core/log/Logger";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
 import { InviteModal } from "../ui/InviteModal";
+import { BulkInviteModal } from "../ui/BulkInviteModal";
 import { InvitePayload, genPassword } from "../core/invite/invite";
 import { getMemberPassword, setMemberPassword } from "../core/secret";
 import { isValidCouchName } from "../core/path/path";
@@ -33,22 +34,56 @@ export class MemberController {
 
 	async inviteMember(member: MemberConfig): Promise<boolean> {
 		await this.d.openLog();
+		const payload = await this.provision(member);
+		if (!payload) return false;
+		new InviteModal(this.d.app, payload).open();
+		return true;
+	}
+
+	/**
+	 * 프로비저닝되지 않은 모든 구성원을 한 번에 초대(프로비저닝)한다. 구성원별 모달을 N개 띄우지 않고
+	 * 끝에 BulkInviteModal로 모든 초대 코드를 한곳에 보여준다. 프로비저닝된 구성원 수를 반환.
+	 */
+	async inviteAllMembers(): Promise<number> {
+		await this.d.openLog();
+		const s = this.d.settings();
+		if (s.role !== "manager") return 0;
+		const targets = s.members.filter((m) => m.memberId && !m.provisioned);
+		if (targets.length === 0) {
+			this.d.logger.warn(t("command.no_members_to_invite"), true);
+			return 0;
+		}
+		const payloads: InvitePayload[] = [];
+		for (const m of targets) {
+			const p = await this.provision(m);
+			if (p) payloads.push(p);
+		}
+		this.d.logger.ok(t("command.bulk_invite_complete", { n: payloads.length, total: targets.length }), true);
+		if (payloads.length > 0) new BulkInviteModal(this.d.app, payloads).open();
+		return payloads.length;
+	}
+
+	/**
+	 * 서버 프로비저닝 + shares/rtconfig 기록 + 로컬 상태 갱신. 성공 시 초대 페이로드, 실패 시 null.
+	 * 단건/일괄 초대가 공유하는 코어(초대 UI는 호출자가 띄운다).
+	 */
+	private async provision(member: MemberConfig): Promise<InvitePayload | null> {
 		const s = this.d.settings();
 		const adminPw = this.d.couchPassword();
 		if (!s.couchdbUrl || !s.username || !adminPw) {
 			this.d.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
-			return false;
+			return null;
 		}
 		if (!member.memberId) {
 			this.d.logger.warn(t("command.enter_a_member_id"), true);
-			return false;
+			return null;
 		}
 		if (!member.username) member.username = member.memberId;
 		if (!member.remoteDb) member.remoteDb = `mirror_${member.memberId}`;
 		if (!member.localRoot) member.localRoot = member.memberName || member.memberId;
 		if (!isValidCouchName(member.memberId) || !isValidCouchName(member.username) || !isValidCouchName(member.remoteDb)) {
 			this.d.logger.warn(t("command.invalid_id_or_db_name", { id: member.memberId }), true);
-			return false;
+			return null;
 		}
 		let memberPw = getMemberPassword(this.d.app, member.memberId, member.password);
 		if (!memberPw) memberPw = genPassword();
@@ -62,7 +97,7 @@ export class MemberController {
 		});
 		if (!res.ok) {
 			this.d.logger.error(t("command.provisioning_failed", { err: res.error ?? "" }), true);
-			return false;
+			return null;
 		}
 		if (setMemberPassword(this.d.app, member.memberId, memberPw)) member.password = undefined;
 		else member.password = memberPw;
@@ -75,7 +110,7 @@ export class MemberController {
 
 		const iat = Math.floor(Date.now() / 1000);
 		const ttlDays = s.inviteTtlDays ?? 0;
-		const payload: InvitePayload = {
+		return {
 			v: 1,
 			couchdbUrl: s.couchdbUrl,
 			workspaceId: s.workspaceId,
@@ -87,8 +122,6 @@ export class MemberController {
 			iat,
 			...(ttlDays > 0 ? { exp: iat + ttlDays * 86400 } : {}),
 		};
-		new InviteModal(this.d.app, payload).open();
-		return true;
 	}
 
 	async rotateMemberPassword(member: MemberConfig): Promise<void> {

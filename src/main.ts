@@ -274,6 +274,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return this.memberCtl.inviteMember(member);
 	}
 
+	/** 프로비저닝되지 않은 모든 구성원을 일괄 초대. 프로비저닝된 수를 반환. */
+	inviteAllMembers(): Promise<number> {
+		return this.memberCtl.inviteAllMembers();
+	}
+
 	/**
 	 * 학생 비밀번호 재발급(회전). 새 비밀번호로 _users를 갱신하므로 **이전 초대 코드는 즉시 무효**가 된다.
 	 * 잃어버린/유출된 초대를 폐기하는 용도. 새 초대 코드를 바로 보여준다.
