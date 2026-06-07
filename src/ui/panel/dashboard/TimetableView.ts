@@ -37,9 +37,10 @@ export class TimetableView {
 
 		this.doc = (await store.get<TimetableDoc>(timetableId(this.weekKey))) ?? this.defaultDoc();
 		// 삭제된 수업 안내를 가리키는 칸은 미연결로 취급(+ 버튼 복구) — 살아있는 lesson uid만 유효.
+		// 학생에겐 게시된 수업만 연결로 노출(초안은 미연결 처리).
 		const valid = new Set(
 			(await store.listByPrefix<NoticeDoc>(noticePrefix()))
-				.filter((n) => !n.deleted && (n.category ?? "notice") === "lesson")
+				.filter((n) => !n.deleted && (n.category ?? "notice") === "lesson" && (this.manager || n.published !== false))
 				.map((n) => n.uid),
 		);
 		this.renderGrid(c, valid);

@@ -3,6 +3,7 @@ import { CoVaultSettings, MemberConfig, SharedSpace } from "./types";
 import { ExportModal, ImportModal } from "../ui/BackupModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
 import { MemberBulkImportModal } from "../ui/MemberBulkImportModal";
+import { PathSuggest } from "../ui/PathSuggest";
 import { validateFolderName, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
 import { sharedSpaceStatus } from "./sharedSpaceStatus";
@@ -71,6 +72,8 @@ export interface SettingsHost extends Plugin {
 	refreshMemberShares(): Promise<void>;
 	/** 공유 공간 하나를 학급 공동 공간으로 지정/해제. */
 	setHomeroomSpace(space: SharedSpace, on: boolean): Promise<void>;
+	/** 유형별 기본 콘텐츠 템플릿 파일 생성 + 설정 경로 저장 후 편집창에서 열기. */
+	createTemplateFile(kind: "notice" | "lesson" | "assignment"): Promise<void>;
 	redeployRealtime(): Promise<void>;
 	exportSettingsJson(): string;
 	importSettingsJson(json: string): Promise<{ ok: boolean; error?: string }>;
@@ -287,6 +290,12 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					}),
 			),
 		);
+
+		// 콘텐츠 템플릿 (알림장·수업·과제)
+		const tpl = this.group(t("settings.content_templates"), t("settings.content_templates_desc"));
+		this.templateRow(tpl, t("settings.notice_template"), "noticeTemplate", "notice");
+		this.templateRow(tpl, t("settings.lesson_template"), "lessonTemplate", "lesson");
+		this.templateRow(tpl, t("settings.assignment_template"), "assignmentTemplate", "assignment");
 
 		// 실시간 공동 편집 (Yjs)
 		const rt = this.group(
@@ -870,6 +879,30 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				});
 			noAutoCorrect(t.inputEl);
 			this.applyOnBlur(t.inputEl); // 칸을 벗어나면 자동 적용
+		});
+	}
+
+	/** 콘텐츠 템플릿 경로 입력 + "기본 템플릿 만들기" 버튼 한 줄. */
+	private templateRow(group: SettingGroup, name: string, key: keyof CoVaultSettings, kind: "notice" | "lesson" | "assignment"): void {
+		const s = this.host.settings;
+		group.addSetting((set) => {
+			set.setName(name)
+				.setDesc(t("settings.template_path_optional_desc"))
+				.addText((txt) => {
+					txt.setPlaceholder(t("settings.blank_uses_built_in")).setValue(String(s[key] ?? "")).onChange(async (v) => {
+						(s[key] as unknown as string) = v.trim();
+						await this.host.saveSettings();
+					});
+					new PathSuggest(this.host.app, txt.inputEl, { extensions: ["md"] });
+					noAutoCorrect(txt.inputEl);
+					this.applyOnBlur(txt.inputEl);
+				})
+				.addButton((b) =>
+					b
+						.setButtonText(t("settings.create_default_template"))
+						.setTooltip(t("settings.create_default_template_desc"))
+						.onClick(() => this.runAsync(b, async () => { await this.host.createTemplateFile(kind); this.display(); })),
+				);
 		});
 	}
 

@@ -128,6 +128,10 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			studentMirrorSync: () => this.studentMirrorSync(),
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
+		// 알림장·수업은 편집창 + 프론트매터로 작성한다 — 파일 프론트매터 변경/삭제/이름변경을 게시 메타에 반영(교사).
+		this.registerEvent(this.app.metadataCache.on("changed", (file) => { if (file instanceof TFile) void this.classroomCtl.syncNoticeFromFile(file); }));
+		this.registerEvent(this.app.vault.on("delete", (file) => { if (file instanceof TFile) void this.classroomCtl.onNoticeFileDeleted(file.path); }));
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => { if (file instanceof TFile) void this.classroomCtl.onNoticeFileRenamed(file, oldPath); }));
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.onWorkspaceChange()));
 		this.registerEvent(this.app.workspace.on("file-open", () => this.onWorkspaceChange()));
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.onWorkspaceChange()));
@@ -389,14 +393,20 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	// --- 학급 운영(대시보드): ClassroomController에 위임 ---
-	postNotice(title: string, body: string, category?: "notice" | "lesson", weekKey?: string): Promise<boolean> {
-		return this.classroomCtl.postNotice(title, body, category, weekKey);
+	newNotice(): Promise<boolean> {
+		return this.classroomCtl.newNotice();
 	}
 	createLesson(title: string, weekKey?: string): Promise<string | null> {
 		return this.classroomCtl.createLesson(title, weekKey);
 	}
 	deleteNotice(notice: NoticeDoc): Promise<void> {
 		return this.classroomCtl.deleteNotice(notice);
+	}
+	setNoticePublished(notice: NoticeDoc, published: boolean): Promise<void> {
+		return this.classroomCtl.setNoticePublished(notice, published);
+	}
+	createTemplateFile(kind: "notice" | "lesson" | "assignment"): Promise<void> {
+		return this.classroomCtl.createTemplateFile(kind);
 	}
 	openLesson(uid: string): Promise<void> {
 		return this.classroomCtl.openLesson(uid);
@@ -406,6 +416,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 	createAssignment(input: Parameters<ClassroomController["createAssignment"]>[0]): Promise<boolean> {
 		return this.classroomCtl.createAssignment(input);
+	}
+	updateAssignment(uid: string, input: Parameters<ClassroomController["updateAssignment"]>[1]): Promise<boolean> {
+		return this.classroomCtl.updateAssignment(uid, input);
+	}
+	deleteAssignment(uid: string): Promise<boolean> {
+		return this.classroomCtl.deleteAssignment(uid);
 	}
 	listMyAssignments(): Promise<AssignmentStateDoc[]> {
 		return this.classroomCtl.listMyAssignments();

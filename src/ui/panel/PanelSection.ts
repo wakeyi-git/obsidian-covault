@@ -52,12 +52,14 @@ export interface CoreHost {
 
 /** 알림장·수업 안내(게시·응답). */
 export interface NoticeHost {
-	/** 게시(교사): 본문 파일 생성 + NoticeDoc 기록. category=알림장/수업, weekKey=수업 주간 태그. */
-	postNotice(title: string, body: string, category?: "notice" | "lesson", weekKey?: string): Promise<boolean>;
-	/** 수업 안내 생성(교사) → uid 반환(시간표 칸 연결용). weekKey=해당 주간 태그. */
+	/** 새 알림장(교사): 초안 본문 파일을 만들어 편집창에서 연다(프론트매터로 작성·게시). */
+	newNotice(): Promise<boolean>;
+	/** 수업 안내 생성(교사) → uid 반환(시간표 칸 연결용). 초안 파일을 편집창에서 연다. weekKey=주간 태그. */
 	createLesson(title: string, weekKey?: string): Promise<string | null>;
 	/** 게시(알림장/수업) 삭제(교사): 메타 + 본문 파일 삭제. */
 	deleteNotice(notice: NoticeDoc): Promise<void>;
+	/** 게시/게시 취소(교사): 메타 + 파일 프론트매터 published 갱신. */
+	setNoticePublished(notice: NoticeDoc, published: boolean): Promise<void>;
 	/** 비공개 응답(질문) 기록 — 학생 개인 mirror(동료 비공개, 교사만 열람). */
 	postPrivateResponse(doc: ResponseDoc): Promise<boolean>;
 	/** 특정 구성원 mirror에 비공개 응답 기록(교사가 학생 질문에 답글). */
@@ -81,6 +83,19 @@ export interface AssignmentHost {
 		templatePath?: string;
 		rubric?: RubricCriterion[];
 	}): Promise<boolean>;
+	/** 과제 정의 수정(교사) — 정의 갱신 후 재배포(기존 제출/성적 보존). */
+	updateAssignment(uid: string, input: {
+		title: string;
+		instructions: string;
+		dueAt?: number;
+		points?: number;
+		privacy: "mirror" | "shared";
+		targetMembers: string[];
+		templatePath?: string;
+		rubric?: RubricCriterion[];
+	}): Promise<boolean>;
+	/** 과제 삭제(교사) — 정의 제거 + 학생 상태 문서 soft-delete. */
+	deleteAssignment(uid: string): Promise<boolean>;
 	listMyAssignments(): Promise<AssignmentStateDoc[]>;
 	listAssignmentStates(uid: string): Promise<AssignmentStateDoc[]>;
 	/** 전체 구성원의 모든 과제 상태(교사 통계용, 구성원당 prefix 조회 1회). */

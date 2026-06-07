@@ -4,6 +4,14 @@ import { RubricCriterion } from "../core/model/types";
 import { PathSuggest } from "./PathSuggest";
 import { t } from "../i18n";
 
+/** epoch ms → date input 값(YYYY-MM-DD, 로컬). */
+function toDateInput(ms: number): string {
+	const d = new Date(ms);
+	const m = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${d.getFullYear()}-${m}-${day}`;
+}
+
 export interface AssignmentInput {
 	title: string;
 	instructions: string;
@@ -15,7 +23,7 @@ export interface AssignmentInput {
 	rubric?: RubricCriterion[];
 }
 
-/** 과제 생성 모달(교사). 제목·안내·마감·배점·대상·공개범위·템플릿. */
+/** 과제 생성/편집 모달(교사). 제목·안내·마감·배점·대상·공개범위·템플릿. */
 export class AssignmentCreateModal extends Modal {
 	private title = "";
 	private instructions = "";
@@ -25,19 +33,38 @@ export class AssignmentCreateModal extends Modal {
 	private templatePath = "";
 	private targets = new Set<string>();
 	private criteria: Array<{ title: string; max: string }> = [];
+	private editing: boolean;
 
-	constructor(app: App, private settings: CoVaultSettings, private onSubmit: (input: AssignmentInput) => void | Promise<void>) {
+	constructor(
+		app: App,
+		private settings: CoVaultSettings,
+		private onSubmit: (input: AssignmentInput) => void | Promise<void>,
+		initial?: AssignmentInput,
+	) {
 		super(app);
-		// 기본 대상 = 프로비저닝된 전원
-		for (const m of settings.members) if (m.memberId && m.provisioned) this.targets.add(m.memberId);
+		this.editing = !!initial;
+		if (initial) {
+			this.title = initial.title;
+			this.instructions = initial.instructions;
+			this.dueStr = initial.dueAt ? toDateInput(initial.dueAt) : "";
+			this.pointsStr = initial.points != null ? String(initial.points) : "";
+			this.privacy = initial.privacy;
+			this.templatePath = initial.templatePath ?? "";
+			for (const id of initial.targetMembers) this.targets.add(id);
+			this.criteria = (initial.rubric ?? []).map((c) => ({ title: c.title, max: String(c.levels?.[0]?.points ?? 0) }));
+		} else {
+			// 기본 대상 = 프로비저닝된 전원, 템플릿 = 설정 기본값
+			for (const m of settings.members) if (m.memberId && m.provisioned) this.targets.add(m.memberId);
+			this.templatePath = settings.assignmentTemplate ?? "";
+		}
 	}
 
 	onOpen(): void {
 		const { contentEl } = this;
-		contentEl.createEl("h3", { text: t("dashboard.new_assignment") });
+		contentEl.createEl("h3", { text: this.editing ? t("dashboard.edit_assignment") : t("dashboard.new_assignment") });
 
 		new Setting(contentEl).setName(t("dashboard.assignment_title")).addText((tx) => {
-			tx.setPlaceholder(t("dashboard.assignment_title_placeholder")).onChange((v) => (this.title = v));
+			tx.setPlaceholder(t("dashboard.assignment_title_placeholder")).setValue(this.title).onChange((v) => (this.title = v));
 			window.setTimeout(() => tx.inputEl.focus(), 0);
 		});
 
@@ -45,26 +72,27 @@ export class AssignmentCreateModal extends Modal {
 		const ta = contentEl.createEl("textarea", { cls: "covault-feedback-input" });
 		ta.rows = 5;
 		ta.placeholder = t("dashboard.assignment_instructions_placeholder");
+		ta.value = this.instructions;
 		ta.oninput = () => (this.instructions = ta.value);
 
 		new Setting(contentEl).setName(t("dashboard.due_date")).addText((tx) => {
 			tx.inputEl.type = "date";
-			tx.onChange((v) => (this.dueStr = v));
+			tx.setValue(this.dueStr).onChange((v) => (this.dueStr = v));
 		});
 		new Setting(contentEl).setName(t("dashboard.points")).addText((tx) => {
 			tx.inputEl.type = "number";
-			tx.setPlaceholder("100").onChange((v) => (this.pointsStr = v));
+			tx.setPlaceholder("100").setValue(this.pointsStr).onChange((v) => (this.pointsStr = v));
 		});
 		new Setting(contentEl).setName(t("dashboard.privacy")).addDropdown((d) => {
 			d.addOption("mirror", t("dashboard.privacy_mirror"));
 			d.addOption("shared", t("dashboard.privacy_shared"));
-			d.setValue("mirror").onChange((v) => (this.privacy = v as "mirror" | "shared"));
+			d.setValue(this.privacy).onChange((v) => (this.privacy = v as "mirror" | "shared"));
 		});
 		new Setting(contentEl)
 			.setName(t("dashboard.template_path"))
 			.setDesc(t("dashboard.template_path_desc"))
 			.addText((tx) => {
-				tx.setPlaceholder("템플릿/과제.md").onChange((v) => (this.templatePath = v));
+				tx.setPlaceholder("템플릿/과제.md").setValue(this.templatePath).onChange((v) => (this.templatePath = v));
 				new PathSuggest(this.app, tx.inputEl, { extensions: ["md", "excalidraw"] });
 			});
 
@@ -89,7 +117,7 @@ export class AssignmentCreateModal extends Modal {
 			.addButton((b) => b.setButtonText(t("common.cancel")).onClick(() => this.close()))
 			.addButton((b) =>
 				b
-					.setButtonText(t("dashboard.create_distribute"))
+					.setButtonText(this.editing ? t("common.save") : t("dashboard.create_distribute"))
 					.setCta()
 					.onClick(async () => {
 						const title = this.title.trim();

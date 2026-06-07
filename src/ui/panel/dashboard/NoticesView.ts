@@ -11,7 +11,6 @@ import {
 } from "../../../core/model/types";
 import { sortNotices, summarizeResponses, LessonSlot } from "../../../core/classroom/notices";
 import { weekStart, weekRangeLabel } from "../../../core/classroom/week";
-import { NoticeComposeModal } from "../../NoticeComposeModal";
 import { TimetableView } from "./TimetableView";
 import { t, formatDate } from "../../../i18n";
 
@@ -70,12 +69,7 @@ export class NoticesView {
 			panelButton(
 				head,
 				this.label(t("dashboard.new_notice"), t("dashboard.new_lesson")),
-				() =>
-					new NoticeComposeModal(
-						this.host.app,
-						(title, body) => this.post(title, body),
-						this.label(t("dashboard.new_notice"), t("dashboard.new_lesson")),
-					).open(),
+				() => this.create(),
 				{ cta: true },
 			);
 		}
@@ -121,7 +115,11 @@ export class NoticesView {
 		}
 
 		const raw = (await store.listByPrefix<NoticeDoc>(noticePrefix())).filter(
-			(n) => !n.deleted && (n.category ?? "notice") === this.category && (!this.isLesson || n.weekKey === this.weekKey),
+			(n) =>
+				!n.deleted &&
+				(n.category ?? "notice") === this.category &&
+				(!this.isLesson || n.weekKey === this.weekKey) &&
+				(this.manager || n.published !== false), // 학생에겐 게시된 글만(초안 숨김)
 		);
 		const allResponses = await store.listByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX);
 		// 질문·교사 답글은 학급 공유가 아닌 개인 mirror에 있다(동료 비공개) → 교사=전원/학생=본인 것을 합친다.
@@ -203,8 +201,11 @@ export class NoticesView {
 		void this.reload();
 	}
 
-	private async post(title: string, body: string): Promise<void> {
-		const ok = await this.host.postNotice(title, body, this.category, this.isLesson ? this.weekKey : undefined);
+	/** 새 글: 초안 본문 파일을 만들어 편집창에서 연다(알림장/수업). 생성 후 목록 갱신. */
+	private async create(): Promise<void> {
+		const ok = this.isLesson
+			? (await this.host.createLesson("", this.weekKey)) != null
+			: await this.host.newNotice();
 		if (ok) await this.reload();
 	}
 
@@ -219,6 +220,7 @@ export class NoticesView {
 		const top = card.createDiv({ cls: "covault-cr-card-head" });
 		if (n.pinned) setIcon(top.createSpan({ cls: "covault-cr-card-icon" }), "pin");
 		top.createSpan({ cls: "covault-cr-card-title", text: n.title });
+		if (this.manager && n.published === false) top.createSpan({ cls: "covault-cr-badge is-warn", text: t("dashboard.draft") });
 		top.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(n.postedAtMs)) });
 
 		const sum = summarizeResponses(responses, this.memberIds());
@@ -246,12 +248,20 @@ export class NoticesView {
 		}
 
 		const acts = card.createDiv({ cls: "covault-dash-rowactions" });
-		panelButton(acts, t("dashboard.open"), () => this.openFile(n.filePath));
 		if (this.manager) {
+			// 게시/게시 취소 토글 → 학생 노출 제어.
+			const published = n.published !== false;
+			panelButton(acts, published ? t("dashboard.unpublish") : t("dashboard.publish"), async () => {
+				await this.host.setNoticePublished(n, !published);
+				await this.reload();
+			}, { cta: !published });
+			panelButton(acts, t("common.edit"), () => this.openFile(n.filePath));
 			panelButton(acts, t("common.delete"), async () => {
 				await this.host.deleteNotice(n);
 				await this.reload();
 			}, { warning: true });
+		} else {
+			panelButton(acts, t("dashboard.open"), () => this.openFile(n.filePath));
 		}
 	}
 

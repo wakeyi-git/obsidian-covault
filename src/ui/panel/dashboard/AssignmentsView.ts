@@ -2,8 +2,9 @@ import { setIcon } from "obsidian";
 import { PanelHost, panelButton, iconButton } from "../PanelSection";
 import { AssignmentDoc, AssignmentStateDoc } from "../../../core/model/types";
 import { buildMatrix, statusCounts, displayStatus, gradeTotal, rubricMax, AssignmentDisplayStatus, MatrixRow } from "../../../core/classroom/assignments";
-import { AssignmentCreateModal } from "../../AssignmentCreateModal";
+import { AssignmentCreateModal, AssignmentInput } from "../../AssignmentCreateModal";
 import { GradingModal } from "../../GradingModal";
+import { ConfirmModal } from "../../ConfirmModal";
 import { t, formatDate } from "../../../i18n";
 
 function statusLabel(s: AssignmentDisplayStatus): string {
@@ -137,6 +138,8 @@ export class AssignmentsView {
 			const top = card.createDiv({ cls: "covault-cr-card-head" });
 			top.createSpan({ cls: "covault-cr-card-title", text: def.title });
 			if (def.dueAt) top.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(def.dueAt)) });
+			iconButton(top, "pencil", t("common.edit"), () => this.editAssignment(def));
+			iconButton(top, "trash-2", t("common.delete"), () => this.confirmDelete(def));
 
 			// 제출 진행률(제출+지각+반환 / 전체)
 			const submitted = counts.submitted + counts["submitted-late"] + counts.returned;
@@ -161,6 +164,37 @@ export class AssignmentsView {
 				if (r.state) iconButton(line, "pencil", t("dashboard.grade"), () => this.openGrading(def, r, full));
 			}
 		}
+	}
+
+	/** 과제 편집(교사) — 정의를 모달에 채워 열고, 저장 시 재배포(제출/성적 보존). */
+	private editAssignment(def: AssignmentDoc): void {
+		const initial: AssignmentInput = {
+			title: def.title,
+			instructions: def.instructions,
+			dueAt: def.dueAt,
+			points: def.points,
+			privacy: def.privacy,
+			targetMembers: [...def.targetMembers],
+			templatePath: def.templatePaths[0],
+			rubric: def.rubric,
+		};
+		new AssignmentCreateModal(this.host.app, this.host.settings, async (input) => {
+			const ok = await this.host.updateAssignment(def.uid, input);
+			if (ok) await this.reload();
+		}, initial).open();
+	}
+
+	/** 과제 삭제 확인(교사). 학생 상태 문서가 사라지고 작업 파일은 남는다. */
+	private confirmDelete(def: AssignmentDoc): void {
+		new ConfirmModal(this.host.app, {
+			title: t("dashboard.delete_assignment_title", { title: def.title }),
+			message: t("dashboard.delete_assignment_msg"),
+			warning: true,
+			onConfirm: async () => {
+				const ok = await this.host.deleteAssignment(def.uid);
+				if (ok) await this.reload();
+			},
+		}).open();
 	}
 
 	/** 교사 측 작업 파일 경로(개인=member.localRoot 접두, 공유=그대로). 없으면 null. */

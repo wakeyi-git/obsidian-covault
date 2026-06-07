@@ -193,6 +193,8 @@ export interface NoticeDoc extends PouchDocBase {
 	filePath: string; // 본문 마크다운 파일의 dbPath(학급 공유 폴더 기준)
 	postedAtMs: number;
 	pinned?: boolean;
+	/** 게시 여부. 미설정/true=구성원에게 노출, false=초안(교사만, 프론트매터 published로 제어). */
+	published?: boolean;
 	allowResponses?: boolean; // 양방향 응답 허용(기본 true)
 	/** 게시 종류. "notice"(알림장, 기본) | "lesson"(수업 안내). 같은 메커니즘, 폴더/뷰만 분리. */
 	category?: "notice" | "lesson";

@@ -76,6 +76,13 @@ export interface CoVaultSettings {
 	/** Manager Mode: 과제 정의 목록(교사 기기 보관, 동기화 안 함). 배포 시 학생 미러에 상태 문서 생성. */
 	assignments?: AssignmentDoc[];
 
+	/** 새 알림장 본문 템플릿 파일 경로(vault 기준). 비우면 내장 기본 템플릿 사용. */
+	noticeTemplate?: string;
+	/** 새 수업 안내 본문 템플릿 파일 경로(vault 기준). 비우면 내장 기본 템플릿 사용. */
+	lessonTemplate?: string;
+	/** 과제 작업 파일 템플릿 파일 경로(vault 기준). 비우면 내장 기본 템플릿 사용. 모달에서 변경 가능. */
+	assignmentTemplate?: string;
+
 	/** 동기화 root 밖으로 취급해 제외할 폴더 (기술문서 §11.1). */
 	excludeFolders: string[];
 
