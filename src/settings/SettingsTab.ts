@@ -440,6 +440,18 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					}),
 				);
 			}
+			new Setting(card)
+				.setName(t("settings.dashboard_page_size"))
+				.setDesc(t("settings.dashboard_page_size_desc"))
+				.addText((txt) => {
+					txt.setPlaceholder("10").setValue(String(s.dashboardPageSize ?? 10));
+					txt.inputEl.type = "number";
+					txt.onChange(async (v) => {
+						const n = parseInt(v, 10);
+						s.dashboardPageSize = Number.isFinite(n) && n > 0 ? n : 10;
+						await this.host.saveSettings();
+					});
+				});
 		}
 
 		const memberHead = new Setting(card).setName(t("panel.members"));
@@ -715,21 +727,6 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					txt.onChange(async (v) => {
 						const n = parseInt(v, 10);
 						s.versionMaxAgeDays = Number.isFinite(n) && n > 0 ? n : 30;
-						await this.host.saveSettings();
-					});
-				}),
-		);
-
-		g.addSetting((set) =>
-			set
-				.setName(t("settings.dashboard_page_size"))
-				.setDesc(t("settings.dashboard_page_size_desc"))
-				.addText((txt) => {
-					txt.setPlaceholder("10").setValue(String(s.dashboardPageSize ?? 10));
-					txt.inputEl.type = "number";
-					txt.onChange(async (v) => {
-						const n = parseInt(v, 10);
-						s.dashboardPageSize = Number.isFinite(n) && n > 0 ? n : 10;
 						await this.host.saveSettings();
 					});
 				}),

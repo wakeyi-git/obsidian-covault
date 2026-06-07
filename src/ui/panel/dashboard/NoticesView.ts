@@ -10,7 +10,7 @@ import {
 	timetableId,
 } from "../../../core/model/types";
 import { sortNotices, summarizeResponses, LessonSlot } from "../../../core/classroom/notices";
-import { weekStart } from "../../../core/classroom/week";
+import { weekStart, weekRangeLabel } from "../../../core/classroom/week";
 import { NoticeComposeModal } from "../../NoticeComposeModal";
 import { TimetableView } from "./TimetableView";
 import { t, formatDate } from "../../../i18n";
@@ -91,10 +91,18 @@ export class NoticesView {
 			if (!this.selectedDate) this.selectedDate = localDateStr(new Date());
 			this.weekKey = weekStart(parseDateMs(this.selectedDate));
 
+			// 시간표(주 단위 이동)
+			const ttNav = c.createDiv({ cls: "covault-dash-weeknav" });
+			iconButton(ttNav, "chevron-left", t("dashboard.prev_week"), () => this.shiftWeek(-1));
+			ttNav.createSpan({ cls: "covault-dash-weeklabel", text: weekRangeLabel(this.weekKey) });
+			iconButton(ttNav, "chevron-right", t("dashboard.next_week"), () => this.shiftWeek(1));
+			panelButton(ttNav, t("dashboard.this_week"), () => this.gotoThisWeek());
+
 			const ttBox = c.createDiv({ cls: "covault-dash-timetable-embed" });
 			this.timetable = new TimetableView(this.host, this.weekKey);
 			this.timetable.render(ttBox);
 
+			// 수업 안내(일 단위 이동)
 			const nav = c.createDiv({ cls: "covault-dash-weeknav" });
 			iconButton(nav, "chevron-left", t("dashboard.prev_day"), () => this.shiftDay(-1));
 			const di = nav.createEl("input", { cls: "covault-dash-dateinput", attr: { type: "date" } });
@@ -175,6 +183,20 @@ export class NoticesView {
 		const d = new Date(parseDateMs(this.selectedDate || localDateStr(new Date())));
 		d.setDate(d.getDate() + n);
 		this.selectedDate = localDateStr(d);
+		void this.reload();
+	}
+
+	/** 시간표 주 단위 이동(선택 날짜를 ±7일, 같은 요일 유지). */
+	private shiftWeek(n: number): void {
+		this.shiftDay(n * 7);
+	}
+
+	/** 이번 주로 이동(현재 주의 같은 요일). */
+	private gotoThisWeek(): void {
+		const idx = (new Date(parseDateMs(this.selectedDate || localDateStr(new Date()))).getDay() + 6) % 7; // 월=0
+		const monday = new Date(parseDateMs(weekStart(Date.now())));
+		monday.setDate(monday.getDate() + idx);
+		this.selectedDate = localDateStr(monday);
 		void this.reload();
 	}
 

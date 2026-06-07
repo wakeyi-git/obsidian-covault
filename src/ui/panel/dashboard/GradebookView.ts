@@ -15,7 +15,10 @@ interface Metric {
 	key: string;
 	label: string;
 	icon: string;
+	/** 구성원 막대 표시값(%) — 측정 불가 시 null. */
 	get: (s: MemberStats) => number | null;
+	/** 학급 평균(가중/풀링)용 분자·분모. 합산 후 num/den 으로 학급 평균을 낸다. */
+	agg: (s: MemberStats) => { num: number; den: number };
 }
 
 /** 종합 통계(성적부) — 기간별 지표(알림장/수업 확인율·과제 제출율·평균 점수·체크리스트 완료율). 교사=전원, 학생=본인. */
@@ -37,11 +40,12 @@ export class GradebookView {
 
 	private metrics(): Metric[] {
 		return [
-			{ key: "noticeRead", label: t("dashboard.metric_notice_read"), icon: "megaphone", get: (s) => ratePct(s.noticeRead) },
-			{ key: "lessonRead", label: t("dashboard.metric_lesson_read"), icon: "calendar-days", get: (s) => ratePct(s.lessonRead) },
-			{ key: "submit", label: t("dashboard.metric_submit"), icon: "clipboard-list", get: (s) => ratePct(s.submit) },
-			{ key: "avgScore", label: t("dashboard.metric_avg_score"), icon: "award", get: (s) => s.avgScorePct },
-			{ key: "routine", label: t("dashboard.metric_routine"), icon: "check-square", get: (s) => ratePct(s.routine) },
+			{ key: "noticeRead", label: t("dashboard.metric_notice_read"), icon: "megaphone", get: (s) => ratePct(s.noticeRead), agg: (s) => s.noticeRead },
+			{ key: "lessonRead", label: t("dashboard.metric_lesson_read"), icon: "calendar-days", get: (s) => ratePct(s.lessonRead), agg: (s) => s.lessonRead },
+			{ key: "submit", label: t("dashboard.metric_submit"), icon: "clipboard-list", get: (s) => ratePct(s.submit), agg: (s) => s.submit },
+			// 과제 평균: 풀링(전체 채점 건수 가중). num/den 은 비율(0~1) 단위로 통일(학급 평균식이 ×100 함).
+			{ key: "avgScore", label: t("dashboard.metric_avg_score"), icon: "award", get: (s) => s.avgScorePct, agg: (s) => ({ num: ((s.avgScorePct ?? 0) / 100) * s.scoreCount, den: s.scoreCount }) },
+			{ key: "routine", label: t("dashboard.metric_routine"), icon: "check-square", get: (s) => ratePct(s.routine), agg: (s) => s.routine },
 		];
 	}
 
@@ -155,20 +159,23 @@ export class GradebookView {
 		setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), metric.icon);
 		head.createSpan({ cls: "covault-cr-card-title", text: metric.label });
 
-		const vals: number[] = [];
 		const matrix = card.createDiv({ cls: "covault-cr-matrix" });
+		let aggNum = 0;
+		let aggDen = 0;
 		for (const s of stats) {
 			const v = metric.get(s);
-			if (v != null) vals.push(v);
+			const a = metric.agg(s);
+			aggNum += a.num;
+			aggDen += a.den;
 			const row = matrix.createDiv({ cls: "covault-cr-matrix-row" });
 			row.createSpan({ cls: "covault-cr-matrix-name", text: s.memberName });
 			const prog = row.createDiv({ cls: "covault-cr-progress" });
 			prog.createEl("i").style.width = `${v ?? 0}%`;
 			row.createSpan({ cls: "covault-cr-score", text: v == null ? "—" : `${v}%` });
 		}
-		// 학급 평균(교사, 2명 이상)
-		if (this.manager && vals.length > 0 && stats.length > 1) {
-			const avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+		// 학급 평균(교사, 2명 이상) — 풀링: Σ분자/Σ분모.
+		if (this.manager && stats.length > 1 && aggDen > 0) {
+			const avg = Math.round((aggNum / aggDen) * 100);
 			card.createDiv({ cls: "covault-cr-muted", text: t("dashboard.class_average", { pct: avg }) });
 		}
 	}

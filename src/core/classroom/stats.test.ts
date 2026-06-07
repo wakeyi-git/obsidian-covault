@@ -47,10 +47,12 @@ describe("computeStats", () => {
 		expect(ratePct(r[1].submit)).toBe(100);
 	});
 
-	it("평균 점수: A=80%, B=채점없음 null", () => {
+	it("평균 점수: A=80%, B=채점없음 null + 채점 건수", () => {
 		const r = computeStats(base);
 		expect(r[0].avgScorePct).toBe(80);
+		expect(r[0].scoreCount).toBe(1);
 		expect(r[1].avgScorePct).toBeNull();
+		expect(r[1].scoreCount).toBe(0);
 	});
 
 	it("기간 밖 과제는 제외", () => {

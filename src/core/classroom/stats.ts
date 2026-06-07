@@ -19,6 +19,8 @@ export interface MemberStats {
 	routine: Rate;
 	/** 과제 평균 점수(%) — 채점된 과제의 score/max 평균. 채점 없으면 null. */
 	avgScorePct: number | null;
+	/** 평균 점수 산출에 쓰인 채점 건수(학급 가중 평균용). */
+	scoreCount: number;
 }
 
 export interface StatsInput {
@@ -110,6 +112,6 @@ export function computeStats(input: StatsInput): MemberStats[] {
 			}
 		}
 
-		return { memberId: m.memberId, memberName: m.memberName, noticeRead, lessonRead, submit, routine: { num: rNum, den: rDen }, avgScorePct };
+		return { memberId: m.memberId, memberName: m.memberName, noticeRead, lessonRead, submit, routine: { num: rNum, den: rDen }, avgScorePct, scoreCount: pcts.length };
 	});
 }
