@@ -1,6 +1,6 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
-import { SHARES_DOC_ID, RTCONFIG_DOC_ID, VersionDoc, SharesDoc, NoticeDoc, ResponseDoc } from "./core/model/types";
+import { VersionDoc, NoticeDoc, ResponseDoc } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc } from "./core/model/types";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
@@ -11,7 +11,6 @@ import { MemberMode } from "./modes/member/MemberMode";
 import { ManagerMode } from "./modes/manager/ManagerMode";
 import { TFile, TFolder } from "obsidian";
 import { RoleSetupModal } from "./ui/RoleSetupModal";
-import { InviteModal } from "./ui/InviteModal";
 import { ConflictModal, ConflictRow, ConflictHost } from "./ui/ConflictModal";
 import { VersionHistoryModal } from "./ui/VersionHistoryModal";
 import { SetupWizardModal } from "./ui/SetupWizardModal";
@@ -26,7 +25,6 @@ import {
 	YJS_SECRET_ID,
 	YJS_TOKEN_ID,
 	COUCH_PASSWORD_ID,
-	getMemberPassword,
 	setMemberPassword,
 } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
@@ -34,6 +32,7 @@ import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
 import { ClassroomController } from "./modes/ClassroomController";
 import { RealtimeController } from "./modes/RealtimeController";
+import { MemberController } from "./modes/MemberController";
 import { findHomeroom, setHomeroom } from "./core/classroom/homeroom";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
@@ -44,7 +43,7 @@ import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "
 import { testConnection } from "./core/sync/connectionTest";
 import { runDiagnostics } from "./core/sync/diagnostics";
 import { CouchAdmin } from "./core/couch/CouchAdmin";
-import { InvitePayload, INVITE_ACTION, genPassword, parseInvite, isInviteExpired } from "./core/invite/invite";
+import { INVITE_ACTION, parseInvite, isInviteExpired } from "./core/invite/invite";
 import { exportSettings, importSettings } from "./settings/portable";
 import { ResetModal } from "./ui/ResetModal";
 import { initI18n, t } from "./i18n";
@@ -66,6 +65,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private classroom!: ClassroomStore;
 	private classroomCtl!: ClassroomController;
 	private realtimeCtl!: RealtimeController;
+	private memberCtl!: MemberController;
 	private applyTimer: number | null = null;
 
 	/** PanelHost: 피드백 섹션이 사용. */
@@ -100,6 +100,16 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			settings: () => this.settings,
 			realtime: () => this.realtime,
 			openLog: () => this.activatePanel("log"),
+		});
+		this.memberCtl = new MemberController({
+			app: this.app,
+			logger: this.logger,
+			settings: () => this.settings,
+			couchPassword: () => this.couchPassword(),
+			saveSettings: () => this.saveSettings(),
+			requestApply: () => this.requestApply(),
+			openLog: () => this.activatePanel("log"),
+			mintMirror: (m) => this.realtimeCtl.mintMirror(m),
 		});
 		this.registerEditorExtension(realtimeEditorExtension());
 
@@ -309,69 +319,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	// --- 학생 프로비저닝 + 초대 (Manager) ---
 	/** 성공(프로비저닝+초대 표시) 시 true. 실패 시 false(호출자가 로컬 상태를 되돌릴 수 있게). */
-	async inviteMember(member: MemberConfig): Promise<boolean> {
-		await this.activatePanel("log");
-		const s = this.settings;
-		const adminPw = this.couchPassword();
-		if (!s.couchdbUrl || !s.username || !adminPw) {
-			this.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
-			return false;
-		}
-		if (!member.memberId) {
-			this.logger.warn(t("command.enter_a_member_id"), true);
-			return false;
-		}
-		// 기본값 보정
-		if (!member.username) member.username = member.memberId;
-		if (!member.remoteDb) member.remoteDb = `mirror_${member.memberId}`;
-		if (!member.localRoot) member.localRoot = member.memberName || member.memberId;
-		// CouchDB 이름 규칙 위반은 프로비저닝 HTTP 에러 전에 막는다(보고서 P2).
-		if (!isValidCouchName(member.memberId) || !isValidCouchName(member.username) || !isValidCouchName(member.remoteDb)) {
-			this.logger.warn(t("command.invalid_id_or_db_name", { id: member.memberId }), true);
-			return false;
-		}
-		// 학생 비밀번호: Secret Storage 우선 → 평문 폴백 → 없으면 생성.
-		let memberPw = getMemberPassword(this.app, member.memberId, member.password);
-		if (!memberPw) memberPw = genPassword();
-
-		this.logger.info(t("command.provisioning_member", { id: member.memberId, db: member.remoteDb }));
-		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
-		const res = await admin.provisionMember({
-			username: member.username,
-			password: memberPw,
-			remoteDb: member.remoteDb,
-		});
-		if (!res.ok) {
-			this.logger.error(t("command.provisioning_failed", { err: res.error ?? "" }), true);
-			return false;
-		}
-		// 성공 → Secret Storage 보관 + 평문 클리어(미지원 환경은 평문 폴백 유지).
-		if (setMemberPassword(this.app, member.memberId, memberPw)) member.password = undefined;
-		else member.password = memberPw;
-		member.provisioned = true;
-		// 실시간/공유 설정을 학생 DB에 기록(개인 mirror 실시간 토큰 포함) — 공유 공간 배포 없이도 실시간이 동작.
-		await this.mintMirrorToken(member);
-		await this.saveSettings();
-		await this.writeMemberSync(admin, member);
-		this.requestApply(); // 새 학생 링크를 자동으로 동기화에 반영
-		this.logger.ok(t("command.provisioning_complete_account_db_permissions", { id: member.memberId }), true);
-
-		const iat = Math.floor(Date.now() / 1000);
-		const ttlDays = s.inviteTtlDays ?? 0;
-		const payload: InvitePayload = {
-			v: 1,
-			couchdbUrl: s.couchdbUrl,
-			workspaceId: s.workspaceId,
-			memberId: member.memberId,
-			memberName: member.memberName,
-			remoteDb: member.remoteDb,
-			username: member.username,
-			password: memberPw,
-			iat,
-			...(ttlDays > 0 ? { exp: iat + ttlDays * 86400 } : {}),
-		};
-		new InviteModal(this.app, payload).open();
-		return true;
+	inviteMember(member: MemberConfig): Promise<boolean> {
+		return this.memberCtl.inviteMember(member);
 	}
 
 	/**
@@ -380,24 +329,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	 *
 	 * 서버 갱신이 실패하면 로컬 비밀번호를 이전 값으로 되돌려, 로컬만 새 비밀번호로 바뀐 불일치를 막는다.
 	 */
-	async rotateMemberPassword(member: MemberConfig): Promise<void> {
-		if (this.settings.role !== "manager") return;
-		if (!member.memberId) {
-			this.logger.warn(t("command.enter_a_member_id"), true);
-			return;
-		}
-		const prev = getMemberPassword(this.app, member.memberId, member.password);
-		const next = genPassword();
-		// 새 비밀번호를 먼저 보관(inviteMember가 Secret Storage/평문에서 읽으므로) → 재프로비저닝.
-		if (!setMemberPassword(this.app, member.memberId, next)) member.password = next;
-		this.logger.info(t("invite.reissuing_password_previous_invite_invalidated", { id: member.memberId }), true);
-		const ok = await this.inviteMember(member); // 재프로비저닝(_users 갱신) + 새 초대 표시
-		if (!ok) {
-			// 서버 실패 → 이전 비밀번호로 되돌림(이전 초대 유지).
-			if (!setMemberPassword(this.app, member.memberId, prev)) member.password = prev;
-			else member.password = undefined;
-			this.logger.warn(t("invite.password_reissue_failed_keeping_the_previous"), true);
-		}
+	rotateMemberPassword(member: MemberConfig): Promise<void> {
+		return this.memberCtl.rotateMemberPassword(member);
 	}
 
 	// --- 공유 공간 배포 (Manager) ---
@@ -590,52 +523,16 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	/** 한 학생의 shares + rtconfig 문서 기록(공유 공간 멤버십 + 개인 mirror 실시간 공간). */
-	private async writeMemberSync(admin: CouchAdmin, st: MemberConfig): Promise<void> {
-		const s = this.settings;
-		const spaces: SharesDoc["spaces"] = s.sharedSpaces
-			.filter((sp) => sp.members.includes(st.memberId))
-			.map((sp) => ({
-				id: sp.id,
-				name: sp.name,
-				remoteDb: sp.remoteDb,
-				folder: sp.folder,
-				token: sp.token,
-				kind: sp.kind === "homeroom" ? ("homeroom" as const) : ("share" as const),
-				realtime: s.realtimeEnabled, // 전역 실시간 설정을 모든 공유 공간에 적용
-			}));
-		// 개인 mirror 1:1 실시간(folder=""=학생 vault 전체). 동기화 링크는 안 만들고 room/token 용도로만.
-		if (s.realtimeEnabled && st.realtimeToken) {
-			spaces.push({ id: `mirror-${st.memberId}`, name: st.memberName, remoteDb: st.remoteDb, folder: "", token: st.realtimeToken, kind: "mirror", realtime: true });
-		}
-		const r = await admin.putDoc(st.remoteDb, { _id: SHARES_DOC_ID, type: "shares", spaces });
-		if (!r.ok) this.logger.error(t("command.failed_to_write_shares", { id: st.memberId, err: r.error ?? "" }));
-		// 레거시 전역 토큰은 더 이상 배포하지 않는다(전원에게 마스터 키를 주는 셈 → 공간 격리 붕괴).
-		// 실시간 인증은 shares.spaces[].token(공간별 HMAC)만 사용한다.
-		const rc = await admin.putDoc(st.remoteDb, {
-			_id: RTCONFIG_DOC_ID,
-			type: "rtconfig",
-			enabled: s.realtimeEnabled,
-			url: s.yjsServerUrl,
-			snapshotSec: s.realtimeSnapshotSec,
-		});
-		if (!rc.ok) this.logger.error(t("command.failed_to_write_rtconfig", { id: st.memberId, err: rc.error ?? "" }));
+	private writeMemberSync(admin: CouchAdmin, st: MemberConfig): Promise<void> {
+		return this.memberCtl.writeMemberSync(admin, st);
 	}
 
 	/**
 	 * 현재 설정 기준으로 모든 프로비저닝된 구성원의 shares 문서를 다시 기록(교사). 공동 공간 삭제 시,
 	 * 구성원이 더 이상 존재하지 않는 공유 DB를 계속 동기화하지 않도록 shares에서 제거한다.
 	 */
-	async refreshMemberShares(): Promise<void> {
-		const s = this.settings;
-		if (s.role !== "manager") return;
-		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
-			this.logger.warn(t("command.enter_the_admin_account_first"), true);
-			return;
-		}
-		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
-		for (const st of s.members) {
-			if (st.provisioned && st.remoteDb) await this.writeMemberSync(admin, st);
-		}
+	refreshMemberShares(): Promise<void> {
+		return this.memberCtl.refreshMemberShares();
 	}
 
 	/**
