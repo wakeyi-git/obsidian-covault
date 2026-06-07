@@ -92,9 +92,41 @@ export class CoVaultPanelView extends ItemView {
 		c.addClass("covault-panel");
 		this.tabBar = c.createDiv({ cls: "covault-panel-tabs" });
 		this.body = c.createDiv({ cls: "covault-panel-body" });
+		this.attachEdgeScroll(this.tabBar);
 		if (!this.tabs().includes(this.activeTab)) this.activeTab = "sync";
 		this.renderTabBar();
 		this.renderSection();
+	}
+
+	/** 탭 바 좌우 가장자리에 포인터가 오면 자동으로 가로 스크롤. */
+	private attachEdgeScroll(el: HTMLElement): void {
+		const EDGE = 44; // 가장자리 감지 폭(px)
+		const SPEED = 10; // 프레임당 스크롤(px)
+		let dir = 0;
+		let raf = 0;
+		const step = (): void => {
+			if (dir === 0 || !el.isConnected) {
+				raf = 0;
+				return;
+			}
+			el.scrollLeft += dir * SPEED;
+			raf = requestAnimationFrame(step);
+		};
+		el.addEventListener("mousemove", (e) => {
+			if (el.scrollWidth <= el.clientWidth) {
+				dir = 0;
+				return;
+			}
+			const r = el.getBoundingClientRect();
+			const x = e.clientX - r.left;
+			if (x < EDGE && el.scrollLeft > 0) dir = -1;
+			else if (x > r.width - EDGE && el.scrollLeft < el.scrollWidth - el.clientWidth) dir = 1;
+			else dir = 0;
+			if (dir !== 0 && !raf) raf = requestAnimationFrame(step);
+		});
+		el.addEventListener("mouseleave", () => {
+			dir = 0;
+		});
 	}
 
 	async onClose(): Promise<void> {
