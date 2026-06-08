@@ -1,7 +1,7 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { errMessage } from "./core/util/err";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
-import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc, RtPartDoc, rtPartId } from "./core/model/types";
+import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc, RtPartDoc, rtPartId, RTPART_ID_PREFIX } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc } from "./core/model/types";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
@@ -412,6 +412,29 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		} catch {
 			return null;
 		}
+	}
+
+	/** PanelHost: 참여자가 지정된 모든 공유 파일(교사). 닫혀 있어도 목록에 유지해 재오픈하게 한다. */
+	async listRealtimeFiles(): Promise<Array<{ path: string; memberIds: string[] }>> {
+		if (this.settings.role !== "manager") return [];
+		const out: Array<{ path: string; memberIds: string[] }> = [];
+		const seen = new Set<string>();
+		for (const sync of this.mode?.getSyncs() ?? []) {
+			let docs: RtPartDoc[];
+			try {
+				docs = await sync.ctx.pouch.allDocsByPrefix<RtPartDoc>(RTPART_ID_PREFIX);
+			} catch {
+				continue;
+			}
+			for (const d of docs) {
+				if (!d || d.deleted || !Array.isArray(d.memberIds)) continue;
+				const path = sync.ctx.toLocalPath(d.dbPath);
+				if (seen.has(path)) continue;
+				seen.add(path);
+				out.push({ path, memberIds: d.memberIds });
+			}
+		}
+		return out;
 	}
 
 	/** PanelHost: 공유 파일 읽기 전용 정책 토글(교사). 켜면 구성원은 실시간 세션 활성 파일만 편집 가능. */

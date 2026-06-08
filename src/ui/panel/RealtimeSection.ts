@@ -89,13 +89,13 @@ export class RealtimeSection implements PanelSection {
 				}),
 			);
 
-		// 활성 세션(라이브).
+		// 활성 세션(라이브) + 지정된 파일. 활성 파일 카드는 강조되고, 그 아래 참여자 칩이 붙는다.
 		c.createDiv({ cls: "covault-dash-label", text: t("realtime.active_sessions") });
 		this.sessionEl = c.createDiv({ cls: "covault-rt-session" });
-		this.renderSessions();
+		void this.renderSessions();
 
-		// 이 파일 실시간 참여자.
-		this.partEl = c.createDiv();
+		// 활성 파일 참여자 칩(별도 제목/파일명 없이 강조된 카드 아래에 붙음).
+		this.partEl = c.createDiv({ cls: "covault-rt-partbox" });
 		void this.renderFileParticipants();
 
 		// 문제 해결.
@@ -117,7 +117,7 @@ export class RealtimeSection implements PanelSection {
 		if (s.realtimeEnabled) {
 			c.createDiv({ cls: "covault-dash-label", text: t("realtime.active_sessions") });
 			this.sessionEl = c.createDiv({ cls: "covault-rt-session" });
-			this.renderSessions();
+			void this.renderSessions();
 		}
 
 		const actions = c.createDiv({ cls: "covault-panel-actions" });
@@ -136,33 +136,58 @@ export class RealtimeSection implements PanelSection {
 		row.createSpan({ cls: "covault-rt-val", text: value });
 	}
 
-	/** 현재 활성 세션 목록(파일·참가자·열기). */
-	private renderSessions(): void {
+	/**
+	 * 실시간 파일 목록 — 현재 열린 세션 + 참여자가 지정된(닫혀 있어도) 파일을 합쳐 보여준다.
+	 * 탭을 닫아도 카드가 유지되어 클릭 한 번으로 다시 열 수 있다. 활성 파일 카드는 테두리 강조.
+	 */
+	private async renderSessions(): Promise<void> {
 		const el = this.sessionEl;
 		if (!el) return;
-		const sessions = this.host.realtimeSessions();
+		const open = this.host.realtimeSessions(); // [{path, participants}] 이 기기에서 열린 세션
+		const configured = this.manager ? await this.host.listRealtimeFiles() : []; // 지정된 파일(닫혀도)
+		if (this.sessionEl !== el) return; // 비동기 대기 중 재드로우되었으면 중단
+
+		type Row = { path: string; open: boolean; participants: number; assigned: number | null };
+		const byPath = new Map<string, Row>();
+		for (const c of configured) byPath.set(c.path, { path: c.path, open: false, participants: 0, assigned: c.memberIds.length });
+		for (const o of open) {
+			const r = byPath.get(o.path) ?? { path: o.path, open: false, participants: 0, assigned: null };
+			r.open = true;
+			r.participants = o.participants;
+			byPath.set(o.path, r);
+		}
+		const rows = [...byPath.values()].sort((a, b) => Number(b.open) - Number(a.open) || a.path.localeCompare(b.path));
+		const activePath = this.host.app.workspace.getActiveFile()?.path ?? "";
+
 		// 변화 없으면 재구성 생략(불필요한 DOM 교체로 카드 클릭이 씹히는 것 방지).
-		const sig = sessions.map((s) => `${s.path}:${s.participants}`).join("|");
+		const sig = rows.map((r) => `${r.path}:${r.open ? r.participants : "-"}:${r.assigned ?? "-"}`).join("|") + "#" + activePath;
 		if (sig === this.sessSig && el.childElementCount > 0) return;
 		this.sessSig = sig;
 		el.empty();
-		if (sessions.length === 0) {
+		if (rows.length === 0) {
 			el.createDiv({ cls: "covault-cr-muted", text: t("realtime.session_none") });
 			return;
 		}
-		for (const ses of sessions) {
+		for (const r of rows) {
 			// 카드 전체를 클릭하면 파일이 열린다(별도 '열기' 버튼 제거).
 			const box = el.createDiv({ cls: "covault-cr-card covault-rt-sescard" });
+			if (r.path === activePath) box.addClass("is-active"); // 활성 파일 강조
 			box.setAttr("role", "button");
 			box.setAttr("aria-label", t("dashboard.open"));
-			box.onclick = () => this.openFile(ses.path);
+			box.onclick = () => this.openFile(r.path);
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
-			head.createSpan({ cls: "covault-cr-card-title", text: ses.path.split("/").pop() ?? ses.path });
-			const badge = head.createSpan({ cls: "covault-cr-badge is-accent" });
-			setIcon(badge.createSpan(), "users");
-			badge.createSpan({ text: t("realtime.participants_n", { n: ses.participants }) });
-			box.createDiv({ cls: "covault-cr-muted", text: ses.path });
+			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
+			if (r.open) {
+				const badge = head.createSpan({ cls: "covault-cr-badge is-accent" });
+				setIcon(badge.createSpan(), "users");
+				badge.createSpan({ text: t("realtime.participants_n", { n: r.participants }) });
+			} else if (r.assigned != null) {
+				const badge = head.createSpan({ cls: "covault-cr-badge" });
+				setIcon(badge.createSpan(), "user-check");
+				badge.createSpan({ text: t("realtime.assigned_n", { n: r.assigned }) });
+			}
+			box.createDiv({ cls: "covault-cr-muted", text: r.path });
 		}
 	}
 
@@ -189,8 +214,7 @@ export class RealtimeSection implements PanelSection {
 		const current = await this.host.getFileRealtimeParticipants(f.path); // null=기본값
 		if (this.host.app.workspace.getActiveFile()?.path !== f.path) return;
 		el.empty();
-		el.createDiv({ cls: "covault-dash-label", text: t("realtime.file_participants") });
-		el.createDiv({ cls: "covault-rt-partfile", text: f.basename });
+		// 제목·파일명 없음 — 위 목록에서 강조된(활성) 카드가 어떤 파일인지 알려준다.
 		// 기본값: 읽기 전용 정책이면 '아무도', 해제 상태면 '전원'(게이트와 일관).
 		const defaultEveryone = !s.sharedReadOnly;
 		const selected = new Set(current ?? (defaultEveryone ? sp.members : []));
@@ -221,7 +245,7 @@ export class RealtimeSection implements PanelSection {
 	}
 
 	private refreshLive(): void {
-		if (this.sessionEl) this.renderSessions();
+		if (this.sessionEl) void this.renderSessions();
 		if (this.partEl) void this.renderFileParticipants();
 	}
 

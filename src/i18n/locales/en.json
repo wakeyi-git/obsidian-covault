@@ -27,7 +27,6 @@
 		"secret_missing_hint": "No space secret on this device, so token reissue/redeploy is disabled (it would delete all tokens). Enter the same secret in the Settings tab to redeploy.",
 		"shared_readonly": "Shared files read-only",
 		"shared_readonly_desc": "Members can't freely edit shared-space notes; a note is editable only while it has an active realtime session (i.e., they're a participant).",
-		"file_participants": "Realtime participants for this file",
 		"file_participants_hint": "Only checked members join the live session (others use file sync). The default is nobody when shared files are read-only, everyone when not. Students pick up changes when they reopen the file.",
 		"part_not_shared": "Not a shared-space file — can't set participants.",
 		"member_allowed": "{name}: realtime allowed",
@@ -67,7 +66,8 @@
 		"realtime_snapshot_saved": "Realtime snapshot saved: {path}",
 		"realtime_unsupported_excalidraw_realtime_support": "Realtime unsupported: {path} — Excalidraw realtime supports only the .excalidraw.md format (saves won't propagate).",
 		"realtime_snapshot_not_saved_may_not": "Realtime snapshot not saved ({reason}): {path} — may not propagate to non-realtime members.",
-		"snapshot_save_failed": "Snapshot save failed: {path} — {error}"
+		"snapshot_save_failed": "Snapshot save failed: {path} — {error}",
+		"assigned_n": "{n} assigned"
 	},
 	"dashboard": {
 		"dashboard": "Dashboard",

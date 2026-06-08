@@ -92,6 +92,8 @@ export interface RealtimeHost {
 	realtimeActiveFile(): { path: string; participants: number } | null;
 	/** 현재(이 기기) 활성 실시간 세션 목록. */
 	realtimeSessions(): Array<{ path: string; participants: number }>;
+	/** 참여자가 지정된 모든 공유 파일(교사). 닫혀 있어도 목록 유지용. */
+	listRealtimeFiles(): Promise<Array<{ path: string; memberIds: string[] }>>;
 	/** 구성원별 실시간 허용/차단(교사). 차단=토큰 미발급 → 파일 동기화만. */
 	setMemberRealtime(memberId: string, allowed: boolean): Promise<void>;
 	/** 파일의 실시간 참여자 명단(null=전원/미지정). */
