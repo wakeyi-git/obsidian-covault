@@ -80,6 +80,8 @@ export interface SettingsHost extends Plugin {
 	realtimeTokenReceived(): boolean;
 	/** 실시간 연결 상태 진단(로그 패널에 출력). */
 	realtimeStatus(): Promise<void>;
+	/** 공유 파일 읽기 전용 정책 토글(교사). 실시간 탭과 공유. */
+	setSharedReadOnly(on: boolean): Promise<void>;
 	redeployRealtime(): Promise<void>;
 	exportSettingsJson(): string;
 	importSettingsJson(json: string): Promise<{ ok: boolean; error?: string }>;
@@ -286,6 +288,17 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 		// 공유 공간 (모둠/학급)
 		const shared = this.group(t("settings.shared_spaces_group_workspace"), t("settings.pick_members_and_deploy_to_create"));
+		// 공유 파일 읽기 전용 정책(전 공동 공간 공통) — 실시간 탭에도 동일 토글.
+		shared.addSetting((set) =>
+			set
+				.setName(t("realtime.shared_readonly"))
+				.setDesc(t("realtime.shared_readonly_desc"))
+				.addToggle((tg) =>
+					tg.setValue(!!s.sharedReadOnly).onChange(async (v) => {
+						await this.host.setSharedReadOnly(v);
+					}),
+				),
+		);
 		s.sharedSpaces.forEach((sp, i) => this.renderSharedCard(shared, sp, i));
 		shared.addSetting((set) =>
 			set.setClass("covault-add-row").addButton((b) =>

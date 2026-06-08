@@ -175,20 +175,23 @@ export class RealtimeSection implements PanelSection {
 		if (this.host.app.workspace.getActiveFile()?.path !== f.path) return;
 		el.empty();
 		el.createDiv({ cls: "covault-dash-label", text: t("realtime.file_participants") });
-		el.createDiv({ cls: "covault-cr-muted", text: f.basename });
+		el.createDiv({ cls: "covault-cr-muted covault-rt-partfile", text: f.basename });
 		const selected = new Set(current ?? sp.members);
+		const grid = el.createDiv({ cls: "covault-rt-parts" });
 		for (const id of sp.members) {
 			const m = s.members.find((x) => x.memberId === id);
-			const row = el.createDiv({ cls: "covault-cr-check" });
-			const cb = row.createEl("input", { attr: { type: "checkbox" } });
+			const lab = grid.createEl("label", { cls: "covault-rt-part" });
+			const cb = lab.createEl("input", { attr: { type: "checkbox" } });
 			cb.checked = selected.has(id);
 			cb.onchange = async () => {
 				if (cb.checked) selected.add(id);
 				else selected.delete(id);
+				lab.toggleClass("is-on", cb.checked);
 				const ids = selected.size >= sp.members.length ? null : [...selected];
 				await this.host.setFileRealtimeParticipants(f.path, ids);
 			};
-			row.createSpan({ text: m?.memberName || id });
+			lab.toggleClass("is-on", cb.checked);
+			lab.createSpan({ text: m?.memberName || id });
 		}
 		el.createDiv({ cls: "covault-cr-muted", text: t("realtime.file_participants_hint") });
 	}

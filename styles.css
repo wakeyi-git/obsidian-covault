@@ -686,6 +686,43 @@
 .covault-rt-session {
 	margin: 4px 0 10px;
 }
+/* 활성 세션 카드 헤더: 좁은 폭에서 배지·버튼이 넘치지 않게 줄바꿈 */
+.covault-rt-session .covault-cr-card-head {
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* 이 파일 실시간 참여자: 칩 그리드 */
+.covault-rt-partfile {
+	font-weight: 600;
+	margin: 2px 0 6px;
+}
+.covault-rt-parts {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+	gap: 6px;
+	margin: 2px 0 8px;
+}
+.covault-rt-part {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+	cursor: pointer;
+	font-size: 13px;
+	user-select: none;
+}
+.covault-rt-part input {
+	margin: 0;
+	flex: 0 0 auto;
+}
+.covault-rt-part.is-on {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
 
 /* 대화(메신저) 탭 */
 .covault-chat {
