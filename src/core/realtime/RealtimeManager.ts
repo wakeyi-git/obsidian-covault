@@ -59,10 +59,49 @@ export class RealtimeManager {
 		private getSpaces: () => Array<{ id: string; folder: string; token?: string; kind?: "share" | "homeroom" | "mirror" }>,
 		/** 로컬 경로 → 담당 동기화 링크(스냅샷 쓰기용). main이 현재 mode 기준으로 주입. */
 		private getSyncForPath: (localPath: string) => SnapshotTarget | undefined = () => undefined,
+		/** 이 파일의 라이브 세션에 참여 가능한가(파일별 참여자 게이팅). main이 주입(기본 전원 허용). */
+		private canEditRealtime: (localPath: string) => Promise<boolean> = async () => true,
 	) {}
+
+	// 파일별 참여 허용 캐시(비동기 조회 결과). 파일이 닫히면 비워 재오픈 시 재평가.
+	private participantOk = new Map<string, boolean>();
+	private participantPending = new Set<string>();
 
 	private get settings() {
 		return this.core.settings;
+	}
+
+	/** 파일별 참여자 변경 시 재평가(교사 지정 후, 또는 수신 후). */
+	invalidateParticipants(path?: string): void {
+		if (path) {
+			this.participantOk.delete(path);
+			this.participantPending.delete(path);
+		} else {
+			this.participantOk.clear();
+			this.participantPending.clear();
+		}
+		this.syncOpenEditors();
+	}
+
+	/** 캐시 기반 동기 게이트. 미확인이면 비동기 조회를 띄우고 일단 false(조회 끝나면 재호출). */
+	private allowedToStart(path: string): boolean {
+		const cached = this.participantOk.get(path);
+		if (cached !== undefined) return cached;
+		if (!this.participantPending.has(path)) {
+			this.participantPending.add(path);
+			void this.canEditRealtime(path)
+				.then((ok) => {
+					this.participantPending.delete(path);
+					this.participantOk.set(path, ok);
+					this.syncOpenEditors();
+				})
+				.catch(() => {
+					this.participantPending.delete(path);
+					this.participantOk.set(path, true);
+					this.syncOpenEditors();
+				});
+		}
+		return false;
 	}
 
 	/** 실시간 세션 중인 파일인가 (applier 공존 판단용). */
@@ -126,11 +165,16 @@ export class RealtimeManager {
 		for (const path of [...this.sessions.keys()]) {
 			if (!targets.has(path)) void this.endSession(path);
 		}
+		// 닫힌 파일의 참여 캐시 정리(재오픈 시 최신 지정 반영).
+		for (const p of [...this.participantOk.keys()]) if (!targets.has(p)) this.participantOk.delete(p);
 
 		// 열린 공유 파일에 세션 보장 + 바인딩
 		for (const [path, tgt] of targets) {
 			let session = this.sessions.get(path);
-			if (!session) session = this.startSession(path, tgt.kind);
+			if (!session) {
+				if (!this.allowedToStart(path)) continue; // 파일별 참여자에 없으면 라이브 미접속(파일 동기화만)
+				session = this.startSession(path, tgt.kind);
+			}
 			if (!session?.ready) continue;
 			if (session.kind === "md" && tgt.kind === "md") this.bindViews(session, tgt.views);
 			else if (session.kind === "excalidraw" && tgt.kind === "excalidraw") this.bindExcalidraw(session, tgt.view);
@@ -560,6 +604,8 @@ export class RealtimeManager {
 	 */
 	async refresh(): Promise<void> {
 		for (const path of [...this.sessions.keys()]) await this.endSession(path);
+		this.participantOk.clear();
+		this.participantPending.clear();
 		this.syncOpenEditors();
 	}
 

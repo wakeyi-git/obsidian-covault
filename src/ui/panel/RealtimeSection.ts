@@ -11,6 +11,7 @@ import { t } from "../../i18n";
 export class RealtimeSection implements PanelSection {
 	private root: HTMLElement | null = null;
 	private sessionEl: HTMLElement | null = null;
+	private partEl: HTMLElement | null = null;
 	private refs: EventRef[] = [];
 	private timer: number | null = null;
 
@@ -34,6 +35,7 @@ export class RealtimeSection implements PanelSection {
 		c.empty();
 		c.addClass("covault-panel-section");
 		this.sessionEl = null;
+		this.partEl = null;
 		const s = this.host.settings;
 
 		c.createDiv({ cls: "covault-dash-label", text: t("realtime.tab") });
@@ -71,6 +73,10 @@ export class RealtimeSection implements PanelSection {
 		c.createDiv({ cls: "covault-dash-label", text: t("realtime.current_session") });
 		this.sessionEl = c.createDiv({ cls: "covault-rt-session" });
 		this.renderSession();
+
+		// 이 파일 실시간 참여자(활성 파일이 공유 공간에 있을 때).
+		this.partEl = c.createDiv();
+		void this.renderFileParticipants();
 
 		// 구성원별 실시간 허용/차단.
 		const members = s.members.filter((m) => m.memberId && m.provisioned);
@@ -162,6 +168,41 @@ export class RealtimeSection implements PanelSection {
 
 	private refreshSession(): void {
 		if (this.sessionEl) this.renderSession();
+		if (this.partEl) void this.renderFileParticipants();
+	}
+
+	/** 활성 파일이 공유 공간에 있으면 파일별 실시간 참여자 선택 UI를 그린다(교사). */
+	private async renderFileParticipants(): Promise<void> {
+		const el = this.partEl;
+		if (!el || !this.manager) return;
+		const s = this.host.settings;
+		const f = this.host.app.workspace.getActiveFile();
+		const sp = f ? s.sharedSpaces.find((x) => x.folder && (f.path === x.folder || f.path.startsWith(x.folder + "/"))) : undefined;
+		if (!f || !sp || sp.members.length === 0) {
+			el.empty();
+			return;
+		}
+		const current = await this.host.getFileRealtimeParticipants(f.path); // null=전원
+		if (this.host.app.workspace.getActiveFile()?.path !== f.path) return; // 비동기 중 파일이 바뀌면 무시
+		el.empty();
+		el.createDiv({ cls: "covault-dash-label", text: t("realtime.file_participants") });
+		el.createDiv({ cls: "covault-cr-muted", text: f.basename });
+		const selected = new Set(current ?? sp.members);
+		for (const id of sp.members) {
+			const m = s.members.find((x) => x.memberId === id);
+			const row = el.createDiv({ cls: "covault-cr-check" });
+			const cb = row.createEl("input", { attr: { type: "checkbox" } });
+			cb.checked = selected.has(id);
+			cb.onchange = async () => {
+				if (cb.checked) selected.add(id);
+				else selected.delete(id);
+				// 전원 선택 = 지정 해제(기본). 일부면 명단 지정.
+				const ids = selected.size >= sp.members.length ? null : [...selected];
+				await this.host.setFileRealtimeParticipants(f.path, ids);
+			};
+			row.createSpan({ text: m?.memberName || id });
+		}
+		el.createDiv({ cls: "covault-cr-muted", text: t("realtime.file_participants_hint") });
 	}
 
 	dispose(): void {
@@ -171,5 +212,6 @@ export class RealtimeSection implements PanelSection {
 		this.refs = [];
 		this.root = null;
 		this.sessionEl = null;
+		this.partEl = null;
 	}
 }

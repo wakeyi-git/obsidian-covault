@@ -1,7 +1,7 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { errMessage } from "./core/util/err";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
-import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc } from "./core/model/types";
+import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc, RtPartDoc, rtPartId } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc } from "./core/model/types";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
@@ -84,6 +84,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			this.core,
 			() => this.core.sharedSpaces,
 			(p) => this.syncForLocalPath(p), // 주기적 스냅샷 쓰기 대상
+			(p) => this.canEditRealtime(p), // 파일별 참여자 게이팅
 		);
 		this.core.isRealtimeActive = (p) => this.realtime.isActive(p);
 		this.realtimeCtl = new RealtimeController({
@@ -369,6 +370,66 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		const f = this.app.workspace.getActiveFile();
 		if (!f || !this.realtime?.isActive(f.path)) return null;
 		return { path: f.path, participants: this.realtime.presenceFor(f.path) };
+	}
+
+	/** 파일별 실시간 참여 가능 여부(게이트). 교사·미지정 파일은 항상 허용, 지정 파일은 명단에 든 구성원만. */
+	private async canEditRealtime(path: string): Promise<boolean> {
+		const s = this.settings;
+		if (s.role === "manager") return true; // 교사는 모든 팀 참관 가능
+		const sync = this.syncForLocalPath(path);
+		if (!sync) return true;
+		const dbPath = sync.ctx.toDbPath(path);
+		if (!dbPath) return true;
+		try {
+			const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath));
+			if (!doc || doc.deleted) return true; // 지정 없음 → 전원 참여(기본)
+			return doc.memberIds.includes(s.userId);
+		} catch {
+			return true;
+		}
+	}
+
+	/** PanelHost: 파일의 실시간 참여자 명단(null=전원/미지정). */
+	async getFileRealtimeParticipants(path: string): Promise<string[] | null> {
+		const sync = this.syncForLocalPath(path);
+		if (!sync) return null;
+		const dbPath = sync.ctx.toDbPath(path);
+		if (!dbPath) return null;
+		try {
+			const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath));
+			return doc && !doc.deleted ? doc.memberIds : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/** PanelHost: 파일별 실시간 참여자 지정(교사). null=전원(지정 해제). */
+	async setFileRealtimeParticipants(path: string, memberIds: string[] | null): Promise<void> {
+		if (this.settings.role !== "manager") return;
+		const sync = this.syncForLocalPath(path);
+		if (!sync) {
+			this.logger.warn(t("realtime.part_not_shared"), true);
+			return;
+		}
+		const dbPath = sync.ctx.toDbPath(path);
+		if (!dbPath) return;
+		const id = rtPartId(dbPath);
+		if (memberIds === null) {
+			const existing = await sync.ctx.pouch.get<RtPartDoc>(id).catch(() => null);
+			if (existing && !existing.deleted) await sync.ctx.pouch.put({ ...existing, deleted: true, updatedAtMs: Date.now() });
+		} else {
+			await sync.ctx.pouch.put({
+				_id: id,
+				type: "rtpart",
+				schemaVersion: 1,
+				workspaceId: this.settings.workspaceId,
+				dbPath,
+				memberIds,
+				updatedAtMs: Date.now(),
+				updatedBy: this.settings.userId,
+			} as RtPartDoc);
+		}
+		this.realtime.invalidateParticipants(path);
 	}
 
 	/** PanelHost: 구성원별 실시간 허용/차단(교사). 차단=토큰 미발급·shares realtime:false → 파일 동기화만. */

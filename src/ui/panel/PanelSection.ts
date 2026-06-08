@@ -92,6 +92,10 @@ export interface RealtimeHost {
 	realtimeActiveFile(): { path: string; participants: number } | null;
 	/** 구성원별 실시간 허용/차단(교사). 차단=토큰 미발급 → 파일 동기화만. */
 	setMemberRealtime(memberId: string, allowed: boolean): Promise<void>;
+	/** 파일의 실시간 참여자 명단(null=전원/미지정). */
+	getFileRealtimeParticipants(path: string): Promise<string[] | null>;
+	/** 파일별 실시간 참여자 지정(교사). null=전원(지정 해제). */
+	setFileRealtimeParticipants(path: string, memberIds: string[] | null): Promise<void>;
 }
 
 /** 과제(배포·제출·채점). */

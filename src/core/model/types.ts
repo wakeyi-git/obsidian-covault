@@ -272,6 +272,26 @@ export function messagePrefix(channel?: string): string {
 	return channel ? `${MESSAGE_ID_PREFIX}${channel}:` : MESSAGE_ID_PREFIX;
 }
 
+/**
+ * 파일별 실시간 편집 참여자(공유 공간 DB에 저장). 문서가 없으면 그 파일은 공간 전원이 참여(기본).
+ * 있으면 memberIds에 든 구성원만 라이브 세션에 참여(나머지는 파일 동기화만). 협업 환경의 소프트 게이팅.
+ */
+export interface RtPartDoc extends PouchDocBase {
+	type: "rtpart";
+	schemaVersion: number;
+	workspaceId: string;
+	dbPath: string; // 공간 폴더 기준 상대 경로
+	memberIds: string[];
+	updatedAtMs: number;
+	updatedBy: string;
+	deleted?: boolean;
+}
+
+export const RTPART_ID_PREFIX = "rtpart:";
+export function rtPartId(dbPath: string): string {
+	return `${RTPART_ID_PREFIX}${dbPath}`;
+}
+
 /** 주간 시간표(학급 공유 DB, 주(週)별 문서). 주 시작(월요일) 날짜키로 분리. */
 export interface TimetableDoc extends PouchDocBase {
 	type: "timetable";
