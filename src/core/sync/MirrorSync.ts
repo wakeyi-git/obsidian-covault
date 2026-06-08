@@ -48,6 +48,7 @@ export class MirrorSync {
 	private readonly fullSyncRunner: FullSync;
 	private started = false;
 	private pausedByHidden = false; // 백그라운드 일시정지로 replication을 멈춘 상태
+	private transferredSinceActive = false; // 직전 active 구간에서 실제 문서가 오갔는지(빈 재연결 로그 억제)
 
 	constructor(core: CoreServices, opts: MirrorSyncOptions) {
 		const remoteDb = opts.remoteDb;
@@ -174,6 +175,10 @@ export class MirrorSync {
 	/** live replication 핸들러(시작/재개 공용). */
 	private replicationHandlers(): ReplicationHandlers {
 		return {
+			onChange: (_dir, n) => {
+				if (n > 0) this.transferredSinceActive = true;
+				this.ctx.status.state = "syncing";
+			},
 			onActive: () => {
 				this.ctx.status.state = "syncing";
 			},
@@ -181,8 +186,14 @@ export class MirrorSync {
 				if (this.ctx.status.state === "error") return;
 				// 오류(예: 삭제된 DB·오프라인)면 offline, 아니면 idle. 상태가 바뀔 때만 로그(스팸 방지).
 				const next = err ? "offline" : "idle";
-				if (this.ctx.status.state === next) return;
+				const wasActivity = this.transferredSinceActive;
+				this.transferredSinceActive = false;
+				const stateChanged = this.ctx.status.state !== next;
 				this.ctx.status.state = next;
+				// idle 로그는 실제 문서가 오간 직후에만 — 빈 재연결/하트비트로 인한 반복 로그를 억제.
+				// offline은 상태 전이 시 항상 알린다.
+				if (!stateChanged) return;
+				if (!err && !wasActivity) return;
 				this.ctx.logger.info(
 					err
 						? t("sync.sync_waiting_offline_error", { db: this.ctx.remoteDb })
