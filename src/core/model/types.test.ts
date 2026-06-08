@@ -10,6 +10,10 @@ import {
 	isTextAnchor,
 	isExcalidrawAnchor,
 	FeedbackAnchor,
+	messageId,
+	messagePrefix,
+	dmChannel,
+	CLASS_CHANNEL,
 } from "./types";
 
 describe("classroom id 헬퍼", () => {
@@ -35,6 +39,22 @@ describe("classroom id 헬퍼", () => {
 	it("서로 다른 학생/날짜는 키가 분리된다", () => {
 		expect(assignmentStateId("a1", "member_a")).not.toBe(assignmentStateId("a1", "member_b"));
 		expect(routineStateId("r1", "member_a", "2026-06-06")).not.toBe(routineStateId("r1", "member_a", "2026-06-07"));
+	});
+});
+
+describe("message id ↔ prefix 정합(DM 목록 조회)", () => {
+	it("채널 prefix는 그 채널 메시지 id의 접두사여야 한다(class)", () => {
+		const id = messageId(CLASS_CHANNEL, "u1");
+		expect(id.startsWith(messagePrefix(CLASS_CHANNEL))).toBe(true);
+	});
+
+	it("DM 채널도 prefix가 정확히 매칭(이중 콜론 회귀 방지)", () => {
+		const ch = dmChannel("member_a"); // "dm:member_a"
+		const id = messageId(ch, "u1"); // "message:dm:member_a:u1"
+		expect(messagePrefix(ch)).toBe("message:dm:member_a:");
+		expect(id.startsWith(messagePrefix(ch))).toBe(true);
+		// 과거 버그: messagePrefix("dm:")="message:dm::"는 어떤 DM id도 매칭하지 못했다.
+		expect(id.startsWith("message:dm::")).toBe(false);
 	});
 });
 

@@ -857,8 +857,9 @@ export class ClassroomController {
 			docs = await this.d.classroom.listByPrefix<MessageDoc>(messagePrefix(CLASS_CHANNEL));
 		} else {
 			const sync = this.dmSync(channel);
-			// 개인 mirror에는 그 1:1 대화만 있으므로 dm 전체 prefix로 조회.
-			docs = sync ? await sync.ctx.pouch.allDocsByPrefix<MessageDoc>(messagePrefix("dm:")) : [];
+			// 이 채널의 정확한 prefix(message:dm:<id>:)로 조회. 교사·학생이 같은 channel을 쓰므로 양쪽 일치.
+			// (이전엔 messagePrefix("dm:")가 "message:dm::"를 만들어 어떤 DM 메시지도 매칭되지 않았다.)
+			docs = sync ? await sync.ctx.pouch.allDocsByPrefix<MessageDoc>(messagePrefix(channel)) : [];
 		}
 		return docs.filter((d) => !d.deleted).sort((a, b) => a.createdAtMs - b.createdAtMs);
 	}
