@@ -11,6 +11,7 @@ import {
 } from "../../../core/model/types";
 import { sortNotices, summarizeResponses, LessonSlot } from "../../../core/classroom/notices";
 import { weekStart, weekRangeLabel } from "../../../core/classroom/week";
+import { resolveSenderName, resolveMemberNames } from "../../../core/classroom/people";
 import { TimetableView } from "./TimetableView";
 import { t, formatDate } from "../../../i18n";
 
@@ -235,7 +236,7 @@ export class NoticesView {
 			const prog = row.createDiv({ cls: "covault-cr-progress" });
 			prog.createEl("i").style.width = total > 0 ? `${Math.round((sum.readCount / total) * 100)}%` : "0%";
 			if (sum.unread.length > 0)
-				card.createDiv({ cls: "covault-cr-muted", text: t("dashboard.unread_list", { names: sum.unread.join(", ") }) });
+				card.createDiv({ cls: "covault-cr-muted", text: t("dashboard.unread_list", { names: resolveMemberNames(sum.unread, this.host.settings.members).join(", ") }) });
 			this.renderComments(card, n, sum.comments);
 			// 교사도 학급 전체 댓글을 달 수 있다(질문 답글은 각 질문 아래 인라인).
 			this.renderCommentBox(card, n);
@@ -266,6 +267,11 @@ export class NoticesView {
 		}
 	}
 
+	private senderName(byUser: string, byRole: "member" | "manager"): string {
+		const s = this.host.settings;
+		return resolveSenderName(byUser, byRole, { ownUserId: s.userId, ownName: s.displayName, members: s.members, teacherLabel: t("chat.teacher") });
+	}
+
 	private renderComments(parent: HTMLElement, n: NoticeDoc, comments: ResponseDoc[]): void {
 		if (comments.length === 0) return;
 		// 최상위(댓글·질문) + 답글(parentId)로 분리해 답글을 부모 아래 들여쓴다.
@@ -279,11 +285,11 @@ export class NoticesView {
 		for (const cmt of tops) {
 			const row = wrap.createDiv({ cls: "covault-dash-comment" });
 			if (cmt.kind === "question") setIcon(row.createSpan({ cls: "covault-dash-qicon" }), "help-circle");
-			row.createSpan({ cls: "covault-feedback-author", text: cmt.byUser });
+			row.createSpan({ cls: "covault-feedback-author", text: this.senderName(cmt.byUser, cmt.byRole) });
 			row.createSpan({ text: ` ${cmt.body ?? ""}` });
 			for (const rep of (repliesByParent.get(cmt._id) ?? []).sort((a, b) => a.createdAtMs - b.createdAtMs)) {
 				const rr = wrap.createDiv({ cls: "covault-dash-comment covault-dash-reply-row" });
-				rr.createSpan({ cls: "covault-feedback-author", text: rep.byUser });
+				rr.createSpan({ cls: "covault-feedback-author", text: this.senderName(rep.byUser, rep.byRole) });
 				rr.createSpan({ text: ` ${rep.body ?? ""}` });
 			}
 			// 교사: 학생 질문에 답글(해당 학생 mirror에 비공개로 기록).

@@ -2,6 +2,7 @@ import { App, FuzzySuggestModal, TFile, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { MessageDoc, CLASS_CHANNEL, dmChannel } from "../../core/model/types";
 import { parseMessageBody } from "../../core/classroom/messages";
+import { resolveSenderName } from "../../core/classroom/people";
 import { t, formatDate } from "../../i18n";
 
 interface Channel {
@@ -174,7 +175,7 @@ export class ChatSection implements PanelSection {
 	private renderMessage(parent: HTMLElement, m: MessageDoc, mine: boolean): void {
 		const row = parent.createDiv({ cls: `covault-chat-msg${mine ? " is-mine" : ""}` });
 		const meta = row.createDiv({ cls: "covault-chat-meta" });
-		meta.createSpan({ cls: "covault-feedback-author", text: m.byUser });
+		meta.createSpan({ cls: "covault-feedback-author", text: this.senderName(m.byUser, m.byRole) });
 		meta.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(m.createdAtMs)) });
 		if (mine) {
 			const del = meta.createEl("button", { cls: "clickable-icon covault-chat-del" });
@@ -211,6 +212,11 @@ export class ChatSection implements PanelSection {
 				}
 			}
 		}
+	}
+
+	private senderName(byUser: string, byRole: "member" | "manager"): string {
+		const s = this.host.settings;
+		return resolveSenderName(byUser, byRole, { ownUserId: s.userId, ownName: s.displayName, members: s.members, teacherLabel: t("chat.teacher") });
 	}
 
 	private empty(parent: HTMLElement, text: string): void {
