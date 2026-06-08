@@ -389,12 +389,14 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		if (sync.ctx.remoteDb === s.remoteDb) return true; // 개인 mirror(교사 1:1)는 게이팅 없음
 		const dbPath = sync.ctx.toDbPath(path);
 		if (!dbPath) return true;
+		// 지정 문서가 없을 때 기본값: 읽기 전용 정책이면 '아무도', 아니면 '전원'(일관성).
+		const defaultEveryone = !s.sharedReadOnly;
 		try {
 			const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath));
-			if (!doc || doc.deleted) return false; // 공유 파일 기본 = 아무도 라이브 참여 안 함
+			if (!doc || doc.deleted) return defaultEveryone;
 			return doc.memberIds.includes(s.userId);
 		} catch {
-			return false; // 지정 문서 없음 → 비참여
+			return defaultEveryone; // 지정 문서 없음 → 기본값
 		}
 	}
 

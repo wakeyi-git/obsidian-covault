@@ -701,8 +701,17 @@
 
 /* 이 파일 실시간 참여자: 칩 그리드 */
 .covault-rt-partfile {
-	font-weight: 600;
-	margin: 2px 0 6px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 700;
+	font-size: 0.95em;
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 4px;
+	padding: 4px 10px;
+	margin: 2px 0 8px;
 }
 .covault-rt-parts {
 	display: grid;

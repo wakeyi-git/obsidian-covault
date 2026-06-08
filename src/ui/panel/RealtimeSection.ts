@@ -13,6 +13,8 @@ export class RealtimeSection implements PanelSection {
 	private partEl: HTMLElement | null = null;
 	private refs: EventRef[] = [];
 	private timer: number | null = null;
+	private sessSig = ""; // 세션 목록 시그니처(변화 없으면 재구성 생략)
+	private partPath: string | null = null; // 마지막 렌더한 파일(같은 파일이면 타이머에 재구성 안 함)
 
 	constructor(private host: PanelHost) {}
 
@@ -35,6 +37,8 @@ export class RealtimeSection implements PanelSection {
 		c.addClass("covault-panel-section");
 		this.sessionEl = null;
 		this.partEl = null;
+		this.sessSig = "";
+		this.partPath = null;
 		const s = this.host.settings;
 
 		c.createDiv({ cls: "covault-dash-label", text: t("realtime.tab") });
@@ -136,8 +140,12 @@ export class RealtimeSection implements PanelSection {
 	private renderSessions(): void {
 		const el = this.sessionEl;
 		if (!el) return;
-		el.empty();
 		const sessions = this.host.realtimeSessions();
+		// 변화 없으면 재구성 생략(불필요한 DOM 교체로 카드 클릭이 씹히는 것 방지).
+		const sig = sessions.map((s) => `${s.path}:${s.participants}`).join("|");
+		if (sig === this.sessSig && el.childElementCount > 0) return;
+		this.sessSig = sig;
+		el.empty();
 		if (sessions.length === 0) {
 			el.createDiv({ cls: "covault-cr-muted", text: t("realtime.session_none") });
 			return;
@@ -164,23 +172,28 @@ export class RealtimeSection implements PanelSection {
 	}
 
 	/** 활성 파일이 공유 공간에 있으면 파일별 실시간 참여자 선택 UI(교사). */
-	private async renderFileParticipants(): Promise<void> {
+	private async renderFileParticipants(force = false): Promise<void> {
 		const el = this.partEl;
 		if (!el || !this.manager) return;
 		const s = this.host.settings;
 		const f = this.host.app.workspace.getActiveFile();
+		const path = f?.path ?? null;
+		// 같은 파일이면 재구성 생략 — 타이머가 그리드를 부수면서 체크 클릭이 씹히는 문제 방지.
+		if (!force && path === this.partPath) return;
+		this.partPath = path;
 		const sp = f ? s.sharedSpaces.find((x) => x.folder && (f.path === x.folder || f.path.startsWith(x.folder + "/"))) : undefined;
 		if (!f || !sp || sp.members.length === 0) {
 			el.empty();
 			return;
 		}
-		const current = await this.host.getFileRealtimeParticipants(f.path); // null=전원
+		const current = await this.host.getFileRealtimeParticipants(f.path); // null=기본값
 		if (this.host.app.workspace.getActiveFile()?.path !== f.path) return;
 		el.empty();
 		el.createDiv({ cls: "covault-dash-label", text: t("realtime.file_participants") });
-		el.createDiv({ cls: "covault-cr-muted covault-rt-partfile", text: f.basename });
-		// 기본값 = 아무도 아님(지정 문서가 곧 허용 명단). null/없음이면 빈 선택.
-		const selected = new Set(current ?? []);
+		el.createDiv({ cls: "covault-rt-partfile", text: f.basename });
+		// 기본값: 읽기 전용 정책이면 '아무도', 해제 상태면 '전원'(게이트와 일관).
+		const defaultEveryone = !s.sharedReadOnly;
+		const selected = new Set(current ?? (defaultEveryone ? sp.members : []));
 		const grid = el.createDiv({ cls: "covault-rt-parts" });
 		for (const id of sp.members) {
 			const m = s.members.find((x) => x.memberId === id);
@@ -191,8 +204,14 @@ export class RealtimeSection implements PanelSection {
 				if (cb.checked) selected.add(id);
 				else selected.delete(id);
 				lab.toggleClass("is-on", cb.checked);
-				// 아무도 선택 안 하면 지정 해제(문서 삭제 = 아무도), 있으면 명단 지정.
-				const ids = selected.size === 0 ? null : [...selected];
+				// 지정 문서를 삭제(null)하면 기본값으로 복귀: 전원기본이면 '전원선택', 아무도기본이면 '무선택'에서.
+				const ids = defaultEveryone
+					? selected.size >= sp.members.length
+						? null
+						: [...selected]
+					: selected.size === 0
+						? null
+						: [...selected];
 				await this.host.setFileRealtimeParticipants(f.path, ids);
 			};
 			lab.toggleClass("is-on", cb.checked);
