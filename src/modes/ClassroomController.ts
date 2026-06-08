@@ -219,9 +219,10 @@ export class ClassroomController {
 	 * - 중복: 같은 파일을 가리키는 게시 메타가 여럿이면 하나만 남기고 폐기(파일 프론트매터 uid 우선, 없으면 최신).
 	 * - 고아: 파일이 더 이상 없는 게시 메타 폐기.
 	 * - 끊긴 연결: 시간표 칸이 가리키는 수업 uid가 살아있지 않으면 칸 연결 제거.
+	 * - 고아 과제 기록: 정의가 사라진(삭제된) 과제의 학생 상태 문서를 soft-delete(학생 대시보드 잔재 제거).
 	 */
-	async cleanupClassroomDocs(): Promise<{ duplicates: number; orphans: number; danglingLinks: number }> {
-		const result = { duplicates: 0, orphans: 0, danglingLinks: 0 };
+	async cleanupClassroomDocs(): Promise<{ duplicates: number; orphans: number; danglingLinks: number; orphanAssignments: number }> {
+		const result = { duplicates: 0, orphans: 0, danglingLinks: 0, orphanAssignments: 0 };
 		if (this.d.settings().role !== "manager") {
 			this.d.logger.warn(t("command.available_in_manager_mode_only"), true);
 			return result;
@@ -271,6 +272,25 @@ export class ClassroomController {
 					result.danglingLinks++;
 				}
 			if (changed) await this.d.classroom.put({ ...tt, lessons });
+		}
+
+		// 4) 삭제된(정의가 사라진) 과제의 학생 상태 문서 정리 — 학생 미러에 soft-delete를 써서 학생 대시보드 잔재 제거.
+		const s = this.d.settings();
+		const liveAssignmentUids = new Set((s.assignments ?? []).map((d) => d.uid));
+		if (s.couchdbUrl && s.username && this.d.couchPassword()) {
+			const admin = new CouchAdmin(s.couchdbUrl, s.username, this.d.couchPassword());
+			for (const m of s.members) {
+				if (!m.memberId || !m.provisioned) continue;
+				const sync = this.d.memberSyncByRemoteDb(m.remoteDb);
+				if (!sync) continue;
+				const states = await sync.ctx.pouch.allDocsByPrefix<AssignmentStateDoc>(ASSIGNMENT_STATE_ID_PREFIX);
+				for (const st of states) {
+					if (!st.deleted && !liveAssignmentUids.has(st.assignmentUid)) {
+						await admin.putDoc(m.remoteDb, { ...st, deleted: true });
+						result.orphanAssignments++;
+					}
+				}
+			}
 		}
 
 		this.d.requestApply();

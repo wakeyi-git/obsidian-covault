@@ -447,7 +447,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	createTemplateFile(kind: "notice" | "lesson" | "assignment"): Promise<void> {
 		return this.classroomCtl.createTemplateFile(kind);
 	}
-	cleanupClassroomDocs(): Promise<{ duplicates: number; orphans: number; danglingLinks: number }> {
+	cleanupClassroomDocs(): Promise<{ duplicates: number; orphans: number; danglingLinks: number; orphanAssignments: number }> {
 		return this.classroomCtl.cleanupClassroomDocs();
 	}
 	/** 명령용: 로그 패널을 열고 중복/고아 학급 문서 정리 실행(결과는 로그에 표시). */

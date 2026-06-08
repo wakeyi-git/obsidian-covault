@@ -657,7 +657,7 @@
 		"open_panel": "Open panel",
 		"open_dashboard": "Open classroom dashboard",
 		"cleanup_classroom_docs": "Clean up duplicate/orphan classroom docs",
-		"cleanup_done": "Cleanup done — {duplicates} duplicates, {orphans} orphans, {danglingLinks} dangling timetable links removed.",
+		"cleanup_done": "Cleanup done — {duplicates} duplicates, {orphans} orphans, {danglingLinks} dangling timetable links, {orphanAssignments} leftover assignment records removed.",
 		"open_log_panel": "Open log panel",
 		"run_full_diagnostics_server_read_write": "Run full diagnostics (server, read/write permissions, realtime)",
 		"upload_only": "Upload only",
