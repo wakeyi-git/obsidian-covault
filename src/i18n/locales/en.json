@@ -17,8 +17,10 @@
 	},
 	"realtime": {
 		"tab": "Realtime",
+		"current_session": "Current session",
 		"session_none": "No shared document is being co-edited right now. Open a shared-folder note in edit mode.",
-		"disabled_hint": "Realtime is off.",
+		"off_hint": "Realtime is off. Turn it on to co-edit shared-folder notes character by character.",
+		"no_server_hint": "No Yjs server URL — realtime won't connect. Set it in the Settings tab.",
 		"participants_n": "{n} editing",
 		"redeploy_tokens": "Reissue / redeploy tokens",
 		"spaces_tokens": "Space tokens",

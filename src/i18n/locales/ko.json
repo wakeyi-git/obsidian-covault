@@ -17,8 +17,10 @@
 	},
 	"realtime": {
 		"tab": "실시간",
+		"current_session": "현재 세션",
 		"session_none": "지금 공동 편집 중인 공유 문서가 없습니다. 공유 폴더 노트를 편집 모드로 여세요.",
-		"disabled_hint": "실시간이 꺼져 있습니다.",
+		"off_hint": "실시간이 꺼져 있습니다. 켜면 공유 폴더 문서를 글자 단위로 공동 편집합니다.",
+		"no_server_hint": "Yjs 서버 URL이 없어 실시간이 연결되지 않습니다. 설정 탭에서 입력하세요.",
 		"participants_n": "참가자 {n}명",
 		"redeploy_tokens": "토큰 재발급·재배포",
 		"spaces_tokens": "공간 토큰",

@@ -5,9 +5,8 @@ import { t } from "../../i18n";
 
 /**
  * 실시간 공동 편집(Yjs) 제어·상태 탭.
- * - 상태: 켜짐/꺼짐 · 서버 · (교사)공간 시크릿 / (구성원)토큰 수신.
- * - 현재 세션: 활성 파일·참가자 수(라이브 갱신).
- * - 교사 제어: 실시간 토글 · 스냅샷 주기 · 토큰 재배포 · 상태 진단 · 공간 토큰 현황.
+ * 운영 중 필요한 것(현재 세션·구성원별 실시간·공간 토큰)을 앞에 두고, 서버 URL·시크릿 같은 설정 정보는
+ * 문제가 있을 때만 경고로 노출한다(상시 표시 X). 토글이 곧 실시간 on/off 상태이므로 별도 상태 줄은 두지 않는다.
  */
 export class RealtimeSection implements PanelSection {
 	private root: HTMLElement | null = null;
@@ -23,7 +22,6 @@ export class RealtimeSection implements PanelSection {
 
 	render(container: HTMLElement): void {
 		this.root = container;
-		// 현재 세션 카드는 활성 파일/참가자에 따라 라이브 갱신(섹션 전체 재렌더 없이 카드만).
 		this.refs.push(this.host.app.workspace.on("active-leaf-change", () => this.refreshSession()));
 		this.refs.push(this.host.app.workspace.on("file-open", () => this.refreshSession()));
 		this.timer = window.setInterval(() => this.refreshSession(), 2000);
@@ -35,78 +33,101 @@ export class RealtimeSection implements PanelSection {
 		if (!c) return;
 		c.empty();
 		c.addClass("covault-panel-section");
+		this.sessionEl = null;
 		const s = this.host.settings;
-		// 시크릿 유무는 marker가 아니라 실제 Secret Storage 값으로 판단(기기별 marker 어긋남 방지).
-		const secretPresent = !!getSecretValue(this.host.app, YJS_SECRET_ID, s.yjsSecret);
 
-		// 상태
 		c.createDiv({ cls: "covault-dash-label", text: t("realtime.tab") });
-		const status = c.createDiv({ cls: "covault-rt-status" });
-		this.statusRow(status, t("settings.realtime_status"), s.realtimeEnabled ? t("common.on") : t("common.off"));
-		this.statusRow(status, t("settings.yjs_server_url"), s.yjsServerUrl || t("settings.not_set"));
-		if (this.manager) this.statusRow(status, t("settings.yjs_space_secret_hmac_recommended"), secretPresent ? t("common.set") : t("common.none"));
-		else this.statusRow(status, t("settings.realtime_token"), this.host.realtimeTokenReceived() ? t("common.set") : t("common.none"));
 
-		// 현재 세션(라이브)
+		if (this.manager) this.drawManager(c, s);
+		else this.drawMember(c, s);
+	}
+
+	private drawManager(c: HTMLElement, s: PanelHost["settings"]): void {
+		// 토글 = 실시간 on/off (상태와 제어를 하나로).
+		new Setting(c)
+			.setName(t("settings.enable_realtime_editing"))
+			.setDesc(t("settings.enable_realtime_editing_desc"))
+			.addToggle((tg) =>
+				tg.setValue(s.realtimeEnabled).onChange(async (v) => {
+					s.realtimeEnabled = v;
+					await this.host.saveSettings();
+					await this.host.redeployRealtime();
+					this.draw();
+				}),
+			);
+
+		if (!s.realtimeEnabled) {
+			c.createDiv({ cls: "covault-cr-muted", text: t("realtime.off_hint") });
+			c.createDiv({ cls: "covault-cr-muted", text: t("realtime.configure_in_settings") });
+			return;
+		}
+
+		// 실시간이 안 될 조건만 경고로(상시 설정 정보는 숨김).
+		const secretPresent = !!getSecretValue(this.host.app, YJS_SECRET_ID, s.yjsSecret);
+		if (!s.yjsServerUrl) c.createDiv({ cls: "covault-issue is-warn", text: t("realtime.no_server_hint") });
+		if (!secretPresent) c.createDiv({ cls: "covault-issue is-warn", text: t("realtime.secret_missing_hint") });
+
+		// 현재 세션(라이브).
+		c.createDiv({ cls: "covault-dash-label", text: t("realtime.current_session") });
 		this.sessionEl = c.createDiv({ cls: "covault-rt-session" });
 		this.renderSession();
 
-		// 제어
-		if (this.manager) {
-			new Setting(c)
-				.setName(t("settings.enable_realtime_editing"))
-				.setDesc(t("settings.enable_realtime_editing_desc"))
-				.addToggle((tg) =>
-					tg.setValue(s.realtimeEnabled).onChange(async (v) => {
-						s.realtimeEnabled = v;
-						await this.host.saveSettings();
-						await this.host.redeployRealtime();
+		// 구성원별 실시간 허용/차단.
+		const members = s.members.filter((m) => m.memberId && m.provisioned);
+		if (members.length > 0) {
+			c.createDiv({ cls: "covault-dash-label", text: t("realtime.per_member") });
+			for (const m of members) {
+				new Setting(c).setName(m.memberName || m.memberId).addToggle((tg) =>
+					tg.setValue(!m.realtimeBlocked).onChange(async (v) => {
+						await this.host.setMemberRealtime(m.memberId, v);
 						this.draw();
 					}),
 				);
-			new Setting(c).setName(t("settings.in_session_snapshot_interval_sec")).addText((txt) => {
-				txt.inputEl.type = "number";
-				txt.setPlaceholder("0").setValue(String(s.realtimeSnapshotSec)).onChange(async (v) => {
-					const n = Number(v);
-					s.realtimeSnapshotSec = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-					await this.host.saveSettings();
-				});
-			});
-
-			const actions = c.createDiv({ cls: "covault-panel-actions" });
-			const redeploy = panelButton(actions, t("realtime.redeploy_tokens"), () => this.run(() => this.host.redeployRealtime()), { cta: true });
-			// 시크릿이 이 기기에 없으면 재배포가 토큰을 모두 삭제하므로 막는다.
-			if (!secretPresent) redeploy.disabled = true;
-			panelButton(actions, t("panel.check_realtime_status"), () => void this.host.realtimeStatus());
-			if (!secretPresent) c.createDiv({ cls: "covault-issue is-warn", text: t("realtime.secret_missing_hint") });
-
-			if (s.sharedSpaces.length > 0) {
-				c.createDiv({ cls: "covault-dash-label", text: t("realtime.spaces_tokens") });
-				const list = c.createDiv({ cls: "covault-rt-status" });
-				for (const sp of s.sharedSpaces) this.statusRow(list, sp.name || sp.id, sp.token ? t("common.set") : t("common.none"));
 			}
-
-			// 구성원별 실시간 허용/차단(전역 실시간이 켜진 동안만 의미 있음).
-			const members = s.members.filter((m) => m.memberId && m.provisioned);
-			if (s.realtimeEnabled && members.length > 0) {
-				c.createDiv({ cls: "covault-dash-label", text: t("realtime.per_member") });
-				for (const m of members) {
-					new Setting(c).setName(m.memberName || m.memberId).addToggle((tg) =>
-						tg.setValue(!m.realtimeBlocked).onChange(async (v) => {
-							await this.host.setMemberRealtime(m.memberId, v);
-							this.draw();
-						}),
-					);
-				}
-				c.createDiv({ cls: "covault-cr-muted", text: t("realtime.per_member_hint") });
-			}
-
-			c.createDiv({ cls: "covault-cr-muted", text: t("realtime.configure_in_settings") });
-		} else {
-			const actions = c.createDiv({ cls: "covault-panel-actions" });
-			panelButton(actions, t("panel.check_realtime_status"), () => void this.host.realtimeStatus());
-			c.createDiv({ cls: "covault-cr-muted", text: t("realtime.member_note") });
+			c.createDiv({ cls: "covault-cr-muted", text: t("realtime.per_member_hint") });
 		}
+
+		// 공간 토큰 현황.
+		if (s.sharedSpaces.length > 0) {
+			c.createDiv({ cls: "covault-dash-label", text: t("realtime.spaces_tokens") });
+			const list = c.createDiv({ cls: "covault-rt-status" });
+			for (const sp of s.sharedSpaces) this.statusRow(list, sp.name || sp.id, sp.token ? t("common.set") : t("common.none"));
+		}
+
+		// 세션 스냅샷 주기.
+		new Setting(c).setName(t("settings.in_session_snapshot_interval_sec")).addText((txt) => {
+			txt.inputEl.type = "number";
+			txt.setPlaceholder("0").setValue(String(s.realtimeSnapshotSec)).onChange(async (v) => {
+				const n = Number(v);
+				s.realtimeSnapshotSec = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+				await this.host.saveSettings();
+			});
+		});
+
+		// 액션.
+		const actions = c.createDiv({ cls: "covault-panel-actions" });
+		const redeploy = panelButton(actions, t("realtime.redeploy_tokens"), () => this.run(() => this.host.redeployRealtime()), { cta: true });
+		if (!secretPresent) redeploy.disabled = true; // 시크릿 없이 재배포하면 토큰이 모두 삭제됨 → 막는다.
+		panelButton(actions, t("panel.check_realtime_status"), () => void this.host.realtimeStatus());
+
+		c.createDiv({ cls: "covault-cr-muted", text: t("realtime.configure_in_settings") });
+	}
+
+	private drawMember(c: HTMLElement, s: PanelHost["settings"]): void {
+		// 구성원은 토글이 없으므로 on/off는 한 번만 표시(중복 아님). 서버 URL은 구성원에게 불필요해 숨김.
+		const status = c.createDiv({ cls: "covault-rt-status" });
+		this.statusRow(status, t("settings.realtime_status"), s.realtimeEnabled ? t("common.on") : t("common.off"));
+		this.statusRow(status, t("settings.realtime_token"), this.host.realtimeTokenReceived() ? t("common.set") : t("common.none"));
+
+		if (s.realtimeEnabled) {
+			c.createDiv({ cls: "covault-dash-label", text: t("realtime.current_session") });
+			this.sessionEl = c.createDiv({ cls: "covault-rt-session" });
+			this.renderSession();
+		}
+
+		const actions = c.createDiv({ cls: "covault-panel-actions" });
+		panelButton(actions, t("panel.check_realtime_status"), () => void this.host.realtimeStatus());
+		c.createDiv({ cls: "covault-cr-muted", text: t("realtime.member_note") });
 	}
 
 	private async run(fn: () => Promise<void>): Promise<void> {
@@ -124,11 +145,6 @@ export class RealtimeSection implements PanelSection {
 		const el = this.sessionEl;
 		if (!el) return;
 		el.empty();
-		const s = this.host.settings;
-		if (!s.realtimeEnabled) {
-			el.createDiv({ cls: "covault-cr-muted", text: t("realtime.disabled_hint") });
-			return;
-		}
 		const info = this.host.realtimeActiveFile();
 		if (!info) {
 			el.createDiv({ cls: "covault-cr-muted", text: t("realtime.session_none") });
