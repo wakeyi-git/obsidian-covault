@@ -1,5 +1,6 @@
 import { EventRef, Setting, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
+import { getSecretValue, YJS_SECRET_ID } from "../../core/secret";
 import { t } from "../../i18n";
 
 /**
@@ -35,13 +36,15 @@ export class RealtimeSection implements PanelSection {
 		c.empty();
 		c.addClass("covault-panel-section");
 		const s = this.host.settings;
+		// 시크릿 유무는 marker가 아니라 실제 Secret Storage 값으로 판단(기기별 marker 어긋남 방지).
+		const secretPresent = !!getSecretValue(this.host.app, YJS_SECRET_ID, s.yjsSecret);
 
 		// 상태
 		c.createDiv({ cls: "covault-dash-label", text: t("realtime.tab") });
 		const status = c.createDiv({ cls: "covault-rt-status" });
 		this.statusRow(status, t("settings.realtime_status"), s.realtimeEnabled ? t("common.on") : t("common.off"));
 		this.statusRow(status, t("settings.yjs_server_url"), s.yjsServerUrl || t("settings.not_set"));
-		if (this.manager) this.statusRow(status, t("settings.yjs_space_secret_hmac_recommended"), s.yjsSecretSet ? t("common.set") : t("common.none"));
+		if (this.manager) this.statusRow(status, t("settings.yjs_space_secret_hmac_recommended"), secretPresent ? t("common.set") : t("common.none"));
 		else this.statusRow(status, t("settings.realtime_token"), this.host.realtimeTokenReceived() ? t("common.set") : t("common.none"));
 
 		// 현재 세션(라이브)
@@ -71,8 +74,11 @@ export class RealtimeSection implements PanelSection {
 			});
 
 			const actions = c.createDiv({ cls: "covault-panel-actions" });
-			panelButton(actions, t("realtime.redeploy_tokens"), () => this.run(() => this.host.redeployRealtime()), { cta: true });
+			const redeploy = panelButton(actions, t("realtime.redeploy_tokens"), () => this.run(() => this.host.redeployRealtime()), { cta: true });
+			// 시크릿이 이 기기에 없으면 재배포가 토큰을 모두 삭제하므로 막는다.
+			if (!secretPresent) redeploy.disabled = true;
 			panelButton(actions, t("panel.check_realtime_status"), () => void this.host.realtimeStatus());
+			if (!secretPresent) c.createDiv({ cls: "covault-issue is-warn", text: t("realtime.secret_missing_hint") });
 
 			if (s.sharedSpaces.length > 0) {
 				c.createDiv({ cls: "covault-dash-label", text: t("realtime.spaces_tokens") });

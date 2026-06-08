@@ -22,6 +22,7 @@
 		"participants_n": "{n} editing",
 		"redeploy_tokens": "Reissue / redeploy tokens",
 		"spaces_tokens": "Space tokens",
+		"secret_missing_hint": "No space secret on this device, so token reissue/redeploy is disabled (it would delete all tokens). Enter the same secret in the Settings tab to redeploy.",
 		"per_member": "Per-member realtime",
 		"per_member_hint": "Off = this member edits via file sync only (no live session/cursors).",
 		"member_allowed": "{name}: realtime allowed",
