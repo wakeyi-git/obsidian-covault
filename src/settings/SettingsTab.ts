@@ -76,6 +76,10 @@ export interface SettingsHost extends Plugin {
 	createTemplateFile(kind: "notice" | "lesson" | "assignment"): Promise<void>;
 	/** 내 볼트 개인 동기화 켜기/끄기(켜면 개인 DB 프로비저닝). */
 	setPersonalSync(on: boolean): Promise<void>;
+	/** 실시간 공간 토큰을 하나라도 수신했는지(구성원: shares로 자동 전달). */
+	realtimeTokenReceived(): boolean;
+	/** 실시간 연결 상태 진단(로그 패널에 출력). */
+	realtimeStatus(): Promise<void>;
 	redeployRealtime(): Promise<void>;
 	exportSettingsJson(): string;
 	importSettingsJson(json: string): Promise<{ ok: boolean; error?: string }>;
@@ -150,15 +154,19 @@ export class CoVaultSettingTab extends PluginSettingTab {
 	}
 
 	private renderIssues(s: CoVaultSettings): void {
-		// 실시간 자격증명은 marker가 아니라 실제 Secret Storage 값으로 판단(지워진 비밀값을 marker가 가리지 않게).
-		const realtimeCredPresent = !!getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret);
+		// 실시간 자격증명 판단: 운영자는 공간 시크릿(HMAC 키)을, 구성원은 shares로 받은 공간 토큰을 본다.
+		// (구성원은 시크릿을 갖지 않으며, 토큰은 개인 mirror DB로 자동 전달된다.)
+		const realtimeCredPresent =
+			s.role === "manager" ? !!getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret) : this.host.realtimeTokenReceived();
 		const issues = validateSettings(s, { realtimeCredPresent });
 		if (issues.length === 0) return;
 		const box = this.containerEl.createDiv({ cls: "covault-issues" });
 		box.createDiv({ cls: "covault-issues-title", text: t("panel.settings_need_attention", { n: issues.length }) });
 		for (const i of issues) {
 			const row = box.createDiv({ cls: `covault-issue is-${i.level}` });
-			row.setText((i.level === "error" ? "⛔ " : "⚠ ") + issueMessage(i));
+			// 구성원에게는 시크릿 대신 "토큰 미수신 → 교사 재배포" 안내로 바꾼다(구성원이 할 수 있는 조치).
+			const text = i.code === "rt-no-token" && s.role === "member" ? t("panel.realtime_member_no_token") : issueMessage(i);
+			row.setText((i.level === "error" ? "⛔ " : "⚠ ") + text);
 		}
 	}
 
@@ -617,6 +625,18 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		this.readonlySetting(adv, "CouchDB URL", s.couchdbUrl || t("settings.not_set"));
 		this.readonlySetting(adv, "Mirror DB", s.remoteDb || t("settings.not_set"));
 		this.readonlySetting(adv, t("settings.account"), s.username || t("settings.not_set"));
+		// 실시간 상태(구성원): 토큰은 교사가 공동 공간을 배포하면 개인 mirror로 자동 전달된다.
+		this.readonlySetting(adv, t("settings.realtime_status"), s.realtimeEnabled ? t("common.on") : t("common.off"));
+		if (s.realtimeEnabled) {
+			this.readonlySetting(adv, t("settings.yjs_server_url"), s.yjsServerUrl || t("settings.not_set"));
+			this.readonlySetting(adv, t("settings.realtime_token"), this.host.realtimeTokenReceived() ? t("common.set") : t("common.none"));
+			adv.addSetting((set) =>
+				set
+					.setName(t("panel.check_realtime_status"))
+					.setDesc(t("settings.realtime_token_member_hint"))
+					.addButton((b) => b.setButtonText(t("common.run_test")).onClick(() => this.runAsync(b, () => this.host.realtimeStatus()))),
+			);
+		}
 	}
 
 	// --- 공통: 동기화 옵션 ---

@@ -359,6 +359,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return !!this.homeroomPouch();
 	}
 
+	/** SettingsHost: 실시간 공간 토큰을 하나라도 수신했는지(구성원: shares로 자동 전달됨). */
+	realtimeTokenReceived(): boolean {
+		return (this.core?.sharedSpaces ?? []).some((sp) => !!sp.token);
+	}
+
 	/** SettingsHost: 공유 공간 하나를 학급 공동 공간으로 지정/해제(교사 전용). */
 	async setHomeroomSpace(space: SharedSpace, on: boolean): Promise<void> {
 		const s = this.settings;
