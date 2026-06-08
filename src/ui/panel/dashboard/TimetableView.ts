@@ -3,6 +3,7 @@ import { PanelHost } from "../PanelSection";
 import { TimetableDoc, NoticeDoc, timetableId, noticePrefix } from "../../../core/model/types";
 import { weekStart } from "../../../core/classroom/week";
 import { defaultTimetableDays as defaultDays, DEFAULT_PERIODS } from "../../../core/classroom/timetable";
+import { captureScroll } from "../scroll";
 import { t } from "../../../i18n";
 
 /** 시간표 — 주간 그리드(요일×교시). 주(週)별 문서. 수업 안내 뷰에 임베드되며 주는 NoticesView가 제어. */
@@ -21,7 +22,14 @@ export class TimetableView {
 		return this.host.settings.role === "manager";
 	}
 
+	/** 재렌더 + 스크롤 위치 보존. */
 	private async reload(): Promise<void> {
+		const restore = captureScroll(this.container);
+		await this.rebuild();
+		restore();
+	}
+
+	private async rebuild(): Promise<void> {
 		const c = this.container;
 		if (!c) return;
 		c.empty();

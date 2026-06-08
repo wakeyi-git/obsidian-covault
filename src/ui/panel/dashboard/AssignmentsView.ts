@@ -5,6 +5,7 @@ import { buildMatrix, statusCounts, displayStatus, gradeTotal, rubricMax, Assign
 import { AssignmentCreateModal, AssignmentInput } from "../../AssignmentCreateModal";
 import { GradingModal } from "../../GradingModal";
 import { ConfirmModal } from "../../ConfirmModal";
+import { captureScroll } from "../scroll";
 import { t, formatDate } from "../../../i18n";
 
 function statusLabel(s: AssignmentDisplayStatus): string {
@@ -93,7 +94,14 @@ export class AssignmentsView {
 		box.createDiv({ text });
 	}
 
+	/** 재렌더 + 스크롤 위치 보존(입력·버튼 후 최상단으로 튀지 않게). */
 	private async reload(): Promise<void> {
+		const restore = captureScroll(this.container);
+		await this.rebuild();
+		restore();
+	}
+
+	private async rebuild(): Promise<void> {
 		const c = this.container;
 		if (!c) return;
 		c.empty();

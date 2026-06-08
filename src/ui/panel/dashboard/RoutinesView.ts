@@ -3,6 +3,7 @@ import { PanelHost, panelButton, iconButton } from "../PanelSection";
 import { RoutineDoc, RoutineStateDoc } from "../../../core/model/types";
 import { dayStr, itemsOn, computeStreak } from "../../../core/classroom/routines";
 import { monthMatrix, shiftMonth } from "../../../core/classroom/calendar";
+import { captureScroll } from "../scroll";
 import { RoutineEditModal } from "../../RoutineEditModal";
 import { t } from "../../../i18n";
 
@@ -46,8 +47,7 @@ export class RoutinesView {
 		const c = this.container;
 		if (!c) return;
 		// 체크 입력 등으로 재렌더 시 스크롤이 최상단으로 튀지 않도록 위치를 보존한다.
-		const scroller = c.closest(".covault-panel-body") as HTMLElement | null;
-		const savedTop = scroller?.scrollTop ?? 0;
+		const restore = captureScroll(c);
 		c.empty();
 
 		const head = c.createDiv({ cls: "covault-cr-modhead" });
@@ -75,16 +75,7 @@ export class RoutinesView {
 		const routines = await this.host.listRoutines();
 		if (this.manager) await this.renderManager(c, routines);
 		else await this.renderMember(c, routines);
-		this.restoreScroll(scroller, savedTop);
-	}
-
-	private restoreScroll(scroller: HTMLElement | null, top: number): void {
-		if (!scroller || top <= 0) return;
-		scroller.scrollTop = top;
-		// 재렌더 직후 레이아웃 확정이 늦는 경우 대비해 다음 프레임에 한 번 더 복원.
-		window.requestAnimationFrame(() => {
-			if (this.container) scroller.scrollTop = top;
-		});
+		restore();
 	}
 
 	// ===== 교사: 날짜별 항목 현황 =====

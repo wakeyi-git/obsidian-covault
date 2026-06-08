@@ -3,6 +3,7 @@ import { PanelHost, panelButton, iconButton } from "../PanelSection";
 import { NoticeDoc, ResponseDoc, AssignmentStateDoc, RoutineStateDoc, noticePrefix, RESPONSE_ID_PREFIX } from "../../../core/model/types";
 import { rubricMax } from "../../../core/classroom/assignments";
 import { computeStats, ratePct, MemberStats } from "../../../core/classroom/stats";
+import { captureScroll } from "../scroll";
 import { t } from "../../../i18n";
 
 function localDateStr(d: Date): string {
@@ -49,7 +50,14 @@ export class GradebookView {
 		];
 	}
 
+	/** 재렌더 + 스크롤 위치 보존. */
 	private async reload(): Promise<void> {
+		const restore = captureScroll(this.container);
+		await this.rebuild();
+		restore();
+	}
+
+	private async rebuild(): Promise<void> {
 		const c = this.container;
 		if (!c) return;
 		c.empty();

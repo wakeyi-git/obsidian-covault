@@ -2,6 +2,7 @@ import { Notice, Setting, TFile, TFolder } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { ExistingPolicy, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 import { PathSuggest } from "../PathSuggest";
+import { captureScroll } from "./scroll";
 import { t } from "../../i18n";
 
 /** 배포 탭(교사) — 경로 선택 복사(현재 파일/폴더 빠른 입력) + 공유 공간 배포. 기술문서 §20. */
@@ -22,11 +23,14 @@ export class DeploySection implements PanelSection {
 
 	render(container: HTMLElement): void {
 		this.container = container;
+		// 버튼 클릭으로 전체 재렌더 시 스크롤이 최상단으로 튀지 않도록 위치 보존.
+		const restore = captureScroll(container);
 		container.empty();
 		container.addClass("covault-panel-section");
 
 		this.renderCopy(container);
 		this.renderShared(container);
+		restore();
 	}
 
 	dispose(): void {
