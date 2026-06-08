@@ -714,6 +714,14 @@
 	cursor: pointer;
 	text-decoration: underline;
 }
+.covault-chat-img {
+	display: block;
+	max-width: 100%;
+	max-height: 240px;
+	border-radius: 6px;
+	margin-top: 4px;
+	cursor: pointer;
+}
 .covault-chat-del {
 	--icon-size: 14px;
 	opacity: 0.6;

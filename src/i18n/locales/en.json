@@ -6,6 +6,11 @@
 		"placeholder": "Type a message",
 		"send": "Send",
 		"attach_note": "Current note link",
+		"attach_file": "Attach file",
+		"pick_file": "Pick a file to attach",
+		"attach_unavailable": "Can't pick an attachment folder for this channel (homeroom needed for class chat).",
+		"attach_failed": "Failed to attach file: {err}",
+		"attach_too_large": "File is too large to attach (over {mb} MB).",
 		"no_messages": "No messages yet.",
 		"class_needs_homeroom": "Set a homeroom shared space to use the class chat.",
 		"shared_folder_hint": "Links open for the other side only if the note/file is in a shared folder."

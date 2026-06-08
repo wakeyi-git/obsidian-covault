@@ -78,6 +78,8 @@ export interface MessageHost {
 	listMessages(channel: string): Promise<MessageDoc[]>;
 	/** 메시지 삭제(본인 메시지). */
 	deleteMessage(channel: string, doc: MessageDoc): Promise<void>;
+	/** vault 파일을 채널 첨부 폴더로 복사하고 임베드/링크 마크다운 반환(실패 시 null). */
+	attachFileToChannel(channel: string, srcPath: string): Promise<string | null>;
 }
 
 /** 과제(배포·제출·채점). */

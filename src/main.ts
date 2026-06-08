@@ -539,6 +539,9 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	deleteMessage(channel: string, doc: MessageDoc): Promise<void> {
 		return this.classroomCtl.deleteMessage(channel, doc);
 	}
+	attachFileToChannel(channel: string, srcPath: string): Promise<string | null> {
+		return this.classroomCtl.attachFileToChannel(channel, srcPath);
+	}
 
 	/**
 	 * 모든 실시간 서명 토큰을 재발급/회수(교사). 전역 실시간(realtimeEnabled) + 시크릿이 있으면 모든 공유 공간과

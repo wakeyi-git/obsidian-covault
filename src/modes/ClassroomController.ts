@@ -6,6 +6,7 @@ import { MirrorSync } from "../core/sync/MirrorSync";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
 import { VersionStore } from "../core/sync/VersionStore";
 import { ensureParentFolders } from "../core/vault/folders";
+import { errMessage } from "../core/util/err";
 import { noticeFilePath, staleNoticesForPath } from "../core/classroom/notices";
 import {
 	defaultTemplate,
@@ -860,6 +861,53 @@ export class ClassroomController {
 			docs = sync ? await sync.ctx.pouch.allDocsByPrefix<MessageDoc>(messagePrefix("dm:")) : [];
 		}
 		return docs.filter((d) => !d.deleted).sort((a, b) => a.createdAtMs - b.createdAtMs);
+	}
+
+	/** 채널의 첨부 폴더(학급=<학급>/_대화첨부, DM=대상/본인 폴더 아래). 정할 수 없으면 null. */
+	private channelAttachDir(channel: string): string | null {
+		const ATTACH = "_대화첨부";
+		if (channel === CLASS_CHANNEL) {
+			const home = this.d.homeroomFolder();
+			return home ? `${home}/${ATTACH}` : null;
+		}
+		const s = this.d.settings();
+		if (s.role === "manager") {
+			const memberId = channel.slice("dm:".length);
+			const member = s.members.find((m) => m.memberId === memberId);
+			return member ? [member.localRoot, ATTACH].filter(Boolean).join("/") : null;
+		}
+		return [s.localRoot, ATTACH].filter(Boolean).join("/");
+	}
+
+	/**
+	 * vault 파일을 채널 첨부 폴더로 복사하고, 메시지에 넣을 임베드/링크 마크다운을 반환(실패 시 null).
+	 * 복사본은 해당 채널 동기화 링크로 상대에게 전달된다(상대가 실제 파일을 받음).
+	 */
+	async attachFileToChannel(channel: string, srcPath: string): Promise<string | null> {
+		const f = this.d.app.vault.getAbstractFileByPath(srcPath);
+		if (!(f instanceof TFile)) return null;
+		const maxMb = this.d.settings().maxAttachmentMB ?? 0;
+		if (maxMb > 0 && f.stat.size > maxMb * 1024 * 1024) {
+			this.d.logger.warn(t("chat.attach_too_large", { mb: maxMb }), true);
+			return null;
+		}
+		const dir = this.channelAttachDir(channel);
+		if (!dir) {
+			this.d.logger.warn(t("chat.attach_unavailable"), true);
+			return null;
+		}
+		const destName = `${Date.now().toString(36)}-${f.name}`;
+		const destPath = `${dir}/${destName}`;
+		try {
+			await ensureParentFolders(this.d.app, destPath);
+			const bytes = await this.d.app.vault.readBinary(f);
+			await this.d.app.vault.createBinary(destPath, bytes);
+		} catch (e) {
+			this.d.logger.error(t("chat.attach_failed", { err: errMessage(e) }), true);
+			return null;
+		}
+		const isImg = /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(f.name);
+		return isImg ? `![[${destName}]]` : `[[${destName}]]`;
 	}
 
 	/** 메시지 삭제(soft-delete). 본인 메시지만 호출되도록 UI가 게이트. */

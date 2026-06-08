@@ -1,4 +1,4 @@
-import { setIcon } from "obsidian";
+import { App, FuzzySuggestModal, TFile, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { MessageDoc, CLASS_CHANNEL, dmChannel } from "../../core/model/types";
 import { parseMessageBody } from "../../core/classroom/messages";
@@ -7,6 +7,23 @@ import { t, formatDate } from "../../i18n";
 interface Channel {
 	id: string;
 	label: string;
+}
+
+/** vault 파일 선택(첨부용). 모든 파일(노트·이미지·PDF 등). */
+class FilePickModal extends FuzzySuggestModal<TFile> {
+	constructor(app: App, private onPick: (f: TFile) => void) {
+		super(app);
+		this.setPlaceholder(t("chat.pick_file"));
+	}
+	getItems(): TFile[] {
+		return this.app.vault.getFiles();
+	}
+	getItemText(f: TFile): string {
+		return f.path;
+	}
+	onChooseItem(f: TFile): void {
+		this.onPick(f);
+	}
 }
 
 /**
@@ -79,6 +96,11 @@ export class ChatSection implements PanelSection {
 		note.setAttr("aria-label", t("chat.attach_note"));
 		note.title = t("chat.attach_note");
 		note.onclick = () => this.insertActiveNoteLink();
+		const file = compose.createEl("button", { cls: "clickable-icon covault-chat-attach" });
+		setIcon(file, "paperclip");
+		file.setAttr("aria-label", t("chat.attach_file"));
+		file.title = t("chat.attach_file");
+		file.onclick = () => this.pickFile();
 		const input = compose.createEl("input", { cls: "covault-chat-input", attr: { type: "text", placeholder: t("chat.placeholder") } });
 		input.onkeydown = (e) => {
 			if (e.key === "Enter" && !e.shiftKey) {
@@ -97,9 +119,22 @@ export class ChatSection implements PanelSection {
 
 	private insertActiveNoteLink(): void {
 		const f = this.host.app.workspace.getActiveFile();
-		if (!f || !this.input) return;
-		const link = `[[${f.basename}]] `;
-		this.input.value = (this.input.value + (this.input.value && !this.input.value.endsWith(" ") ? " " : "") + link).trimStart();
+		if (!f) return;
+		this.insertSnippet(`[[${f.basename}]]`);
+	}
+
+	private pickFile(): void {
+		new FilePickModal(this.host.app, async (f) => {
+			const md = await this.host.attachFileToChannel(this.channel, f.path);
+			if (md) this.insertSnippet(md);
+		}).open();
+	}
+
+	/** 입력칸에 링크/임베드 스니펫을 공백 구분으로 덧붙이고 포커스. */
+	private insertSnippet(snippet: string): void {
+		if (!this.input) return;
+		const cur = this.input.value;
+		this.input.value = (cur && !cur.endsWith(" ") ? `${cur} ` : cur) + `${snippet} `;
 		this.input.focus();
 	}
 
@@ -160,11 +195,20 @@ export class ChatSection implements PanelSection {
 					window.open(seg.url, "_blank");
 				};
 			} else {
-				const a = bubble.createEl("a", { cls: "covault-chat-link", text: `🔗 ${seg.target}` });
-				a.onclick = (e) => {
-					e.preventDefault();
-					void this.host.app.workspace.openLinkText(seg.target, "", false);
-				};
+				const dest = this.host.app.metadataCache.getFirstLinkpathDest(seg.target, "");
+				const isImg = !!dest && /^(png|jpe?g|gif|webp|svg|bmp)$/i.test(dest.extension);
+				if (seg.embed && isImg && dest) {
+					// 이미지 임베드는 인라인 미리보기(클릭하면 열기).
+					const img = bubble.createEl("img", { cls: "covault-chat-img" });
+					img.src = this.host.app.vault.getResourcePath(dest);
+					img.onclick = () => void this.host.app.workspace.openLinkText(seg.target, "", false);
+				} else {
+					const a = bubble.createEl("a", { cls: "covault-chat-link", text: `🔗 ${seg.target}` });
+					a.onclick = (e) => {
+						e.preventDefault();
+						void this.host.app.workspace.openLinkText(seg.target, "", false);
+					};
+				}
 			}
 		}
 	}

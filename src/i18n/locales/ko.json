@@ -6,6 +6,11 @@
 		"placeholder": "메시지를 입력하세요",
 		"send": "보내기",
 		"attach_note": "현재 노트 링크",
+		"attach_file": "파일 첨부",
+		"pick_file": "첨부할 파일 선택",
+		"attach_unavailable": "이 채널의 첨부 폴더를 정할 수 없습니다(학급 대화는 학급 공동 공간 필요).",
+		"attach_failed": "파일 첨부 실패: {err}",
+		"attach_too_large": "파일이 너무 커서 첨부할 수 없습니다({mb} MB 초과).",
 		"no_messages": "아직 메시지가 없습니다.",
 		"class_needs_homeroom": "학급 공동 공간을 지정하면 학급 대화를 쓸 수 있습니다.",
 		"shared_folder_hint": "공유 폴더에 있는 노트/파일만 상대에게 열립니다."
