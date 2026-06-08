@@ -1581,12 +1581,16 @@
 .covault-cr-check {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 3px 0;
+	gap: 12px;
+	padding: 7px 0;
+	font-size: 1.15em;
+	line-height: 1.4;
 }
 .covault-cr-check input {
 	margin: 0;
 	flex: none;
+	width: 1.3em;
+	height: 1.3em;
 }
 .covault-cr-check.is-done span {
 	color: var(--text-muted);
