@@ -813,6 +813,22 @@
 .covault-chat-link {
 	cursor: pointer;
 	text-decoration: underline;
+	background: none; /* 테마/기본 anchor 배경 제거(가독성) */
+	color: var(--link-color);
+}
+/* 내가 보낸(accent) 말풍선 위 링크는 대비를 위해 on-accent 색 + 또렷한 밑줄 */
+.covault-chat-msg.is-mine .covault-chat-link {
+	color: var(--text-on-accent);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 2px;
+}
+/* [[ 위키링크 자동완성 항목 */
+.covault-chat-suggest-name {
+	font-weight: 500;
+}
+.covault-chat-suggest-path {
+	font-size: 11px;
+	color: var(--text-muted);
 }
 .covault-chat-img {
 	display: block;

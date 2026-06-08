@@ -1,4 +1,4 @@
-import { App, FuzzySuggestModal, TFile, setIcon } from "obsidian";
+import { AbstractInputSuggest, App, FuzzySuggestModal, TFile, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { MessageDoc, CLASS_CHANNEL, dmChannel } from "../../core/model/types";
 import { parseMessageBody } from "../../core/classroom/messages";
@@ -24,6 +24,58 @@ class FilePickModal extends FuzzySuggestModal<TFile> {
 	}
 	onChooseItem(f: TFile): void {
 		this.onPick(f);
+	}
+}
+
+/** 입력창에서 `[[` 입력 시 vault 파일 위키링크 자동완성(옵시디언 방식). 토큰만 교체한다. */
+class WikiLinkSuggest extends AbstractInputSuggest<TFile> {
+	constructor(app: App, private inputEl: HTMLInputElement) {
+		super(app, inputEl);
+	}
+
+	/** 커서 앞의 닫히지 않은 `[[<부분>`을 찾는다. 없으면 null. */
+	private token(): { partial: string; start: number; end: number } | null {
+		const val = this.inputEl.value;
+		const pos = this.inputEl.selectionStart ?? val.length;
+		const before = val.slice(0, pos);
+		const idx = before.lastIndexOf("[[");
+		if (idx < 0) return null;
+		const between = before.slice(idx + 2);
+		if (between.includes("]]") || between.includes("[")) return null; // 이미 닫혔거나 중첩
+		return { partial: between, start: idx, end: pos };
+	}
+
+	getSuggestions(_query: string): TFile[] {
+		const tok = this.token();
+		if (tok === null) return [];
+		const term = tok.partial.toLowerCase().trim();
+		const files = this.app.vault.getFiles();
+		const scored = files
+			.filter((f) => !term || f.basename.toLowerCase().includes(term) || f.path.toLowerCase().includes(term))
+			.sort((a, b) => a.path.localeCompare(b.path));
+		return scored.slice(0, 20);
+	}
+
+	renderSuggestion(f: TFile, el: HTMLElement): void {
+		el.addClass("covault-chat-suggest");
+		el.createDiv({ cls: "covault-chat-suggest-name", text: f.basename });
+		if (f.parent && f.parent.path !== "/") el.createDiv({ cls: "covault-chat-suggest-path", text: f.path });
+	}
+
+	selectSuggestion(f: TFile): void {
+		const tok = this.token();
+		const val = this.inputEl.value;
+		const link = `[[${f.basename}]]`;
+		if (tok === null) {
+			this.close();
+			return;
+		}
+		this.inputEl.value = val.slice(0, tok.start) + link + val.slice(tok.end);
+		const caret = tok.start + link.length;
+		this.inputEl.setSelectionRange(caret, caret);
+		this.inputEl.dispatchEvent(new Event("input"));
+		this.inputEl.focus();
+		this.close();
 	}
 }
 
@@ -110,6 +162,7 @@ export class ChatSection implements PanelSection {
 			}
 		};
 		this.input = input;
+		new WikiLinkSuggest(this.host.app, input); // [[ 자동완성
 		panelButton(compose, t("chat.send"), () => this.send(), { cta: true });
 
 		c.createDiv({ cls: "covault-cr-muted covault-chat-hint", text: t("chat.shared_folder_hint") });
@@ -204,7 +257,7 @@ export class ChatSection implements PanelSection {
 					img.src = this.host.app.vault.getResourcePath(dest);
 					img.onclick = () => void this.host.app.workspace.openLinkText(seg.target, "", false);
 				} else {
-					const a = bubble.createEl("a", { cls: "covault-chat-link", text: `🔗 ${seg.target}` });
+					const a = bubble.createEl("a", { cls: "covault-chat-link", text: seg.target });
 					a.onclick = (e) => {
 						e.preventDefault();
 						void this.host.app.workspace.openLinkText(seg.target, "", false);
