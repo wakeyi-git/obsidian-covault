@@ -191,7 +191,10 @@ export class CouchAdmin {
 			"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
 			"  var teacherOnly = ['notice','timetable','routine','assignment'];\n" +
 			"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
-			"  if (t === 'response' || t === 'message') {\n" +
+			// response(읽음/댓글)는 자기 소유만. message(대화)는 협업 콘텐츠(note/feedback와 동일)로 보고
+			// 소유 검사하지 않는다 — byUser는 앱 정체성(교사='manager')이라 CouchDB 계정명과 달라 정상 메시지가
+			// 거부되던 문제를 피한다. 쓰기 권한은 DB _security(구성원/관리자)가 이미 제한한다.
+			"  if (t === 'response') {\n" +
 			"    var owner = newDoc._deleted ? (oldDoc && oldDoc.byUser) : newDoc.byUser;\n" +
 			"    if (owner && owner !== userCtx.name) throw({ forbidden: 'own doc only' });\n" +
 			"  }\n" +

@@ -36,6 +36,10 @@ export class CoreServices {
 	/** 학급 운영(대시보드) 문서 변경 알림. main이 ClassroomStore에 연결. */
 	onClassroomChange: () => void = () => {};
 
+	/** 파일별 실시간 참여자(rtpart) 변경 알림. main이 RealtimeManager.invalidateParticipants에 연결.
+	 *  구성원이 지정에서 빠지면 이미 열려 있던 활성 세션도 종료해 즉시 편집을 막는다. */
+	onParticipantsChange: () => void = () => {};
+
 	private persistTimer: ReturnType<typeof setTimeout> | null = null;
 	private readonly persistDelayMs = 1500;
 

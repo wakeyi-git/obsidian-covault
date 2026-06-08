@@ -180,9 +180,20 @@ export class RealtimeManager {
 		this.enforceReadOnly();
 
 		// 열린 공유 파일에 세션 보장 + 바인딩
+		let degated = false;
 		for (const [path, tgt] of targets) {
 			let session = this.sessions.get(path);
-			if (!session) {
+			if (session) {
+				// 이미 열린 세션: 참여 취소가 '확정'되면(캐시=false) 종료해 즉시 편집을 막는다.
+				// 보류(undefined) 중엔 유지해 재평가 깜빡임을 막고, 재평가만 트리거한다.
+				const cached = this.participantOk.get(path);
+				if (cached === false) {
+					void this.endSession(path);
+					degated = true;
+					continue;
+				}
+				if (cached === undefined) this.allowedToStart(path);
+			} else {
 				if (!this.allowedToStart(path)) continue; // 파일별 참여자에 없으면 라이브 미접속(파일 동기화만)
 				session = this.startSession(path, tgt.kind);
 			}
@@ -190,6 +201,8 @@ export class RealtimeManager {
 			if (session.kind === "md" && tgt.kind === "md") this.bindViews(session, tgt.views);
 			else if (session.kind === "excalidraw" && tgt.kind === "excalidraw") this.bindExcalidraw(session, tgt.view);
 		}
+		// 세션을 종료한 경우(참여 취소), 그 파일을 읽기 전용 정책에 맞게 즉시 잠근다.
+		if (degated) this.enforceReadOnly();
 	}
 
 	/**

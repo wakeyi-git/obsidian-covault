@@ -47,6 +47,9 @@ export class LocalApplier {
 						await this.applier.applyAsset(change.doc as any);
 					} else if (change.doc && ((change.doc as any).type === "shares" || (change.doc as any).type === "rtconfig")) {
 						this.onConfigChange?.(); // 공유 공간/실시간 설정 변경 → reconcile
+					} else if (change.doc && (change.doc as any).type === "rtpart") {
+						// 파일별 실시간 참여자 변경 → 게이트 재평가(활성 세션도 취소 시 종료)
+						this.ctx.core.onParticipantsChange();
 					} else if (change.doc && (change.doc as any).type === "feedback") {
 						// 피드백(§19.5)은 파일이 아니라 메타데이터 → vault에 쓰지 않고 패널만 갱신
 						this.ctx.core.onFeedbackChange();

@@ -129,6 +129,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			studentMirrorSync: () => this.studentMirrorSync(),
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
+		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
+		this.core.onParticipantsChange = () => this.realtime?.invalidateParticipants();
 		// 알림장·수업은 편집창 + 프론트매터로 작성한다 — 파일 프론트매터 변경/삭제/이름변경을 게시 메타에 반영(교사).
 		this.registerEvent(this.app.metadataCache.on("changed", (file) => { if (file instanceof TFile) void this.classroomCtl.syncNoticeFromFile(file); }));
 		this.registerEvent(this.app.vault.on("delete", (file) => { if (file instanceof TFile) void this.classroomCtl.onNoticeFileDeleted(file.path); }));
@@ -195,6 +197,33 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		await this.mode.start();
 		// 재배포/설정 적용 시 기존 세션을 깨끗이 종료(awareness 제거) 후 재구성 → 유령 커서 방지
 		await this.realtime?.refresh();
+		void this.backfillRtPartNames(); // 구버전 지정 문서에 이름 채우기(학생 카드에 이름 표시)
+	}
+
+	/** 이전 버전에 만들어진 rtpart 문서(memberNames 없음)에 이름을 채운다(교사). 학생은 동료 명단이 없어 문서 이름에 의존. */
+	private async backfillRtPartNames(): Promise<void> {
+		if (this.settings.role !== "manager") return;
+		for (const sync of this.mode?.getSyncs() ?? []) {
+			let docs: RtPartDoc[];
+			try {
+				docs = await sync.ctx.pouch.allDocsByPrefix<RtPartDoc>(RTPART_ID_PREFIX);
+			} catch {
+				continue;
+			}
+			for (const d of docs) {
+				if (!d || d.deleted || !Array.isArray(d.memberIds)) continue;
+				const names: Record<string, string> = {};
+				for (const mid of d.memberIds) {
+					const m = this.settings.members.find((x) => x.memberId === mid);
+					if (m?.memberName) names[mid] = m.memberName;
+				}
+				const cur = d.memberNames ?? {};
+				const changed = d.memberIds.some((id) => (names[id] || "") !== (cur[id] || ""));
+				if (changed && Object.keys(names).length) {
+					await sync.ctx.pouch.put({ ...d, memberNames: names, updatedAtMs: Date.now() }).catch(() => {});
+				}
+			}
+		}
 	}
 
 	/** 최초 실행 역할 선택 모달 → 역할 잠금 + 모드 시작. 학생은 초대 코드로 바로 설정 가능. */
