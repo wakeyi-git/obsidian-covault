@@ -139,10 +139,12 @@ export class MemberMode implements CoVaultMode {
 			if (!doc) return;
 			const s = this.core.settings;
 			const snapshotSec = doc.snapshotSec ?? 0;
-			if (s.realtimeEnabled !== doc.enabled || s.yjsServerUrl !== doc.url || s.realtimeSnapshotSec !== snapshotSec) {
+			const readOnly = !!doc.sharedReadOnly;
+			if (s.realtimeEnabled !== doc.enabled || s.yjsServerUrl !== doc.url || s.realtimeSnapshotSec !== snapshotSec || !!s.sharedReadOnly !== readOnly) {
 				s.realtimeEnabled = doc.enabled;
 				s.yjsServerUrl = doc.url;
 				s.realtimeSnapshotSec = snapshotSec;
+				s.sharedReadOnly = readOnly;
 				await this.core.save();
 			}
 		} catch {

@@ -146,6 +146,8 @@ export interface CoVaultSettings {
 
 	/** 실시간 세션 중 CouchDB 스냅샷 주기(초). 0=끔. 기술문서 §19.2. 교사 설정 → rtconfig로 전파. */
 	realtimeSnapshotSec: number;
+	/** 공유 공간 파일을 구성원에게 읽기 전용으로 강제(실시간 세션 활성 파일만 편집 가능). 교사 설정 → rtconfig 전파. */
+	sharedReadOnly?: boolean;
 
 	/** UI 언어. auto=Obsidian 따름. */
 	language: "auto" | "ko" | "en";

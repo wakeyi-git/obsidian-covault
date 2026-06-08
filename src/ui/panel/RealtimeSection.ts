@@ -69,6 +69,17 @@ export class RealtimeSection implements PanelSection {
 		if (!s.yjsServerUrl) c.createDiv({ cls: "covault-issue is-warn", text: t("realtime.no_server_hint") });
 		if (!secretPresent) c.createDiv({ cls: "covault-issue is-warn", text: t("realtime.secret_missing_hint") });
 
+		// 공유 파일 읽기 전용 정책.
+		new Setting(c)
+			.setName(t("realtime.shared_readonly"))
+			.setDesc(t("realtime.shared_readonly_desc"))
+			.addToggle((tg) =>
+				tg.setValue(!!s.sharedReadOnly).onChange(async (v) => {
+					await this.host.setSharedReadOnly(v);
+					this.draw();
+				}),
+			);
+
 		// 현재 세션(라이브).
 		c.createDiv({ cls: "covault-dash-label", text: t("realtime.current_session") });
 		this.sessionEl = c.createDiv({ cls: "covault-rt-session" });

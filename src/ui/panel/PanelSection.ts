@@ -96,6 +96,8 @@ export interface RealtimeHost {
 	getFileRealtimeParticipants(path: string): Promise<string[] | null>;
 	/** 파일별 실시간 참여자 지정(교사). null=전원(지정 해제). */
 	setFileRealtimeParticipants(path: string, memberIds: string[] | null): Promise<void>;
+	/** 공유 파일 읽기 전용 정책 토글(교사). 켜면 구성원은 실시간 세션 활성 파일만 편집 가능. */
+	setSharedReadOnly(on: boolean): Promise<void>;
 }
 
 /** 과제(배포·제출·채점). */

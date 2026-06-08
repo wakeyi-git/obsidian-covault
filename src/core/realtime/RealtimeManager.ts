@@ -4,7 +4,7 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { EditorView } from "@codemirror/view";
 import { CoreServices } from "../CoreServices";
-import { bindView, unbindView } from "./editorBinding";
+import { bindView, unbindView, setEditorReadOnly } from "./editorBinding";
 import { PresenceChips } from "./presenceChips";
 import { clientColor } from "./clientColor";
 import { ExcalidrawBinding, ExcalidrawImperativeApi } from "./excalidrawBinding";
@@ -66,6 +66,8 @@ export class RealtimeManager {
 	// 파일별 참여 허용 캐시(비동기 조회 결과). 파일이 닫히면 비워 재오픈 시 재평가.
 	private participantOk = new Map<string, boolean>();
 	private participantPending = new Set<string>();
+	// CoVault가 읽기 전용으로 잠근 에디터(정책 해제 시 우리가 잠근 것만 푼다 — 타 플러그인 read-only 보호).
+	private lockedViews = new WeakSet<EditorView>();
 
 	private get settings() {
 		return this.core.settings;
@@ -168,6 +170,9 @@ export class RealtimeManager {
 		// 닫힌 파일의 참여 캐시 정리(재오픈 시 최신 지정 반영).
 		for (const p of [...this.participantOk.keys()]) if (!targets.has(p)) this.participantOk.delete(p);
 
+		// 공유 파일 읽기 전용 정책 적용(구성원). 세션 활성 파일만 편집 가능.
+		this.enforceReadOnly();
+
 		// 열린 공유 파일에 세션 보장 + 바인딩
 		for (const [path, tgt] of targets) {
 			let session = this.sessions.get(path);
@@ -178,6 +183,31 @@ export class RealtimeManager {
 			if (!session?.ready) continue;
 			if (session.kind === "md" && tgt.kind === "md") this.bindViews(session, tgt.views);
 			else if (session.kind === "excalidraw" && tgt.kind === "excalidraw") this.bindExcalidraw(session, tgt.view);
+		}
+	}
+
+	/**
+	 * 공유 파일 읽기 전용 정책(구성원): sharedReadOnly가 켜져 있으면 공유 공간의 markdown 파일을 읽기 전용으로
+	 * 잠그고, 그 파일에 실시간 세션이 활성일 때만 편집 가능하게 한다. 우리가 잠근 에디터만 추적해 해제한다.
+	 */
+	private enforceReadOnly(): void {
+		const s = this.settings;
+		const policy = s.role === "member" && !!s.sharedReadOnly;
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			const view = leaf.view as MarkdownView;
+			const file = view?.file;
+			if (!file) continue;
+			const cm = (view.editor as unknown as { cm?: EditorView }).cm;
+			if (!cm) continue;
+			const desired =
+				policy && file.extension === "md" && !this.isExcalidrawPath(file.path) && !!this.spaceFor(file.path) && !this.isActive(file.path);
+			if (desired) {
+				setEditorReadOnly(cm, true);
+				this.lockedViews.add(cm);
+			} else if (this.lockedViews.has(cm)) {
+				setEditorReadOnly(cm, false);
+				this.lockedViews.delete(cm);
+			}
 		}
 	}
 

@@ -170,6 +170,7 @@ export class MemberController {
 			enabled: s.realtimeEnabled,
 			url: s.yjsServerUrl,
 			snapshotSec: s.realtimeSnapshotSec,
+			sharedReadOnly: !!s.sharedReadOnly,
 		});
 		if (!rc.ok) this.d.logger.error(t("command.failed_to_write_rtconfig", { id: st.memberId, err: rc.error ?? "" }));
 	}

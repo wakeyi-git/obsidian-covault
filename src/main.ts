@@ -403,6 +403,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		}
 	}
 
+	/** PanelHost: 공유 파일 읽기 전용 정책 토글(교사). 켜면 구성원은 실시간 세션 활성 파일만 편집 가능. */
+	async setSharedReadOnly(on: boolean): Promise<void> {
+		if (this.settings.role !== "manager") return;
+		this.settings.sharedReadOnly = on;
+		await this.saveSettings();
+		await this.refreshMemberShares(); // rtconfig로 전 구성원에 전파
+		this.realtime?.syncOpenEditors();
+	}
+
 	/** PanelHost: 파일별 실시간 참여자 지정(교사). null=전원(지정 해제). */
 	async setFileRealtimeParticipants(path: string, memberIds: string[] | null): Promise<void> {
 		if (this.settings.role !== "manager") return;

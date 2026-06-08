@@ -32,6 +32,7 @@ const IMPORT_KEYS: Array<keyof CoVaultSettings> = [
 	"realtimeEnabled",
 	"yjsServerUrl",
 	"realtimeSnapshotSec",
+	"sharedReadOnly",
 	"yjsTokenTtlDays",
 	"inviteTtlDays",
 	"deleteReconcileMax",

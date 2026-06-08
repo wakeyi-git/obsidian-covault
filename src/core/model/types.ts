@@ -123,6 +123,8 @@ export interface RtConfigDoc extends PouchDocBase {
 	token?: string;
 	/** 실시간 세션 중 CouchDB 스냅샷 주기(초). 0/미설정=끔(§19.2). */
 	snapshotSec?: number;
+	/** 공유 파일 읽기 전용 정책(구성원). 실시간 세션 활성 파일만 편집 가능. */
+	sharedReadOnly?: boolean;
 }
 
 export const RTCONFIG_DOC_ID = "rtconfig";
