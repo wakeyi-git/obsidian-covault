@@ -143,14 +143,17 @@ export class RealtimeSection implements PanelSection {
 			return;
 		}
 		for (const ses of sessions) {
-			const box = el.createDiv({ cls: "covault-cr-card" });
+			// 카드 전체를 클릭하면 파일이 열린다(별도 '열기' 버튼 제거).
+			const box = el.createDiv({ cls: "covault-cr-card covault-rt-sescard" });
+			box.setAttr("role", "button");
+			box.setAttr("aria-label", t("dashboard.open"));
+			box.onclick = () => this.openFile(ses.path);
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: ses.path.split("/").pop() ?? ses.path });
 			const badge = head.createSpan({ cls: "covault-cr-badge is-accent" });
 			setIcon(badge.createSpan(), "users");
 			badge.createSpan({ text: t("realtime.participants_n", { n: ses.participants }) });
-			panelButton(head, t("dashboard.open"), () => this.openFile(ses.path));
 			box.createDiv({ cls: "covault-cr-muted", text: ses.path });
 		}
 	}
@@ -176,7 +179,8 @@ export class RealtimeSection implements PanelSection {
 		el.empty();
 		el.createDiv({ cls: "covault-dash-label", text: t("realtime.file_participants") });
 		el.createDiv({ cls: "covault-cr-muted covault-rt-partfile", text: f.basename });
-		const selected = new Set(current ?? sp.members);
+		// 기본값 = 아무도 아님(지정 문서가 곧 허용 명단). null/없음이면 빈 선택.
+		const selected = new Set(current ?? []);
 		const grid = el.createDiv({ cls: "covault-rt-parts" });
 		for (const id of sp.members) {
 			const m = s.members.find((x) => x.memberId === id);
@@ -187,7 +191,8 @@ export class RealtimeSection implements PanelSection {
 				if (cb.checked) selected.add(id);
 				else selected.delete(id);
 				lab.toggleClass("is-on", cb.checked);
-				const ids = selected.size >= sp.members.length ? null : [...selected];
+				// 아무도 선택 안 하면 지정 해제(문서 삭제 = 아무도), 있으면 명단 지정.
+				const ids = selected.size === 0 ? null : [...selected];
 				await this.host.setFileRealtimeParticipants(f.path, ids);
 			};
 			lab.toggleClass("is-on", cb.checked);

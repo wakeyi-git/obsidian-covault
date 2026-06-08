@@ -377,20 +377,24 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return { path: f.path, participants: this.realtime.presenceFor(f.path) };
 	}
 
-	/** 파일별 실시간 참여 가능 여부(게이트). 교사·미지정 파일은 항상 허용, 지정 파일은 명단에 든 구성원만. */
+	/**
+	 * 파일별 실시간 참여 가능 여부(게이트). 교사·개인 mirror(1:1)는 항상 허용.
+	 * 공유 공간 파일은 '참여자 지정 문서'가 허용 명단 — 지정 없으면 아무도 참여하지 않는다(기본 비활성).
+	 */
 	private async canEditRealtime(path: string): Promise<boolean> {
 		const s = this.settings;
-		if (s.role === "manager") return true; // 교사는 모든 팀 참관 가능
+		if (s.role === "manager") return true; // 교사는 모든 세션 참관/편집 가능
 		const sync = this.syncForLocalPath(path);
 		if (!sync) return true;
+		if (sync.ctx.remoteDb === s.remoteDb) return true; // 개인 mirror(교사 1:1)는 게이팅 없음
 		const dbPath = sync.ctx.toDbPath(path);
 		if (!dbPath) return true;
 		try {
 			const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath));
-			if (!doc || doc.deleted) return true; // 지정 없음 → 전원 참여(기본)
+			if (!doc || doc.deleted) return false; // 공유 파일 기본 = 아무도 라이브 참여 안 함
 			return doc.memberIds.includes(s.userId);
 		} catch {
-			return true;
+			return false; // 지정 문서 없음 → 비참여
 		}
 	}
 
