@@ -24,16 +24,18 @@ export class ManagerMode implements CoVaultMode {
 		// 모든 링크의 localRoot(개인 학생 폴더 + 공유 폴더)로 겹침 제외 계산
 		const roots = [...members.map((st) => st.localRoot), ...shared.map((sp) => sp.folder)];
 
-		const memberSyncs = members.map(
-			(st) =>
-				new MirrorSync(core, {
-					memberId: st.memberId,
-					memberName: st.memberName,
-					localRoot: st.localRoot,
-					remoteDb: st.remoteDb,
-					childRoots: computeChildRoots(st.localRoot, roots),
-				}),
-		);
+		const memberSyncs = members.map((st) => {
+			// 공동 공간 파일이 구성원 개인 미러로 새어 들어간 경우(구성원 vault의 공유 폴더), 교사 측 구성원 폴더
+			// 아래(<localRoot>/<공유폴더>)로 펼치지 않도록 제외한다. 공유 폴더는 share_* 링크가 담당하므로 중복 방지.
+			const foreignShared = shared.map((sp) => [st.localRoot, sp.folder].filter(Boolean).join("/"));
+			return new MirrorSync(core, {
+				memberId: st.memberId,
+				memberName: st.memberName,
+				localRoot: st.localRoot,
+				remoteDb: st.remoteDb,
+				childRoots: [...computeChildRoots(st.localRoot, roots), ...foreignShared],
+			});
+		});
 		const sharedSyncs = shared.map(
 			(sp) =>
 				new MirrorSync(core, {
