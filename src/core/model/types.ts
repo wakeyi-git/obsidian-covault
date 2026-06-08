@@ -241,6 +241,37 @@ export function responsePrefix(targetId: string): string {
 	return `${RESPONSE_ID_PREFIX}${targetId}:`;
 }
 
+/**
+ * 대화(메신저) 메시지. 학급 채널=학급 공유 DB(전원), 1:1 DM=구성원 개인 mirror DB(비공개).
+ * body에 위키링크([[..]])·URL을 포함할 수 있고 렌더 시 클릭 가능하게 만든다.
+ */
+export interface MessageDoc extends PouchDocBase {
+	type: "message";
+	schemaVersion: number;
+	workspaceId: string;
+	channel: string; // "class" | "dm:<memberId>"
+	body: string;
+	byUser: string;
+	byRole: "member" | "manager";
+	createdAtMs: number;
+	deleted?: boolean;
+}
+
+export const MESSAGE_ID_PREFIX = "message:";
+/** 학급 전체 채널 id. */
+export const CLASS_CHANNEL = "class";
+/** 1:1 DM 채널 id(구성원별). */
+export function dmChannel(memberId: string): string {
+	return `dm:${memberId}`;
+}
+export function messageId(channel: string, uid: string): string {
+	return `${MESSAGE_ID_PREFIX}${channel}:${uid}`;
+}
+/** channel 미지정이면 전체 message prefix(개인 mirror에서 dm 전부 조회 등). */
+export function messagePrefix(channel?: string): string {
+	return channel ? `${MESSAGE_ID_PREFIX}${channel}:` : MESSAGE_ID_PREFIX;
+}
+
 /** 주간 시간표(학급 공유 DB, 주(週)별 문서). 주 시작(월요일) 날짜키로 분리. */
 export interface TimetableDoc extends PouchDocBase {
 	type: "timetable";

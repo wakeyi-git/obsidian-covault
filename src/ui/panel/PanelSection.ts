@@ -7,11 +7,11 @@ import { LinkStatus } from "../../core/sync/MirrorContext";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "../../core/sync/RestoreManager";
 import { PurgeSnapshot } from "../../core/sync/recentPurge";
 import { DeleteModifyItem } from "../../core/sync/deleteModifyQueue";
-import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion, RoutineDoc, RoutineStateDoc, NoticeDoc, ResponseDoc } from "../../core/model/types";
+import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion, RoutineDoc, RoutineStateDoc, NoticeDoc, ResponseDoc, MessageDoc } from "../../core/model/types";
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
-export type PanelTab = "dashboard" | "feedback" | "deploy" | "sync" | "manage" | "recovery" | "history" | "log";
+export type PanelTab = "dashboard" | "chat" | "feedback" | "deploy" | "sync" | "manage" | "recovery" | "history" | "log";
 
 /** 동기화 상태 표 한 행(링크별). */
 export interface DashboardRow extends LinkStatus {
@@ -68,6 +68,16 @@ export interface NoticeHost {
 	listPrivateResponses(): Promise<ResponseDoc[]>;
 	/** 수업 안내(uid) 열기(+학생 읽음 처리). */
 	openLesson(uid: string): Promise<void>;
+}
+
+/** 대화(메신저) — 학급 채널 + 1:1 DM. */
+export interface MessageHost {
+	/** 메시지 전송(channel="class" 또는 "dm:<memberId>"). */
+	sendMessage(channel: string, body: string): Promise<boolean>;
+	/** 채널 메시지 목록(오래된→최신). */
+	listMessages(channel: string): Promise<MessageDoc[]>;
+	/** 메시지 삭제(본인 메시지). */
+	deleteMessage(channel: string, doc: MessageDoc): Promise<void>;
 }
 
 /** 과제(배포·제출·채점). */
@@ -166,7 +176,7 @@ export interface RecoveryHost {
 	restoreVersion(localPath: string, versionDocId: string, opts: { backupCurrent?: boolean }): Promise<"restored" | "missing">;
 }
 
-export interface PanelHost extends CoreHost, NoticeHost, AssignmentHost, RoutineHost, SyncHost, RecoveryHost {}
+export interface PanelHost extends CoreHost, NoticeHost, MessageHost, AssignmentHost, RoutineHost, SyncHost, RecoveryHost {}
 
 /** 링크 라벨이 붙은 삭제/수정 충돌 항목. */
 export interface DeleteModifyRow extends DeleteModifyItem {

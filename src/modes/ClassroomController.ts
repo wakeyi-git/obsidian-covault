@@ -26,6 +26,10 @@ import {
 	ResponseDoc,
 	responseId,
 	RESPONSE_ID_PREFIX,
+	MessageDoc,
+	messageId,
+	messagePrefix,
+	CLASS_CHANNEL,
 	AssignmentDoc,
 	AssignmentStateDoc,
 	AssignmentGrade,
@@ -806,6 +810,67 @@ export class ClassroomController {
 			if (sync) out.push(...(await sync.ctx.pouch.allDocsByPrefix<ResponseDoc>(RESPONSE_ID_PREFIX)));
 		}
 		return out.filter((d) => (d.kind === "question" || d.kind === "comment") && !d.deleted);
+	}
+
+	// --- 대화(메신저) ---
+
+	/** DM 채널의 대상 mirror sync 해석. 교사=대상 구성원 mirror, 학생=본인 mirror. */
+	private dmSync(channel: string) {
+		const s = this.d.settings();
+		if (s.role === "manager") {
+			const memberId = channel.slice("dm:".length);
+			const member = s.members.find((m) => m.memberId === memberId);
+			return member ? this.d.memberSyncByRemoteDb(member.remoteDb) : undefined;
+		}
+		return this.d.studentMirrorSync();
+	}
+
+	/** 메시지 전송. 학급 채널=학급 공유 DB, DM=대상/본인 mirror DB. */
+	async sendMessage(channel: string, body: string): Promise<boolean> {
+		const s = this.d.settings();
+		const text = body.trim();
+		if (!text) return false;
+		const uid = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+		const doc: MessageDoc = {
+			_id: messageId(channel, uid),
+			type: "message",
+			schemaVersion: 1,
+			workspaceId: s.workspaceId,
+			channel,
+			body: text,
+			byUser: s.userId,
+			byRole: s.role,
+			createdAtMs: Date.now(),
+		};
+		if (channel === CLASS_CHANNEL) return this.d.classroom.put(doc);
+		const sync = this.dmSync(channel);
+		if (!sync) return false;
+		await sync.ctx.pouch.put(doc);
+		return true;
+	}
+
+	/** 채널 메시지 목록(오래된→최신). */
+	async listMessages(channel: string): Promise<MessageDoc[]> {
+		let docs: MessageDoc[];
+		if (channel === CLASS_CHANNEL) {
+			docs = await this.d.classroom.listByPrefix<MessageDoc>(messagePrefix(CLASS_CHANNEL));
+		} else {
+			const sync = this.dmSync(channel);
+			// 개인 mirror에는 그 1:1 대화만 있으므로 dm 전체 prefix로 조회.
+			docs = sync ? await sync.ctx.pouch.allDocsByPrefix<MessageDoc>(messagePrefix("dm:")) : [];
+		}
+		return docs.filter((d) => !d.deleted).sort((a, b) => a.createdAtMs - b.createdAtMs);
+	}
+
+	/** 메시지 삭제(soft-delete). 본인 메시지만 호출되도록 UI가 게이트. */
+	async deleteMessage(channel: string, doc: MessageDoc): Promise<void> {
+		const dead = { ...doc, deleted: true };
+		if (channel === CLASS_CHANNEL) {
+			await this.d.classroom.put(dead);
+			return;
+		}
+		const sync = this.dmSync(channel);
+		if (sync) await sync.ctx.pouch.put(dead);
 	}
 
 	async listAllAssignmentStates(): Promise<AssignmentStateDoc[]> {

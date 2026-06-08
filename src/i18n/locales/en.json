@@ -1,4 +1,15 @@
 {
+	"chat": {
+		"chat": "Chat",
+		"class_channel": "Whole class",
+		"teacher": "Teacher",
+		"placeholder": "Type a message",
+		"send": "Send",
+		"attach_note": "Current note link",
+		"no_messages": "No messages yet.",
+		"class_needs_homeroom": "Set a homeroom shared space to use the class chat.",
+		"shared_folder_hint": "Links open for the other side only if the note/file is in a shared folder."
+	},
 	"realtime": {
 		"realtime_excalidraw_bound": "Realtime Excalidraw bound: {file}",
 		"realtime_cannot_access_excalidraw_api_check": "Realtime: cannot access Excalidraw API — {file} (check that the Excalidraw plugin is up to date)",

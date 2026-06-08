@@ -1,4 +1,15 @@
 {
+	"chat": {
+		"chat": "대화",
+		"class_channel": "학급 전체",
+		"teacher": "선생님",
+		"placeholder": "메시지를 입력하세요",
+		"send": "보내기",
+		"attach_note": "현재 노트 링크",
+		"no_messages": "아직 메시지가 없습니다.",
+		"class_needs_homeroom": "학급 공동 공간을 지정하면 학급 대화를 쓸 수 있습니다.",
+		"shared_folder_hint": "공유 폴더에 있는 노트/파일만 상대에게 열립니다."
+	},
 	"realtime": {
 		"realtime_excalidraw_bound": "실시간 Excalidraw 바인딩: {file}",
 		"realtime_cannot_access_excalidraw_api_check": "실시간: Excalidraw API 접근 불가 — {file} (Excalidraw 플러그인 최신인지 확인)",

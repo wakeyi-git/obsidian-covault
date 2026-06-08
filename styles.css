@@ -660,6 +660,82 @@
 	margin: 8px 0;
 }
 
+/* 대화(메신저) 탭 */
+.covault-chat {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+.covault-chat-head {
+	padding-bottom: 8px;
+}
+.covault-chat-channel {
+	width: 100%;
+}
+.covault-chat-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 4px 0;
+}
+.covault-chat-msg {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-width: 88%;
+	align-self: flex-start;
+}
+.covault-chat-msg.is-mine {
+	align-self: flex-end;
+}
+.covault-chat-meta {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+}
+.covault-chat-bubble {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	padding: 6px 10px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.covault-chat-msg.is-mine .covault-chat-bubble {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+.covault-chat-link {
+	cursor: pointer;
+	text-decoration: underline;
+}
+.covault-chat-del {
+	--icon-size: 14px;
+	opacity: 0.6;
+}
+.covault-chat-compose {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.covault-chat-input {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.covault-chat-attach {
+	flex: 0 0 auto;
+}
+.covault-chat-hint {
+	padding-top: 4px;
+}
+
 /* 모바일(iOS): 키보드가 올라와도 하단 버튼이 가려지지 않도록 입력칸 높이를 제한하고 모달 내용을 스크롤 가능하게 한다. */
 .is-mobile .covault-backup-modal .modal-content {
 	max-height: 70vh;

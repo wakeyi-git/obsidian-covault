@@ -191,9 +191,9 @@ export class CouchAdmin {
 			"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
 			"  var teacherOnly = ['notice','timetable','routine','assignment'];\n" +
 			"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
-			"  if (t === 'response') {\n" +
+			"  if (t === 'response' || t === 'message') {\n" +
 			"    var owner = newDoc._deleted ? (oldDoc && oldDoc.byUser) : newDoc.byUser;\n" +
-			"    if (owner && owner !== userCtx.name) throw({ forbidden: 'own response only' });\n" +
+			"    if (owner && owner !== userCtx.name) throw({ forbidden: 'own doc only' });\n" +
 			"  }\n" +
 			"}";
 		const path = `${encodeURIComponent(remoteDb)}/_design/auth`;

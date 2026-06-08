@@ -1,7 +1,7 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { errMessage } from "./core/util/err";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
-import { VersionDoc, NoticeDoc, ResponseDoc } from "./core/model/types";
+import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc } from "./core/model/types";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
@@ -529,6 +529,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 	listPrivateResponses(): Promise<ResponseDoc[]> {
 		return this.classroomCtl.listPrivateResponses();
+	}
+	sendMessage(channel: string, body: string): Promise<boolean> {
+		return this.classroomCtl.sendMessage(channel, body);
+	}
+	listMessages(channel: string): Promise<MessageDoc[]> {
+		return this.classroomCtl.listMessages(channel);
+	}
+	deleteMessage(channel: string, doc: MessageDoc): Promise<void> {
+		return this.classroomCtl.deleteMessage(channel, doc);
 	}
 
 	/**
