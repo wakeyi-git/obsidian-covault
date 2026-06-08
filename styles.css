@@ -707,12 +707,15 @@
 	box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
-/* 활성 파일 참여자 칩 박스(제목/파일명 없이 목록 바로 아래) */
+/* 활성 파일 참여자 칩 박스 — 활성 카드 안에서 펼쳐진다(카드 내용과 구분선으로 분리) */
 .covault-rt-partbox:empty {
 	display: none;
 }
-.covault-rt-partbox {
-	margin-top: 6px;
+.covault-rt-sescard > .covault-rt-partbox {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+	cursor: default;
 }
 .covault-rt-parts {
 	display: grid;

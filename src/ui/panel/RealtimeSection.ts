@@ -89,13 +89,14 @@ export class RealtimeSection implements PanelSection {
 				}),
 			);
 
-		// 활성 세션(라이브) + 지정된 파일. 활성 파일 카드는 강조되고, 그 아래 참여자 칩이 붙는다.
+		// 활성 세션(라이브) + 지정된 파일. 활성 파일 카드는 강조되고, 그 카드 안에서 참여자 칩이 펼쳐진다.
 		c.createDiv({ cls: "covault-dash-label", text: t("realtime.active_sessions") });
 		this.sessionEl = c.createDiv({ cls: "covault-rt-session" });
-		void this.renderSessions();
-
-		// 활성 파일 참여자 칩(별도 제목/파일명 없이 강조된 카드 아래에 붙음).
+		// 참여자 칩 박스(안정 노드) — renderSessions가 활성 카드 안으로 이동시킨다. 칩 클릭이 카드 열기로
+		// 전파되지 않도록 stopPropagation.
 		this.partEl = c.createDiv({ cls: "covault-rt-partbox" });
+		this.partEl.addEventListener("click", (e) => e.stopPropagation());
+		void this.renderSessions();
 		void this.renderFileParticipants();
 
 		// 문제 해결.
@@ -160,7 +161,9 @@ export class RealtimeSection implements PanelSection {
 		const activePath = this.host.app.workspace.getActiveFile()?.path ?? "";
 
 		// 변화 없으면 재구성 생략(불필요한 DOM 교체로 카드 클릭이 씹히는 것 방지).
-		const sig = rows.map((r) => `${r.path}:${r.open ? r.participants : "-"}:${r.assigned ?? "-"}`).join("|") + "#" + activePath;
+		// 열린 파일은 참가자 수만, 닫힌 지정 파일은 지정 수만 본다 — 참여자 칩 토글이 목록을
+		// 재구성하지 않게(활성 파일은 열려 있어 토글해도 시그니처 불변) → 칩 클릭 안정성.
+		const sig = rows.map((r) => (r.open ? `${r.path}:o${r.participants}` : `${r.path}:a${r.assigned}`)).join("|") + "#" + activePath;
 		if (sig === this.sessSig && el.childElementCount > 0) return;
 		this.sessSig = sig;
 		el.empty();
@@ -168,10 +171,14 @@ export class RealtimeSection implements PanelSection {
 			el.createDiv({ cls: "covault-cr-muted", text: t("realtime.session_none") });
 			return;
 		}
+		let activeCard: HTMLElement | null = null;
 		for (const r of rows) {
 			// 카드 전체를 클릭하면 파일이 열린다(별도 '열기' 버튼 제거).
 			const box = el.createDiv({ cls: "covault-cr-card covault-rt-sescard" });
-			if (r.path === activePath) box.addClass("is-active"); // 활성 파일 강조
+			if (r.path === activePath) {
+				box.addClass("is-active"); // 활성 파일 강조
+				activeCard = box;
+			}
 			box.setAttr("role", "button");
 			box.setAttr("aria-label", t("dashboard.open"));
 			box.onclick = () => this.openFile(r.path);
@@ -189,6 +196,8 @@ export class RealtimeSection implements PanelSection {
 			}
 			box.createDiv({ cls: "covault-cr-muted", text: r.path });
 		}
+		// 참여자 칩 박스(안정 노드)를 활성 카드 안으로 펼친다 — 재구성하지 않고 이동만 해 클릭 안정.
+		if (this.partEl) (activeCard ?? el).appendChild(this.partEl);
 	}
 
 	private openFile(path: string): void {
