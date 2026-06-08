@@ -41,8 +41,6 @@ export class RealtimeSection implements PanelSection {
 		this.partPath = null;
 		const s = this.host.settings;
 
-		c.createDiv({ cls: "covault-dash-label", text: t("realtime.tab") });
-
 		if (this.manager) this.drawManager(c, s);
 		else this.drawMember(c, s);
 	}
