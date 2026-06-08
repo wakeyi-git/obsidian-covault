@@ -660,6 +660,33 @@
 	margin: 8px 0;
 }
 
+/* 실시간 탭: 상태 표 */
+.covault-rt-status {
+	margin: 4px 0 8px;
+}
+.covault-rt-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: 13px;
+}
+.covault-rt-row:last-child {
+	border-bottom: none;
+}
+.covault-rt-key {
+	color: var(--text-muted);
+}
+.covault-rt-val {
+	font-weight: 600;
+	text-align: right;
+	word-break: break-all;
+}
+.covault-rt-session {
+	margin: 4px 0 10px;
+}
+
 /* 대화(메신저) 탭 */
 .covault-chat {
 	display: flex;

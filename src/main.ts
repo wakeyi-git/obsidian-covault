@@ -364,6 +364,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return (this.core?.sharedSpaces ?? []).some((sp) => !!sp.token);
 	}
 
+	/** PanelHost: 현재 활성 파일의 실시간 세션 정보(없으면 null). */
+	realtimeActiveFile(): { path: string; participants: number } | null {
+		const f = this.app.workspace.getActiveFile();
+		if (!f || !this.realtime?.isActive(f.path)) return null;
+		return { path: f.path, participants: this.realtime.presenceFor(f.path) };
+	}
+
 	/** SettingsHost: 공유 공간 하나를 학급 공동 공간으로 지정/해제(교사 전용). */
 	async setHomeroomSpace(space: SharedSpace, on: boolean): Promise<void> {
 		const s = this.settings;

@@ -11,7 +11,7 @@ import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricC
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
-export type PanelTab = "dashboard" | "chat" | "feedback" | "deploy" | "sync" | "manage" | "recovery" | "history" | "log";
+export type PanelTab = "dashboard" | "chat" | "feedback" | "realtime" | "deploy" | "sync" | "manage" | "recovery" | "history" | "log";
 
 /** 동기화 상태 표 한 행(링크별). */
 export interface DashboardRow extends LinkStatus {
@@ -80,6 +80,16 @@ export interface MessageHost {
 	deleteMessage(channel: string, doc: MessageDoc): Promise<void>;
 	/** vault 파일을 채널 첨부 폴더로 복사하고 임베드/링크 마크다운 반환(실패 시 null). */
 	attachFileToChannel(channel: string, srcPath: string): Promise<string | null>;
+}
+
+/** 실시간 공동 편집 제어·상태. */
+export interface RealtimeHost {
+	/** 실시간 토큰 재발급/재배포(교사). 설정 변경 후 전파. */
+	redeployRealtime(): Promise<void>;
+	/** 실시간 공간 토큰을 하나라도 수신했는지(구성원). */
+	realtimeTokenReceived(): boolean;
+	/** 현재 활성 파일의 실시간 세션 정보(없으면 null). */
+	realtimeActiveFile(): { path: string; participants: number } | null;
 }
 
 /** 과제(배포·제출·채점). */
@@ -178,7 +188,7 @@ export interface RecoveryHost {
 	restoreVersion(localPath: string, versionDocId: string, opts: { backupCurrent?: boolean }): Promise<"restored" | "missing">;
 }
 
-export interface PanelHost extends CoreHost, NoticeHost, MessageHost, AssignmentHost, RoutineHost, SyncHost, RecoveryHost {}
+export interface PanelHost extends CoreHost, NoticeHost, MessageHost, RealtimeHost, AssignmentHost, RoutineHost, SyncHost, RecoveryHost {}
 
 /** 링크 라벨이 붙은 삭제/수정 충돌 항목. */
 export interface DeleteModifyRow extends DeleteModifyItem {

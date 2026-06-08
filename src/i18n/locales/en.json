@@ -16,6 +16,14 @@
 		"shared_folder_hint": "Links open for the other side only if the note/file is in a shared folder."
 	},
 	"realtime": {
+		"tab": "Realtime",
+		"session_none": "No shared document is being co-edited right now. Open a shared-folder note in edit mode.",
+		"disabled_hint": "Realtime is off.",
+		"participants_n": "{n} editing",
+		"redeploy_tokens": "Reissue / redeploy tokens",
+		"spaces_tokens": "Space tokens",
+		"configure_in_settings": "Change the server URL, space secret, and expiry in the Settings tab.",
+		"member_note": "Tokens are delivered automatically when your manager deploys a shared space.",
 		"realtime_excalidraw_bound": "Realtime Excalidraw bound: {file}",
 		"realtime_cannot_access_excalidraw_api_check": "Realtime: cannot access Excalidraw API — {file} (check that the Excalidraw plugin is up to date)",
 		"excalidraw_plugin_api_bound": "Excalidraw: plugin={plugin}, API={api}, bound={bound}",

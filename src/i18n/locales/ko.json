@@ -16,6 +16,14 @@
 		"shared_folder_hint": "공유 폴더에 있는 노트/파일만 상대에게 열립니다."
 	},
 	"realtime": {
+		"tab": "실시간",
+		"session_none": "지금 공동 편집 중인 공유 문서가 없습니다. 공유 폴더 노트를 편집 모드로 여세요.",
+		"disabled_hint": "실시간이 꺼져 있습니다.",
+		"participants_n": "참가자 {n}명",
+		"redeploy_tokens": "토큰 재발급·재배포",
+		"spaces_tokens": "공간 토큰",
+		"configure_in_settings": "서버 URL·공간 시크릿·만료는 설정 탭에서 변경합니다.",
+		"member_note": "토큰은 교사가 공동 공간을 배포하면 자동으로 전달됩니다.",
 		"realtime_excalidraw_bound": "실시간 Excalidraw 바인딩: {file}",
 		"realtime_cannot_access_excalidraw_api_check": "실시간: Excalidraw API 접근 불가 — {file} (Excalidraw 플러그인 최신인지 확인)",
 		"excalidraw_plugin_api_bound": "Excalidraw: 플러그인={plugin}, API={api}, 바인딩={bound}",
