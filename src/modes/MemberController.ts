@@ -145,6 +145,8 @@ export class MemberController {
 	/** 한 학생의 shares + rtconfig 문서 기록(공유 공간 멤버십 + 개인 mirror 실시간 공간). */
 	async writeMemberSync(admin: CouchAdmin, st: MemberConfig): Promise<void> {
 		const s = this.d.settings();
+		// 이 구성원에게 실시간을 켤지(전역 on + 개별 차단 아님). 차단이면 토큰 미전달·realtime:false → 파일 동기화만.
+		const rtOn = s.realtimeEnabled && !st.realtimeBlocked;
 		const spaces: SharesDoc["spaces"] = s.sharedSpaces
 			.filter((sp) => sp.members.includes(st.memberId))
 			.map((sp) => ({
@@ -152,11 +154,11 @@ export class MemberController {
 				name: sp.name,
 				remoteDb: sp.remoteDb,
 				folder: sp.folder,
-				token: sp.token,
+				token: rtOn ? sp.token : undefined,
 				kind: sp.kind === "homeroom" ? ("homeroom" as const) : ("share" as const),
-				realtime: s.realtimeEnabled,
+				realtime: rtOn,
 			}));
-		if (s.realtimeEnabled && st.realtimeToken) {
+		if (rtOn && st.realtimeToken) {
 			spaces.push({ id: `mirror-${st.memberId}`, name: st.memberName, remoteDb: st.remoteDb, folder: "", token: st.realtimeToken, kind: "mirror", realtime: true });
 		}
 		const r = await admin.putDoc(st.remoteDb, { _id: SHARES_DOC_ID, type: "shares", spaces });

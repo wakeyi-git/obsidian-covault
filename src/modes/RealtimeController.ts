@@ -50,7 +50,7 @@ export class RealtimeController {
 	async mintMirror(member: MemberConfig): Promise<void> {
 		const s = this.d.settings();
 		const yjsSecret = getSecretValue(this.d.app, YJS_SECRET_ID, s.yjsSecret);
-		if (s.realtimeEnabled && yjsSecret && member.memberId) {
+		if (s.realtimeEnabled && yjsSecret && member.memberId && !member.realtimeBlocked) {
 			member.realtimeToken = await mintSpaceToken(yjsSecret, {
 				workspaceId: s.workspaceId,
 				spaceId: `mirror-${member.memberId}`,

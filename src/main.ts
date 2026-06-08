@@ -371,6 +371,28 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return { path: f.path, participants: this.realtime.presenceFor(f.path) };
 	}
 
+	/** PanelHost: 구성원별 실시간 허용/차단(교사). 차단=토큰 미발급·shares realtime:false → 파일 동기화만. */
+	async setMemberRealtime(memberId: string, allowed: boolean): Promise<void> {
+		const s = this.settings;
+		if (s.role !== "manager") {
+			this.logger.warn(t("command.available_in_manager_mode_only"), true);
+			return;
+		}
+		const m = s.members.find((x) => x.memberId === memberId);
+		if (!m) return;
+		m.realtimeBlocked = !allowed;
+		await this.realtimeCtl.mintMirror(m); // 차단이면 mirror 토큰 삭제, 허용이면 재발급
+		await this.saveSettings();
+		if (m.provisioned && s.couchdbUrl && s.username && this.couchPassword()) {
+			const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
+			await this.writeMemberSync(admin, m); // 갱신된 shares를 학생 mirror에 기록 → 학생이 자동 반영
+		}
+		this.logger.ok(
+			(allowed ? t("realtime.member_allowed", { name: m.memberName || memberId }) : t("realtime.member_blocked", { name: m.memberName || memberId })),
+			true,
+		);
+	}
+
 	/** SettingsHost: 공유 공간 하나를 학급 공동 공간으로 지정/해제(교사 전용). */
 	async setHomeroomSpace(space: SharedSpace, on: boolean): Promise<void> {
 		const s = this.settings;

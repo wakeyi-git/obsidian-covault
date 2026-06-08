@@ -36,6 +36,8 @@ export interface MemberConfig {
 	provisioned?: boolean; // CouchDB 계정/DB/권한 생성 완료 여부
 	/** 개인 mirror 1:1 실시간 서명 토큰(HMAC). 전역 실시간 사용 시 배포에서 발급되어 학생 shares로 전달(교사 기기 한정). */
 	realtimeToken?: string;
+	/** 이 구성원만 실시간 편집 차단(전역 실시간이 켜져 있어도 토큰 미발급 → 파일 동기화만, 라이브 세션 제외). */
+	realtimeBlocked?: boolean;
 }
 
 /**

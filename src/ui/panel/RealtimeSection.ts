@@ -79,6 +79,22 @@ export class RealtimeSection implements PanelSection {
 				const list = c.createDiv({ cls: "covault-rt-status" });
 				for (const sp of s.sharedSpaces) this.statusRow(list, sp.name || sp.id, sp.token ? t("common.set") : t("common.none"));
 			}
+
+			// 구성원별 실시간 허용/차단(전역 실시간이 켜진 동안만 의미 있음).
+			const members = s.members.filter((m) => m.memberId && m.provisioned);
+			if (s.realtimeEnabled && members.length > 0) {
+				c.createDiv({ cls: "covault-dash-label", text: t("realtime.per_member") });
+				for (const m of members) {
+					new Setting(c).setName(m.memberName || m.memberId).addToggle((tg) =>
+						tg.setValue(!m.realtimeBlocked).onChange(async (v) => {
+							await this.host.setMemberRealtime(m.memberId, v);
+							this.draw();
+						}),
+					);
+				}
+				c.createDiv({ cls: "covault-cr-muted", text: t("realtime.per_member_hint") });
+			}
+
 			c.createDiv({ cls: "covault-cr-muted", text: t("realtime.configure_in_settings") });
 		} else {
 			const actions = c.createDiv({ cls: "covault-panel-actions" });
