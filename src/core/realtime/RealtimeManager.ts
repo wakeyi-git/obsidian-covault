@@ -66,8 +66,9 @@ export class RealtimeManager {
 	// 파일별 참여 허용 캐시(비동기 조회 결과). 파일이 닫히면 비워 재오픈 시 재평가.
 	private participantOk = new Map<string, boolean>();
 	private participantPending = new Set<string>();
-	// CoVault가 읽기 전용으로 잠근 에디터(정책 해제 시 우리가 잠근 것만 푼다 — 타 플러그인 read-only 보호).
+	// CoVault가 읽기 전용으로 잠근 에디터/그림(정책 해제 시 우리가 잠근 것만 푼다 — 타 플러그인 보호).
 	private lockedViews = new WeakSet<EditorView>();
+	private lockedExcalidraw = new WeakSet<ExcalidrawLikeView>();
 
 	private get settings() {
 		return this.core.settings;
@@ -109,6 +110,11 @@ export class RealtimeManager {
 	/** 실시간 세션 중인 파일인가 (applier 공존 판단용). */
 	isActive(localPath: string): boolean {
 		return this.sessions.has(localPath);
+	}
+
+	/** 현재(이 기기) 활성 실시간 세션 목록 — 파일 경로 + 접속자 수. 패널 관리용. */
+	activeSessions(): Array<{ path: string; participants: number }> {
+		return [...this.sessions.keys()].map((p) => ({ path: p, participants: this.presenceFor(p) }));
 	}
 
 	/** 해당 파일의 접속자 수(본인 포함). 세션 없으면 0. */
@@ -207,6 +213,31 @@ export class RealtimeManager {
 			} else if (this.lockedViews.has(cm)) {
 				setEditorReadOnly(cm, false);
 				this.lockedViews.delete(cm);
+			}
+		}
+		// Excalidraw 그림 — viewModeEnabled로 잠금/해제.
+		for (const leaf of this.app.workspace.getLeavesOfType("excalidraw")) {
+			const view = leaf.view as ExcalidrawLikeView;
+			const file = view?.file;
+			if (!file) continue;
+			const api = this.getExcalidrawApi(view);
+			if (!api) continue;
+			const desired = policy && this.isSupportedExcalidraw(file.path) && !!this.spaceFor(file.path) && !this.isActive(file.path);
+			const cur = !!api.getAppState?.()?.viewModeEnabled;
+			if (desired && !cur) {
+				try {
+					api.updateScene({ appState: { viewModeEnabled: true } });
+				} catch {
+					/* API 형태가 다를 수 있음 */
+				}
+				this.lockedExcalidraw.add(view);
+			} else if (!desired && this.lockedExcalidraw.has(view)) {
+				try {
+					api.updateScene({ appState: { viewModeEnabled: false } });
+				} catch {
+					/* noop */
+				}
+				this.lockedExcalidraw.delete(view);
 			}
 		}
 	}

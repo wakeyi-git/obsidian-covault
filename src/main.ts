@@ -365,6 +365,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return (this.core?.sharedSpaces ?? []).some((sp) => !!sp.token);
 	}
 
+	/** PanelHost: 현재(이 기기) 활성 실시간 세션 목록. */
+	realtimeSessions(): Array<{ path: string; participants: number }> {
+		return this.realtime?.activeSessions() ?? [];
+	}
+
 	/** PanelHost: 현재 활성 파일의 실시간 세션 정보(없으면 null). */
 	realtimeActiveFile(): { path: string; participants: number } | null {
 		const f = this.app.workspace.getActiveFile();

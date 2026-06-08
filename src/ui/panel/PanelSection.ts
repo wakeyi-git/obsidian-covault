@@ -90,6 +90,8 @@ export interface RealtimeHost {
 	realtimeTokenReceived(): boolean;
 	/** 현재 활성 파일의 실시간 세션 정보(없으면 null). */
 	realtimeActiveFile(): { path: string; participants: number } | null;
+	/** 현재(이 기기) 활성 실시간 세션 목록. */
+	realtimeSessions(): Array<{ path: string; participants: number }>;
 	/** 구성원별 실시간 허용/차단(교사). 차단=토큰 미발급 → 파일 동기화만. */
 	setMemberRealtime(memberId: string, allowed: boolean): Promise<void>;
 	/** 파일의 실시간 참여자 명단(null=전원/미지정). */
