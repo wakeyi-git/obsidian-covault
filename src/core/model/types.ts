@@ -284,6 +284,8 @@ export interface RtPartDoc extends PouchDocBase {
 	workspaceId: string;
 	dbPath: string; // 공간 폴더 기준 상대 경로
 	memberIds: string[];
+	/** memberId → 표시 이름. 학생은 동료 명단이 없으므로 문서에 이름을 담아 카드에 이름으로 표시. */
+	memberNames?: Record<string, string>;
 	updatedAtMs: number;
 	updatedBy: string;
 	deleted?: boolean;

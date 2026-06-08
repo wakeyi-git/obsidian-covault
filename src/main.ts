@@ -418,9 +418,9 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	 * PanelHost: 참여자가 지정된 공유 파일 목록. 닫혀 있어도 목록에 유지해 재오픈하게 한다.
 	 * 교사는 전부, 구성원은 '자신이 참여자로 지정된' 파일만 본다.
 	 */
-	async listRealtimeFiles(): Promise<Array<{ path: string; memberIds: string[] }>> {
+	async listRealtimeFiles(): Promise<Array<{ path: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
 		const s = this.settings;
-		const out: Array<{ path: string; memberIds: string[] }> = [];
+		const out: Array<{ path: string; memberIds: string[]; memberNames?: Record<string, string> }> = [];
 		const seen = new Set<string>();
 		for (const sync of this.mode?.getSyncs() ?? []) {
 			let docs: RtPartDoc[];
@@ -435,7 +435,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				const path = sync.ctx.toLocalPath(d.dbPath);
 				if (seen.has(path)) continue;
 				seen.add(path);
-				out.push({ path, memberIds: d.memberIds });
+				out.push({ path, memberIds: d.memberIds, memberNames: d.memberNames });
 			}
 		}
 		return out;
@@ -465,6 +465,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			const existing = await sync.ctx.pouch.get<RtPartDoc>(id).catch(() => null);
 			if (existing && !existing.deleted) await sync.ctx.pouch.put({ ...existing, deleted: true, updatedAtMs: Date.now() });
 		} else {
+			// 이름도 함께 저장 — 학생은 동료 명단이 없으므로 문서의 이름으로 카드에 표시.
+			const memberNames: Record<string, string> = {};
+			for (const mid of memberIds) {
+				const m = this.settings.members.find((x) => x.memberId === mid);
+				if (m?.memberName) memberNames[mid] = m.memberName;
+			}
 			await sync.ctx.pouch.put({
 				_id: id,
 				type: "rtpart",
@@ -472,6 +478,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				workspaceId: this.settings.workspaceId,
 				dbPath,
 				memberIds,
+				memberNames,
 				updatedAtMs: Date.now(),
 				updatedBy: this.settings.userId,
 			} as RtPartDoc);

@@ -1,7 +1,6 @@
 import { EventRef, Setting, TFile, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { getSecretValue, YJS_SECRET_ID } from "../../core/secret";
-import { resolveMemberNames } from "../../core/classroom/people";
 import { t } from "../../i18n";
 
 /**
@@ -136,9 +135,9 @@ export class RealtimeSection implements PanelSection {
 		const configured = await this.host.listRealtimeFiles(); // 지정된 파일(닫혀도) — 역할별 필터됨
 		if (this.sessionEl !== el) return; // 비동기 대기 중 재드로우되었으면 중단
 
-		type Row = { path: string; open: boolean; participants: number; memberIds: string[] | null };
+		type Row = { path: string; open: boolean; participants: number; memberIds: string[] | null; memberNames?: Record<string, string> };
 		const byPath = new Map<string, Row>();
-		for (const c of configured) byPath.set(c.path, { path: c.path, open: false, participants: 0, memberIds: c.memberIds });
+		for (const c of configured) byPath.set(c.path, { path: c.path, open: false, participants: 0, memberIds: c.memberIds, memberNames: c.memberNames });
 		for (const o of open) {
 			const r = byPath.get(o.path) ?? { path: o.path, open: false, participants: 0, memberIds: null };
 			r.open = true;
@@ -188,7 +187,9 @@ export class RealtimeSection implements PanelSection {
 			if (r.memberIds && r.memberIds.length) {
 				const s = this.host.settings;
 				const ids = this.manager ? r.memberIds : r.memberIds.filter((id) => id !== s.userId);
-				const names = resolveMemberNames(ids, s.members);
+				// 이름 해석: 문서에 담긴 이름(학생은 동료 명단이 없음) → 로컬 명단 → id 순.
+				const fromRoster = new Map(s.members.map((m) => [m.memberId, m.memberName]));
+				const names = ids.map((id) => r.memberNames?.[id] || fromRoster.get(id) || id);
 				if (names.length) {
 					const line = box.createDiv({ cls: "covault-rt-sesmembers covault-cr-muted" });
 					setIcon(line.createSpan({ cls: "covault-rt-sesmembers-icon" }), "users");
