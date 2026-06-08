@@ -32,7 +32,6 @@
 		"member_allowed": "{name}: realtime allowed",
 		"member_blocked": "{name}: realtime blocked",
 		"configure_in_settings": "Change the server URL, space secret, and expiry in the Settings tab.",
-		"member_note": "Tokens are delivered automatically when your manager deploys a shared space.",
 		"realtime_excalidraw_bound": "Realtime Excalidraw bound: {file}",
 		"realtime_cannot_access_excalidraw_api_check": "Realtime: cannot access Excalidraw API — {file} (check that the Excalidraw plugin is up to date)",
 		"excalidraw_plugin_api_bound": "Excalidraw: plugin={plugin}, API={api}, bound={bound}",
@@ -67,7 +66,9 @@
 		"realtime_unsupported_excalidraw_realtime_support": "Realtime unsupported: {path} — Excalidraw realtime supports only the .excalidraw.md format (saves won't propagate).",
 		"realtime_snapshot_not_saved_may_not": "Realtime snapshot not saved ({reason}): {path} — may not propagate to non-realtime members.",
 		"snapshot_save_failed": "Snapshot save failed: {path} — {error}",
-		"assigned_n": "{n} assigned"
+		"assigned_n": "{n} assigned",
+		"member_off": "Live editing is off.",
+		"with_members": "With {names}"
 	},
 	"dashboard": {
 		"dashboard": "Dashboard",

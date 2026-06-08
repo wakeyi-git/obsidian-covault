@@ -1,6 +1,7 @@
 import { EventRef, Setting, TFile, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { getSecretValue, YJS_SECRET_ID } from "../../core/secret";
+import { resolveMemberNames } from "../../core/classroom/people";
 import { t } from "../../i18n";
 
 /**
@@ -109,30 +110,19 @@ export class RealtimeSection implements PanelSection {
 	}
 
 	private drawMember(c: HTMLElement, s: PanelHost["settings"]): void {
-		const status = c.createDiv({ cls: "covault-rt-status" });
-		this.statusRow(status, t("settings.realtime_status"), s.realtimeEnabled ? t("common.on") : t("common.off"));
-		this.statusRow(status, t("settings.realtime_token"), this.host.realtimeTokenReceived() ? t("common.set") : t("common.none"));
-
-		if (s.realtimeEnabled) {
-			c.createDiv({ cls: "covault-dash-label", text: t("realtime.active_sessions") });
-			this.sessionEl = c.createDiv({ cls: "covault-rt-session" });
-			void this.renderSessions();
+		// 구성원 실시간 탭은 활성 세션 목록만 — 내가 라이브 참여자로 지정된 파일만 카드로.
+		if (!s.realtimeEnabled) {
+			c.createDiv({ cls: "covault-cr-muted", text: t("realtime.member_off") });
+			return;
 		}
-
-		const actions = c.createDiv({ cls: "covault-panel-actions" });
-		panelButton(actions, t("panel.check_realtime_status"), () => void this.host.realtimeStatus());
-		c.createDiv({ cls: "covault-cr-muted", text: t("realtime.member_note") });
+		c.createDiv({ cls: "covault-dash-label", text: t("realtime.active_sessions") });
+		this.sessionEl = c.createDiv({ cls: "covault-rt-session" });
+		void this.renderSessions();
 	}
 
 	private async run(fn: () => Promise<void>): Promise<void> {
 		await fn();
 		this.draw();
-	}
-
-	private statusRow(parent: HTMLElement, label: string, value: string): void {
-		const row = parent.createDiv({ cls: "covault-rt-row" });
-		row.createSpan({ cls: "covault-rt-key", text: label });
-		row.createSpan({ cls: "covault-rt-val", text: value });
 	}
 
 	/**
@@ -143,14 +133,14 @@ export class RealtimeSection implements PanelSection {
 		const el = this.sessionEl;
 		if (!el) return;
 		const open = this.host.realtimeSessions(); // [{path, participants}] 이 기기에서 열린 세션
-		const configured = this.manager ? await this.host.listRealtimeFiles() : []; // 지정된 파일(닫혀도)
+		const configured = await this.host.listRealtimeFiles(); // 지정된 파일(닫혀도) — 역할별 필터됨
 		if (this.sessionEl !== el) return; // 비동기 대기 중 재드로우되었으면 중단
 
-		type Row = { path: string; open: boolean; participants: number; assigned: number | null };
+		type Row = { path: string; open: boolean; participants: number; memberIds: string[] | null };
 		const byPath = new Map<string, Row>();
-		for (const c of configured) byPath.set(c.path, { path: c.path, open: false, participants: 0, assigned: c.memberIds.length });
+		for (const c of configured) byPath.set(c.path, { path: c.path, open: false, participants: 0, memberIds: c.memberIds });
 		for (const o of open) {
-			const r = byPath.get(o.path) ?? { path: o.path, open: false, participants: 0, assigned: null };
+			const r = byPath.get(o.path) ?? { path: o.path, open: false, participants: 0, memberIds: null };
 			r.open = true;
 			r.participants = o.participants;
 			byPath.set(o.path, r);
@@ -159,9 +149,10 @@ export class RealtimeSection implements PanelSection {
 		const activePath = this.host.app.workspace.getActiveFile()?.path ?? "";
 
 		// 변화 없으면 재구성 생략(불필요한 DOM 교체로 카드 클릭이 씹히는 것 방지).
-		// 열린 파일은 참가자 수만, 닫힌 지정 파일은 지정 수만 본다 — 참여자 칩 토글이 목록을
+		// 열린 파일은 참가자 수만, 닫힌 지정 파일은 지정 명단만 본다 — 참여자 칩 토글이 목록을
 		// 재구성하지 않게(활성 파일은 열려 있어 토글해도 시그니처 불변) → 칩 클릭 안정성.
-		const sig = rows.map((r) => (r.open ? `${r.path}:o${r.participants}` : `${r.path}:a${r.assigned}`)).join("|") + "#" + activePath;
+		const sig =
+			rows.map((r) => (r.open ? `${r.path}:o${r.participants}` : `${r.path}:a${(r.memberIds ?? []).join(",")}`)).join("|") + "#" + activePath;
 		if (sig === this.sessSig && el.childElementCount > 0) return;
 		this.sessSig = sig;
 		el.empty();
@@ -187,12 +178,23 @@ export class RealtimeSection implements PanelSection {
 				const badge = head.createSpan({ cls: "covault-cr-badge is-accent" });
 				setIcon(badge.createSpan(), "users");
 				badge.createSpan({ text: t("realtime.participants_n", { n: r.participants }) });
-			} else if (r.assigned != null) {
+			} else if (r.memberIds != null) {
 				const badge = head.createSpan({ cls: "covault-cr-badge" });
 				setIcon(badge.createSpan(), "user-check");
-				badge.createSpan({ text: t("realtime.assigned_n", { n: r.assigned }) });
+				badge.createSpan({ text: t("realtime.assigned_n", { n: r.memberIds.length }) });
 			}
 			box.createDiv({ cls: "covault-cr-muted", text: r.path });
+			// 함께 하는 구성원(지정 명단). 구성원 화면에선 본인 제외해 '함께'를 보여준다.
+			if (r.memberIds && r.memberIds.length) {
+				const s = this.host.settings;
+				const ids = this.manager ? r.memberIds : r.memberIds.filter((id) => id !== s.userId);
+				const names = resolveMemberNames(ids, s.members);
+				if (names.length) {
+					const line = box.createDiv({ cls: "covault-rt-sesmembers covault-cr-muted" });
+					setIcon(line.createSpan({ cls: "covault-rt-sesmembers-icon" }), "users");
+					line.createSpan({ text: t("realtime.with_members", { names: names.join(", ") }) });
+				}
+			}
 		}
 		// 참여자 칩 박스(안정 노드)를 활성 카드 안으로 펼친다 — 재구성하지 않고 이동만 해 클릭 안정.
 		if (this.partEl) (activeCard ?? el).appendChild(this.partEl);

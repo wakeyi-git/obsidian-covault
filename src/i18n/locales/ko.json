@@ -32,7 +32,6 @@
 		"member_allowed": "{name}: 실시간 허용",
 		"member_blocked": "{name}: 실시간 차단",
 		"configure_in_settings": "서버 URL·공간 시크릿·만료는 설정 탭에서 변경합니다.",
-		"member_note": "토큰은 교사가 공동 공간을 배포하면 자동으로 전달됩니다.",
 		"realtime_excalidraw_bound": "실시간 Excalidraw 바인딩: {file}",
 		"realtime_cannot_access_excalidraw_api_check": "실시간: Excalidraw API 접근 불가 — {file} (Excalidraw 플러그인 최신인지 확인)",
 		"excalidraw_plugin_api_bound": "Excalidraw: 플러그인={plugin}, API={api}, 바인딩={bound}",
@@ -67,7 +66,9 @@
 		"realtime_unsupported_excalidraw_realtime_support": "실시간 미지원: {path} — Excalidraw 실시간은 .excalidraw.md 형식만 지원합니다(저장이 전파되지 않음).",
 		"realtime_snapshot_not_saved_may_not": "실시간 스냅샷 미저장({reason}): {path} — 비실시간 멤버에 전파되지 않을 수 있습니다.",
 		"snapshot_save_failed": "스냅샷 저장 실패: {path} — {error}",
-		"assigned_n": "지정 {n}명"
+		"assigned_n": "지정 {n}명",
+		"member_off": "실시간 편집이 꺼져 있습니다.",
+		"with_members": "함께 {names}"
 	},
 	"dashboard": {
 		"dashboard": "대시보드",

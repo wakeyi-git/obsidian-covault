@@ -414,9 +414,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		}
 	}
 
-	/** PanelHost: 참여자가 지정된 모든 공유 파일(교사). 닫혀 있어도 목록에 유지해 재오픈하게 한다. */
+	/**
+	 * PanelHost: 참여자가 지정된 공유 파일 목록. 닫혀 있어도 목록에 유지해 재오픈하게 한다.
+	 * 교사는 전부, 구성원은 '자신이 참여자로 지정된' 파일만 본다.
+	 */
 	async listRealtimeFiles(): Promise<Array<{ path: string; memberIds: string[] }>> {
-		if (this.settings.role !== "manager") return [];
+		const s = this.settings;
 		const out: Array<{ path: string; memberIds: string[] }> = [];
 		const seen = new Set<string>();
 		for (const sync of this.mode?.getSyncs() ?? []) {
@@ -428,6 +431,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			}
 			for (const d of docs) {
 				if (!d || d.deleted || !Array.isArray(d.memberIds)) continue;
+				if (s.role !== "manager" && !d.memberIds.includes(s.userId)) continue; // 구성원은 자신이 지정된 것만
 				const path = sync.ctx.toLocalPath(d.dbPath);
 				if (seen.has(path)) continue;
 				seen.add(path);
