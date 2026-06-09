@@ -1,5 +1,6 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { errMessage } from "./core/util/err";
+import { registerCommands as registerCovaultCommands } from "./commands";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc, RtPartDoc, rtPartId, RTPART_ID_PREFIX } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
@@ -1097,81 +1098,24 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	// --- 명령 등록 (패널 버튼과 동일 메서드를 호출) ---
 	private registerCommands(): void {
-		this.addCommand({ id: "covault-open-panel", name: t("command.open_panel"), callback: () => this.activatePanel() });
-		this.addCommand({ id: "covault-open-dashboard", name: t("command.open_dashboard"), callback: () => this.activatePanel("dashboard") });
-		this.addCommand({
-			id: "covault-cleanup-classroom",
-			name: t("command.cleanup_classroom_docs"),
-			callback: () => this.runCleanupClassroom(),
-		});
-		this.addCommand({ id: "covault-open-log", name: t("command.open_log_panel"), callback: () => this.activatePanel("log") });
-		this.addCommand({
-			id: "covault-test-connection",
-			name: t("panel.test_connection_permissions"),
-			callback: () => this.testConnection(),
-		});
-		this.addCommand({
-			id: "covault-diagnostics",
-			name: t("command.run_full_diagnostics_server_read_write"),
-			callback: () => this.runDiagnostics(),
-		});
-		this.addCommand({ id: "covault-full-sync", name: t("panel.full_sync"), callback: () => this.fullSync("both") });
-		this.addCommand({ id: "covault-upload-only", name: t("command.upload_only"), callback: () => this.fullSync("up") });
-		this.addCommand({ id: "covault-download-only", name: t("command.download_only"), callback: () => this.fullSync("down") });
-		this.addCommand({
-			id: "covault-toggle-autosync",
-			name: t("command.toggle_auto_sync"),
-			callback: () => this.toggleAutoSync(),
-		});
-		this.addCommand({
-			id: "covault-reset-local",
-			name: t("command.reset_local_cache_re_fetch_from"),
-			callback: () => this.resetLocalCache(),
-		});
-		this.addCommand({
-			id: "covault-conflicts",
-			name: t("command.open_conflict_list"),
-			callback: () => this.openConflictModal(),
-		});
-		this.addCommand({
-			id: "covault-dashboard",
-			name: t("command.open_sync_status"),
-			callback: () => this.activatePanel("sync"),
-		});
-		this.addCommand({
-			id: "covault-deploy",
-			name: t("deploy.copy_to_members_open_deploy_tab"),
-			callback: () => this.activatePanel("deploy"),
-		});
-		this.addCommand({
-			id: "covault-realtime-status",
-			name: t("panel.check_realtime_status"),
-			callback: () => this.realtimeStatus(),
-		});
-		this.addCommand({
-			id: "covault-add-feedback",
-			name: t("command.add_feedback_selection"),
-			callback: () => promptAddFeedback(this.app, this.feedback),
-		});
-		this.addCommand({
-			id: "covault-open-feedback",
-			name: t("command.open_feedback_panel"),
-			callback: () => this.activatePanel("feedback"),
-		});
-		this.addCommand({
-			id: "covault-refresh-shares",
-			name: t("panel.refresh_shared_spaces"),
-			callback: () => this.refreshShares(),
-		});
-		this.addCommand({
-			id: "covault-version-history",
-			name: t("version.open_version_history"),
-			checkCallback: (checking: boolean) => {
+		registerCovaultCommands(this, {
+			openPanel: () => void this.activatePanel(),
+			openTab: (tab) => void this.activatePanel(tab),
+			cleanupClassroom: () => this.runCleanupClassroom(),
+			testConnection: () => void this.testConnection(),
+			runDiagnostics: () => void this.runDiagnostics(),
+			fullSync: (dir) => void this.fullSync(dir),
+			toggleAutoSync: () => void this.toggleAutoSync(),
+			resetLocalCache: () => void this.resetLocalCache(),
+			openConflicts: () => this.openConflictModal(),
+			realtimeStatus: () => void this.realtimeStatus(),
+			refreshShares: () => void this.refreshShares(),
+			addFeedback: () => promptAddFeedback(this.app, this.feedback),
+			versionHistoryPath: () => {
 				const file = this.app.workspace.getActiveFile();
-				const ok = !!file && file.extension === "md" && !!this.syncForLocalPath(file.path);
-				if (ok && !checking) new VersionHistoryModal(this.app, this, file!.path).open();
-				return ok;
+				return file && file.extension === "md" && this.syncForLocalPath(file.path) ? file.path : null;
 			},
+			openVersionHistory: (path) => new VersionHistoryModal(this.app, this, path).open(),
 		});
 	}
 
