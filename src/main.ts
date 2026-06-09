@@ -1,9 +1,8 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { errMessage } from "./core/util/err";
 import { registerCommands as registerCovaultCommands } from "./commands";
-import { memberAllowed, visibleToUser, memberNameMap, nameBackfillNeeded } from "./core/realtime/participants";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
-import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc, RtPartDoc, rtPartId, RTPART_ID_PREFIX } from "./core/model/types";
+import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc } from "./core/model/types";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
@@ -29,6 +28,7 @@ import { ClassroomController } from "./modes/ClassroomController";
 import { RealtimeController } from "./modes/RealtimeController";
 import { MemberController } from "./modes/MemberController";
 import { RecoveryController } from "./modes/RecoveryController";
+import { ParticipantController } from "./modes/ParticipantController";
 import { findHomeroom, setHomeroom } from "./core/classroom/homeroom";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
@@ -63,6 +63,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private realtimeCtl!: RealtimeController;
 	private memberCtl!: MemberController;
 	private recoveryCtl!: RecoveryController;
+	private participantCtl!: ParticipantController;
 	private applyTimer: number | null = null;
 
 	/** PanelHost: 피드백 섹션이 사용. */
@@ -88,7 +89,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			this.core,
 			() => this.core.sharedSpaces,
 			(p) => this.syncForLocalPath(p), // 주기적 스냅샷 쓰기 대상
-			(p) => this.canEditRealtime(p), // 파일별 참여자 게이팅
+			(p) => this.participantCtl.canEditRealtime(p), // 파일별 참여자 게이팅
 		);
 		this.core.isRealtimeActive = (p) => this.realtime.isActive(p);
 		this.realtimeCtl = new RealtimeController({
@@ -139,6 +140,17 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			findSyncByDb: (db) => this.mode?.findSyncByDb(db),
 			findSyncOwning: (p) => this.mode?.findSyncOwning(p),
 			openLog: () => this.activatePanel("log"),
+		});
+		this.participantCtl = new ParticipantController({
+			app: this.app,
+			logger: this.logger,
+			settings: () => this.settings,
+			realtime: () => this.realtime,
+			getSyncs: () => this.mode?.getSyncs() ?? [],
+			findSyncOwning: (p) => this.mode?.findSyncOwning(p),
+			sharedSpaces: () => this.core.sharedSpaces,
+			saveSettings: () => this.saveSettings(),
+			refreshMemberShares: () => this.refreshMemberShares(),
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
 		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
@@ -209,27 +221,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		await this.mode.start();
 		// 재배포/설정 적용 시 기존 세션을 깨끗이 종료(awareness 제거) 후 재구성 → 유령 커서 방지
 		await this.realtime?.refresh();
-		void this.backfillRtPartNames(); // 구버전 지정 문서에 이름 채우기(학생 카드에 이름 표시)
-	}
-
-	/** 이전 버전에 만들어진 rtpart 문서(memberNames 없음)에 이름을 채운다(교사). 학생은 동료 명단이 없어 문서 이름에 의존. */
-	private async backfillRtPartNames(): Promise<void> {
-		if (this.settings.role !== "manager") return;
-		for (const sync of this.mode?.getSyncs() ?? []) {
-			let docs: RtPartDoc[];
-			try {
-				docs = await sync.ctx.pouch.allDocsByPrefix<RtPartDoc>(RTPART_ID_PREFIX);
-			} catch {
-				continue;
-			}
-			for (const d of docs) {
-				if (!d || d.deleted || !Array.isArray(d.memberIds)) continue;
-				const names = memberNameMap(d.memberIds, this.settings.members);
-				if (nameBackfillNeeded(d.memberIds, d.memberNames, names)) {
-					await sync.ctx.pouch.put({ ...d, memberNames: names, updatedAtMs: Date.now() }).catch(() => {});
-				}
-			}
-		}
+		void this.participantCtl.backfillRtPartNames(); // 구버전 지정 문서에 이름 채우기(학생 카드에 이름 표시)
 	}
 
 	/** 최초 실행 역할 선택 모달 → 역할 잠금 + 모드 시작. 학생은 초대 코드로 바로 설정 가능. */
@@ -395,124 +387,27 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return !!this.homeroomPouch();
 	}
 
-	/** SettingsHost: 실시간 공간 토큰을 하나라도 수신했는지(구성원: shares로 자동 전달됨). */
+	// --- 실시간 참여 게이트/파일별 참여자/읽기전용 → ParticipantController 위임 ---
 	realtimeTokenReceived(): boolean {
-		return (this.core?.sharedSpaces ?? []).some((sp) => !!sp.token);
+		return this.participantCtl.realtimeTokenReceived();
 	}
-
-	/** PanelHost: 현재(이 기기) 활성 실시간 세션 목록. */
 	realtimeSessions(): Array<{ path: string; participants: number }> {
-		return this.realtime?.activeSessions() ?? [];
+		return this.participantCtl.realtimeSessions();
 	}
-
-	/** PanelHost: 현재 활성 파일의 실시간 세션 정보(없으면 null). */
 	realtimeActiveFile(): { path: string; participants: number } | null {
-		const f = this.app.workspace.getActiveFile();
-		if (!f || !this.realtime?.isActive(f.path)) return null;
-		return { path: f.path, participants: this.realtime.presenceFor(f.path) };
+		return this.participantCtl.realtimeActiveFile();
 	}
-
-	/**
-	 * 파일별 실시간 참여 가능 여부(게이트). 교사·개인 mirror(1:1)는 항상 허용.
-	 * 공유 공간 파일은 '참여자 지정 문서'가 허용 명단 — 지정 없으면 아무도 참여하지 않는다(기본 비활성).
-	 */
-	private async canEditRealtime(path: string): Promise<boolean> {
-		const s = this.settings;
-		if (s.role === "manager") return true; // 교사는 모든 세션 참관/편집 가능
-		const sync = this.syncForLocalPath(path);
-		if (!sync) return true;
-		if (sync.ctx.remoteDb === s.remoteDb) return true; // 개인 mirror(교사 1:1)는 게이팅 없음
-		const dbPath = sync.ctx.toDbPath(path);
-		if (!dbPath) return true;
-		// 지정 문서가 곧 허용 명단(없으면 읽기전용=아무도/해제=전원). participants.memberAllowed.
-		try {
-			const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath));
-			return memberAllowed(doc, s.userId, !!s.sharedReadOnly);
-		} catch {
-			return memberAllowed(null, s.userId, !!s.sharedReadOnly); // 지정 문서 없음 → 기본값
-		}
+	getFileRealtimeParticipants(path: string): Promise<string[] | null> {
+		return this.participantCtl.getFileRealtimeParticipants(path);
 	}
-
-	/** PanelHost: 파일의 실시간 참여자 명단(null=전원/미지정). */
-	async getFileRealtimeParticipants(path: string): Promise<string[] | null> {
-		const sync = this.syncForLocalPath(path);
-		if (!sync) return null;
-		const dbPath = sync.ctx.toDbPath(path);
-		if (!dbPath) return null;
-		try {
-			const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath));
-			return doc && !doc.deleted ? doc.memberIds : null;
-		} catch {
-			return null;
-		}
+	listRealtimeFiles(): Promise<Array<{ path: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
+		return this.participantCtl.listRealtimeFiles();
 	}
-
-	/**
-	 * PanelHost: 참여자가 지정된 공유 파일 목록. 닫혀 있어도 목록에 유지해 재오픈하게 한다.
-	 * 교사는 전부, 구성원은 '자신이 참여자로 지정된' 파일만 본다.
-	 */
-	async listRealtimeFiles(): Promise<Array<{ path: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
-		const s = this.settings;
-		const out: Array<{ path: string; memberIds: string[]; memberNames?: Record<string, string> }> = [];
-		const seen = new Set<string>();
-		for (const sync of this.mode?.getSyncs() ?? []) {
-			let docs: RtPartDoc[];
-			try {
-				docs = await sync.ctx.pouch.allDocsByPrefix<RtPartDoc>(RTPART_ID_PREFIX);
-			} catch {
-				continue;
-			}
-			for (const d of docs) {
-				if (!d || d.deleted || !Array.isArray(d.memberIds)) continue;
-				if (!visibleToUser(d.memberIds, s.userId, s.role)) continue; // 교사=전부, 구성원=자신 지정분
-				const path = sync.ctx.toLocalPath(d.dbPath);
-				if (seen.has(path)) continue;
-				seen.add(path);
-				out.push({ path, memberIds: d.memberIds, memberNames: d.memberNames });
-			}
-		}
-		return out;
+	setSharedReadOnly(on: boolean): Promise<void> {
+		return this.participantCtl.setSharedReadOnly(on);
 	}
-
-	/** PanelHost: 공유 파일 읽기 전용 정책 토글(교사). 켜면 구성원은 실시간 세션 활성 파일만 편집 가능. */
-	async setSharedReadOnly(on: boolean): Promise<void> {
-		if (this.settings.role !== "manager") return;
-		this.settings.sharedReadOnly = on;
-		await this.saveSettings();
-		await this.refreshMemberShares(); // rtconfig로 전 구성원에 전파
-		this.realtime?.syncOpenEditors();
-	}
-
-	/** PanelHost: 파일별 실시간 참여자 지정(교사). null=전원(지정 해제). */
-	async setFileRealtimeParticipants(path: string, memberIds: string[] | null): Promise<void> {
-		if (this.settings.role !== "manager") return;
-		const sync = this.syncForLocalPath(path);
-		if (!sync) {
-			this.logger.warn(t("realtime.part_not_shared"), true);
-			return;
-		}
-		const dbPath = sync.ctx.toDbPath(path);
-		if (!dbPath) return;
-		const id = rtPartId(dbPath);
-		if (memberIds === null) {
-			const existing = await sync.ctx.pouch.get<RtPartDoc>(id).catch(() => null);
-			if (existing && !existing.deleted) await sync.ctx.pouch.put({ ...existing, deleted: true, updatedAtMs: Date.now() });
-		} else {
-			// 이름도 함께 저장 — 학생은 동료 명단이 없으므로 문서의 이름으로 카드에 표시.
-			const memberNames = memberNameMap(memberIds, this.settings.members);
-			await sync.ctx.pouch.put({
-				_id: id,
-				type: "rtpart",
-				schemaVersion: 1,
-				workspaceId: this.settings.workspaceId,
-				dbPath,
-				memberIds,
-				memberNames,
-				updatedAtMs: Date.now(),
-				updatedBy: this.settings.userId,
-			} as RtPartDoc);
-		}
-		this.realtime.invalidateParticipants(path);
+	setFileRealtimeParticipants(path: string, memberIds: string[] | null): Promise<void> {
+		return this.participantCtl.setFileRealtimeParticipants(path, memberIds);
 	}
 
 	/** PanelHost: 구성원별 실시간 허용/차단(교사). 차단=토큰 미발급·shares realtime:false → 파일 동기화만. */
