@@ -173,28 +173,16 @@ export class RealtimeSection implements PanelSection {
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
+			box.createDiv({ cls: "covault-cr-muted", text: r.path });
+			// 참가자/지정 배지를 경로 아래(이전 '함께' 줄 위치)에 배치. 별도 '함께 이름' 줄은 제거.
 			if (r.open) {
-				const badge = head.createSpan({ cls: "covault-cr-badge is-accent" });
+				const badge = box.createDiv({ cls: "covault-cr-badge is-accent covault-rt-sesbadge" });
 				setIcon(badge.createSpan(), "users");
 				badge.createSpan({ text: t("realtime.participants_n", { n: r.participants }) });
 			} else if (r.memberIds != null) {
-				const badge = head.createSpan({ cls: "covault-cr-badge" });
+				const badge = box.createDiv({ cls: "covault-cr-badge covault-rt-sesbadge" });
 				setIcon(badge.createSpan(), "user-check");
 				badge.createSpan({ text: t("realtime.assigned_n", { n: r.memberIds.length }) });
-			}
-			box.createDiv({ cls: "covault-cr-muted", text: r.path });
-			// 함께 하는 구성원(지정 명단). 구성원 화면에선 본인 제외해 '함께'를 보여준다.
-			if (r.memberIds && r.memberIds.length) {
-				const s = this.host.settings;
-				const ids = this.manager ? r.memberIds : r.memberIds.filter((id) => id !== s.userId);
-				// 이름 해석: 문서에 담긴 이름(학생은 동료 명단이 없음) → 로컬 명단 → id 순.
-				const fromRoster = new Map(s.members.map((m) => [m.memberId, m.memberName]));
-				const names = ids.map((id) => r.memberNames?.[id] || fromRoster.get(id) || id);
-				if (names.length) {
-					const line = box.createDiv({ cls: "covault-rt-sesmembers covault-cr-muted" });
-					setIcon(line.createSpan({ cls: "covault-rt-sesmembers-icon" }), "users");
-					line.createSpan({ text: t("realtime.with_members", { names: names.join(", ") }) });
-				}
 			}
 		}
 		// 참여자 칩 박스(안정 노드)를 활성 카드 안으로 펼친다 — 재구성하지 않고 이동만 해 클릭 안정.

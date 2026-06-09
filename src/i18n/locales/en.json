@@ -67,8 +67,7 @@
 		"realtime_snapshot_not_saved_may_not": "Realtime snapshot not saved ({reason}): {path} — may not propagate to non-realtime members.",
 		"snapshot_save_failed": "Snapshot save failed: {path} — {error}",
 		"assigned_n": "{n} assigned",
-		"member_off": "Live editing is off.",
-		"with_members": "With {names}"
+		"member_off": "Live editing is off."
 	},
 	"dashboard": {
 		"dashboard": "Dashboard",

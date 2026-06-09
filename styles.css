@@ -707,20 +707,10 @@
 	box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
-/* 카드의 함께 하는 구성원 줄 */
-.covault-rt-sesmembers {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-top: 2px;
-}
-.covault-rt-sesmembers-icon {
-	display: inline-flex;
-	flex: none;
-}
-.covault-rt-sesmembers-icon .svg-icon {
-	width: 14px;
-	height: 14px;
+/* 활성 세션 카드: 경로 아래에 놓이는 지정/참가자 배지(이전 '함께' 줄 위치) */
+.covault-rt-sesbadge {
+	margin-top: 4px;
+	align-self: flex-start;
 }
 
 /* 활성 파일 참여자 칩 박스 — 활성 카드 안에서 펼쳐진다(카드 내용과 구분선으로 분리) */
