@@ -29,7 +29,7 @@ import { RealtimeController } from "./modes/RealtimeController";
 import { MemberController } from "./modes/MemberController";
 import { RecoveryController } from "./modes/RecoveryController";
 import { ParticipantController } from "./modes/ParticipantController";
-import { findHomeroom, setHomeroom } from "./core/classroom/homeroom";
+import { setHomeroom } from "./core/classroom/homeroom";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
@@ -612,10 +612,6 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	 */
 	private mintRealtimeTokens(): Promise<void> {
 		return this.realtimeCtl.mintAll();
-	}
-
-	private mintMirrorToken(member: MemberConfig): Promise<void> {
-		return this.realtimeCtl.mintMirror(member);
 	}
 
 	/** 한 학생의 shares + rtconfig 문서 기록(공유 공간 멤버십 + 개인 mirror 실시간 공간). */
