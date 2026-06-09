@@ -180,6 +180,18 @@ export class RealtimeSection implements PanelSection {
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
+			// 그룹 대화: 이 세션 참여자와 일치하는 명명 그룹이 있으면 그 그룹 대화를 연다(교사). 카드 열기와 분리.
+			const gid = this.manager && r.memberIds ? this.matchingGroupId(r.memberIds) : null;
+			if (gid) {
+				const gc = head.createEl("button", { cls: "clickable-icon covault-rt-groupbtn" });
+				setIcon(gc, "messages-square");
+				gc.setAttr("aria-label", t("group.open_chat"));
+				gc.title = t("group.open_chat");
+				gc.onclick = (e) => {
+					e.stopPropagation();
+					void this.host.openGroupChat(gid);
+				};
+			}
 			box.createDiv({ cls: "covault-cr-muted", text: r.path });
 			// 참가자/지정 배지를 경로 아래(이전 '함께' 줄 위치)에 배치. 지정 배지 옆에는 지정된 구성원 이름.
 			if (r.open) {
@@ -200,6 +212,14 @@ export class RealtimeSection implements PanelSection {
 		}
 		// 참여자 칩 박스(안정 노드)를 활성 카드 안으로 펼친다 — 재구성하지 않고 이동만 해 클릭 안정.
 		if (this.partEl) (activeCard ?? el).appendChild(this.partEl);
+	}
+
+	/** 참여자 명단과 구성원이 정확히 일치하는 명명 그룹 id(이 세션에 적용된 그룹). 없으면 null. */
+	private matchingGroupId(memberIds: string[]): string | null {
+		if (!memberIds.length) return null;
+		const want = new Set(memberIds);
+		const g = this.host.listGroups().find((x) => x.memberIds.length === want.size && x.memberIds.every((id) => want.has(id)));
+		return g ? g.id : null;
 	}
 
 	private openFile(path: string): void {

@@ -992,11 +992,20 @@ export class ClassroomController {
 		const docs = await this.d.classroom.listByPrefix<GroupDoc>(CHATGROUP_ID_PREFIX);
 		const out: Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }> = [];
 		for (const g of docs) {
-			if (!g || g.deleted || !Array.isArray(g.memberIds)) continue;
+			if (!g || g.deleted || !g.groupId || !Array.isArray(g.memberIds)) continue; // groupId 없으면 레거시(파일별) → 제외
 			if (s.role !== "manager" && !g.memberIds.includes(s.userId)) continue;
 			out.push({ channel: groupChannel(db, g.groupId), name: g.name, memberIds: g.memberIds, memberNames: g.memberNames });
 		}
 		return out;
+	}
+
+	/** 레거시(0.100.x 파일별) 그룹 문서 정리(교사). groupId 없는 문서를 soft-delete해 드롭다운에서 제거. */
+	async cleanupLegacyGroups(): Promise<void> {
+		if (this.d.settings().role !== "manager" || !this.d.homeroomReady()) return;
+		const docs = await this.d.classroom.listByPrefix<GroupDoc>(CHATGROUP_ID_PREFIX);
+		for (const g of docs) {
+			if (g && !g.deleted && !g.groupId) await this.d.classroom.put({ ...g, deleted: true } as GroupDoc);
+		}
 	}
 
 	async listAllAssignmentStates(): Promise<AssignmentStateDoc[]> {
