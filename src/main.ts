@@ -1,6 +1,7 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { errMessage } from "./core/util/err";
 import { registerCommands as registerCovaultCommands } from "./commands";
+import { memberAllowed, visibleToUser, memberNameMap, nameBackfillNeeded } from "./core/realtime/participants";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc, RtPartDoc, rtPartId, RTPART_ID_PREFIX } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
@@ -213,14 +214,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			}
 			for (const d of docs) {
 				if (!d || d.deleted || !Array.isArray(d.memberIds)) continue;
-				const names: Record<string, string> = {};
-				for (const mid of d.memberIds) {
-					const m = this.settings.members.find((x) => x.memberId === mid);
-					if (m?.memberName) names[mid] = m.memberName;
-				}
-				const cur = d.memberNames ?? {};
-				const changed = d.memberIds.some((id) => (names[id] || "") !== (cur[id] || ""));
-				if (changed && Object.keys(names).length) {
+				const names = memberNameMap(d.memberIds, this.settings.members);
+				if (nameBackfillNeeded(d.memberIds, d.memberNames, names)) {
 					await sync.ctx.pouch.put({ ...d, memberNames: names, updatedAtMs: Date.now() }).catch(() => {});
 				}
 			}
@@ -419,14 +414,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		if (sync.ctx.remoteDb === s.remoteDb) return true; // 개인 mirror(교사 1:1)는 게이팅 없음
 		const dbPath = sync.ctx.toDbPath(path);
 		if (!dbPath) return true;
-		// 지정 문서가 없을 때 기본값: 읽기 전용 정책이면 '아무도', 아니면 '전원'(일관성).
-		const defaultEveryone = !s.sharedReadOnly;
+		// 지정 문서가 곧 허용 명단(없으면 읽기전용=아무도/해제=전원). participants.memberAllowed.
 		try {
 			const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath));
-			if (!doc || doc.deleted) return defaultEveryone;
-			return doc.memberIds.includes(s.userId);
+			return memberAllowed(doc, s.userId, !!s.sharedReadOnly);
 		} catch {
-			return defaultEveryone; // 지정 문서 없음 → 기본값
+			return memberAllowed(null, s.userId, !!s.sharedReadOnly); // 지정 문서 없음 → 기본값
 		}
 	}
 
@@ -461,7 +454,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			}
 			for (const d of docs) {
 				if (!d || d.deleted || !Array.isArray(d.memberIds)) continue;
-				if (s.role !== "manager" && !d.memberIds.includes(s.userId)) continue; // 구성원은 자신이 지정된 것만
+				if (!visibleToUser(d.memberIds, s.userId, s.role)) continue; // 교사=전부, 구성원=자신 지정분
 				const path = sync.ctx.toLocalPath(d.dbPath);
 				if (seen.has(path)) continue;
 				seen.add(path);
@@ -496,11 +489,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			if (existing && !existing.deleted) await sync.ctx.pouch.put({ ...existing, deleted: true, updatedAtMs: Date.now() });
 		} else {
 			// 이름도 함께 저장 — 학생은 동료 명단이 없으므로 문서의 이름으로 카드에 표시.
-			const memberNames: Record<string, string> = {};
-			for (const mid of memberIds) {
-				const m = this.settings.members.find((x) => x.memberId === mid);
-				if (m?.memberName) memberNames[mid] = m.memberName;
-			}
+			const memberNames = memberNameMap(memberIds, this.settings.members);
 			await sync.ctx.pouch.put({
 				_id: id,
 				type: "rtpart",
