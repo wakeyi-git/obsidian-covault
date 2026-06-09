@@ -62,21 +62,21 @@ describe("message id ↔ prefix 정합(DM 목록 조회)", () => {
 });
 
 describe("group 채널 ↔ prefix 정합", () => {
-	it("groupChannel/parseGroupChannel 왕복(remoteDb·dbPath 보존, dbPath의 콜론·슬래시 허용)", () => {
-		const ch = groupChannel("share_g1", "모둠활동/1모둠.md");
-		expect(ch).toBe("group:share_g1:모둠활동/1모둠.md");
-		expect(parseGroupChannel(ch)).toEqual({ remoteDb: "share_g1", dbPath: "모둠활동/1모둠.md" });
+	it("groupChannel/parseGroupChannel 왕복(remoteDb·groupId 보존)", () => {
+		const ch = groupChannel("share_home", "g1abc");
+		expect(ch).toBe("group:share_home:g1abc");
+		expect(parseGroupChannel(ch)).toEqual({ remoteDb: "share_home", groupId: "g1abc" });
 	});
 	it("group이 아니면 null", () => {
 		expect(parseGroupChannel("class")).toBeNull();
 		expect(parseGroupChannel(dmChannel("member_a"))).toBeNull();
 	});
 	it("메시지 id가 group 채널 prefix로 매칭", () => {
-		const ch = groupChannel("share_g1", "x.md");
+		const ch = groupChannel("share_home", "g1");
 		expect(messageId(ch, "u1").startsWith(messagePrefix(ch))).toBe(true);
 	});
 	it("chatGroupId", () => {
-		expect(chatGroupId("모둠활동/1모둠.md")).toBe("chatgroup:모둠활동/1모둠.md");
+		expect(chatGroupId("g1abc")).toBe("chatgroup:g1abc");
 	});
 });
 

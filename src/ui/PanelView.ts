@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import { PanelHost, PanelSection, PanelTab } from "./panel/PanelSection";
 import { DashboardSection } from "./panel/DashboardSection";
 import { ChatSection } from "./panel/ChatSection";
+import { GroupsSection } from "./panel/GroupsSection";
 import { RealtimeSection } from "./panel/RealtimeSection";
 import { FeedbackSection } from "./panel/FeedbackSection";
 // (시작하기 마법사는 설정에서 모달로 실행 — 패널 탭 제거)
@@ -20,6 +21,8 @@ function tabLabel(tab: PanelTab): string {
 			return t("dashboard.dashboard");
 		case "chat":
 			return t("chat.chat");
+		case "groups":
+			return t("group.groups");
 		case "feedback":
 			return t("panel.feedback");
 		case "realtime":
@@ -43,6 +46,8 @@ function tabIcon(tab: PanelTab): string {
 			return "layout-dashboard";
 		case "chat":
 			return "messages-square";
+		case "groups":
+			return "users-round";
 		case "feedback":
 			return "message-square";
 		case "realtime":
@@ -87,7 +92,7 @@ export class CoVaultPanelView extends ItemView {
 	private tabs(): PanelTab[] {
 		const manager = this.host.settings.role === "manager";
 		return manager
-			? ["dashboard", "chat", "feedback", "realtime", "deploy", "sync", "recovery", "history", "log"]
+			? ["dashboard", "chat", "groups", "feedback", "realtime", "deploy", "sync", "recovery", "history", "log"]
 			: ["dashboard", "chat", "feedback", "realtime", "sync", "recovery", "history", "log"];
 	}
 
@@ -191,6 +196,8 @@ export class CoVaultPanelView extends ItemView {
 				return new DashboardSection(this.host);
 			case "chat":
 				return new ChatSection(this.host);
+			case "groups":
+				return new GroupsSection(this.host);
 			case "realtime":
 				return new RealtimeSection(this.host);
 			case "feedback":

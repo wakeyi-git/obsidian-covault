@@ -1,6 +1,6 @@
 import { App, TFile } from "obsidian";
 import { Logger } from "../core/log/Logger";
-import { CoVaultSettings } from "../settings/types";
+import { CoVaultSettings, GroupConfig } from "../settings/types";
 import { ClassroomStore } from "../core/classroom/ClassroomStore";
 import { MirrorSync } from "../core/sync/MirrorSync";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
@@ -69,9 +69,8 @@ export interface ClassroomDeps {
 	requestApply(): void;
 	memberSyncByRemoteDb(db: string): MirrorSync | undefined;
 	studentMirrorSync(): MirrorSync | undefined;
-	/** 그룹 대화방(공유 공간 DB) 조회·생성용. */
-	getSyncs(): MirrorSync[];
-	findSyncOwning(localPath: string): MirrorSync | undefined;
+	/** 학급 공동 공간(homeroom) remoteDb — 명명 그룹 대화방이 사는 곳. 미지정이면 null. */
+	homeroomDb(): string | null;
 }
 
 /**
@@ -947,56 +946,55 @@ export class ClassroomController {
 		if (sync) await sync.ctx.pouch.put(dead);
 	}
 
-	/** 라이브 세션 파일의 그룹 대화방 생성/갱신(교사). 채널 문자열 반환(공유 sync 없으면 null). */
-	async ensureGroup(filePath: string, memberIds: string[], memberNames: Record<string, string>): Promise<string | null> {
+	/** 명명 그룹의 대화 채널(homeroom 기반). homeroom 미지정이면 null. */
+	groupChannelFor(groupId: string): string | null {
+		const db = this.d.homeroomDb();
+		return db ? groupChannel(db, groupId) : null;
+	}
+
+	/** 명명 그룹 문서(대화방)를 homeroom DB에 생성/갱신(교사). 학생은 동기화로 수신해 채널·멘션에 사용. */
+	async syncGroupDoc(group: GroupConfig, memberNames: Record<string, string>): Promise<void> {
 		const s = this.d.settings();
-		if (s.role !== "manager") return null;
-		const sync = this.d.findSyncOwning(filePath);
-		const dbPath = sync?.ctx.toDbPath(filePath);
-		if (!sync || !dbPath) {
-			this.d.logger.warn(t("chat.group_not_shared"), true);
-			return null;
+		if (s.role !== "manager") return;
+		if (!this.d.homeroomReady()) {
+			this.d.logger.warn(t("chat.group_needs_homeroom"), true);
+			return;
 		}
-		const name = (filePath.split("/").pop() ?? dbPath).replace(/\.md$/i, "");
-		const existing = await sync.ctx.pouch.get<GroupDoc>(chatGroupId(dbPath)).catch(() => null);
-		await sync.ctx.pouch.put({
+		const existing = await this.d.classroom.get<GroupDoc>(chatGroupId(group.id)).catch(() => null);
+		await this.d.classroom.put({
 			...(existing ?? {}),
-			_id: chatGroupId(dbPath),
+			_id: chatGroupId(group.id),
 			type: "chatgroup",
 			schemaVersion: 1,
 			workspaceId: s.workspaceId,
-			dbPath,
-			name,
-			memberIds,
+			groupId: group.id,
+			name: group.name,
+			memberIds: group.memberIds,
 			memberNames,
 			createdAtMs: existing?.createdAtMs ?? Date.now(),
 			createdBy: existing?.createdBy ?? s.userId,
 			deleted: false,
 		} as GroupDoc);
-		return groupChannel(sync.remoteDb, dbPath);
 	}
 
-	/** 접근 가능한 공유 공간의 그룹 대화방 목록. 교사=전부, 구성원=자신이 속한 것만. 없는 파일은 제외. */
+	/** 그룹 대화방 삭제(soft-delete). 그룹 삭제 시 호출 → 채널이 사라진다. */
+	async deleteGroupDoc(groupId: string): Promise<void> {
+		if (this.d.settings().role !== "manager") return;
+		const existing = await this.d.classroom.get<GroupDoc>(chatGroupId(groupId)).catch(() => null);
+		if (existing && !existing.deleted) await this.d.classroom.put({ ...existing, deleted: true } as GroupDoc);
+	}
+
+	/** 접근 가능한 그룹 대화방 목록(homeroom). 교사=전부, 구성원=자신이 속한 것만. */
 	async listChatGroups(): Promise<Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
 		const s = this.d.settings();
+		const db = this.d.homeroomDb();
+		if (!db) return [];
+		const docs = await this.d.classroom.listByPrefix<GroupDoc>(CHATGROUP_ID_PREFIX);
 		const out: Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }> = [];
-		const seen = new Set<string>();
-		for (const sync of this.d.getSyncs()) {
-			let docs: GroupDoc[];
-			try {
-				docs = await sync.ctx.pouch.allDocsByPrefix<GroupDoc>(CHATGROUP_ID_PREFIX);
-			} catch {
-				continue;
-			}
-			for (const g of docs) {
-				if (!g || g.deleted || !Array.isArray(g.memberIds)) continue;
-				if (s.role !== "manager" && !g.memberIds.includes(s.userId)) continue;
-				if (!this.d.app.vault.getAbstractFileByPath(sync.ctx.toLocalPath(g.dbPath))) continue; // 유령 방지
-				const channel = groupChannel(sync.remoteDb, g.dbPath);
-				if (seen.has(channel)) continue;
-				seen.add(channel);
-				out.push({ channel, name: g.name, memberIds: g.memberIds, memberNames: g.memberNames });
-			}
+		for (const g of docs) {
+			if (!g || g.deleted || !Array.isArray(g.memberIds)) continue;
+			if (s.role !== "manager" && !g.memberIds.includes(s.userId)) continue;
+			out.push({ channel: groupChannel(db, g.groupId), name: g.name, memberIds: g.memberIds, memberNames: g.memberNames });
 		}
 		return out;
 	}

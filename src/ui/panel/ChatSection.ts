@@ -1,5 +1,6 @@
-import { AbstractInputSuggest, App, FuzzySuggestModal, Notice, TFile, setIcon } from "obsidian";
+import { Menu, Notice, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
+import { ChatSuggest, FilePickModal, FeedbackPickModal } from "./chatSuggest";
 import { MessageDoc, CLASS_CHANNEL, dmChannel } from "../../core/model/types";
 import { parseMessageBody } from "../../core/classroom/messages";
 import { resolveSenderName } from "../../core/classroom/people";
@@ -8,127 +9,6 @@ import { t, formatDate } from "../../i18n";
 interface Channel {
 	id: string;
 	label: string;
-}
-
-/** vault 파일 선택(첨부용). 모든 파일(노트·이미지·PDF 등). */
-class FilePickModal extends FuzzySuggestModal<TFile> {
-	constructor(app: App, private onPick: (f: TFile) => void) {
-		super(app);
-		this.setPlaceholder(t("chat.pick_file"));
-	}
-	getItems(): TFile[] {
-		return this.app.vault.getFiles();
-	}
-	getItemText(f: TFile): string {
-		return f.path;
-	}
-	onChooseItem(f: TFile): void {
-		this.onPick(f);
-	}
-}
-
-type FbItem = { uid: string; label: string; path: string };
-
-/** 현재 노트의 피드백 선택(대화 피드백 참조용). */
-class FeedbackPickModal extends FuzzySuggestModal<FbItem> {
-	constructor(app: App, private items: FbItem[], private onPick: (i: FbItem) => void) {
-		super(app);
-		this.setPlaceholder(t("chat.attach_feedback"));
-	}
-	getItems(): FbItem[] {
-		return this.items;
-	}
-	getItemText(i: FbItem): string {
-		return i.label;
-	}
-	onChooseItem(i: FbItem): void {
-		this.onPick(i);
-	}
-}
-
-type Tok = { partial: string; start: number; end: number };
-type ChatSuggestion = { kind: "file"; file: TFile } | { kind: "mention"; name: string };
-
-/** 입력창 자동완성: `[[`→vault 파일 위키링크, `@`→구성원 멘션. 토큰만 교체한다. */
-class ChatSuggest extends AbstractInputSuggest<ChatSuggestion> {
-	constructor(app: App, private inputEl: HTMLInputElement, private mentionNames: () => string[]) {
-		super(app, inputEl);
-	}
-
-	private before(): string {
-		const val = this.inputEl.value;
-		return val.slice(0, this.inputEl.selectionStart ?? val.length);
-	}
-	/** 닫히지 않은 `[[<부분>`. */
-	private wikiToken(): Tok | null {
-		const before = this.before();
-		const idx = before.lastIndexOf("[[");
-		if (idx < 0) return null;
-		const between = before.slice(idx + 2);
-		if (between.includes("]]") || between.includes("[")) return null;
-		return { partial: between, start: idx, end: before.length };
-	}
-	/** 공백/`]` 없는 `@<부분>`. */
-	private mentionToken(): Tok | null {
-		const before = this.before();
-		const at = before.lastIndexOf("@");
-		if (at < 0) return null;
-		const between = before.slice(at + 1);
-		if (/[\s\]]/.test(between)) return null;
-		return { partial: between, start: at, end: before.length };
-	}
-
-	getSuggestions(_q: string): ChatSuggestion[] {
-		const wt = this.wikiToken();
-		const mt = this.mentionToken();
-		// 커서에 더 가까운(start 큰) 토큰 우선.
-		if (mt && (!wt || mt.start > wt.start)) {
-			const term = mt.partial.toLowerCase().trim();
-			return this.mentionNames()
-				.filter((n) => !term || n.toLowerCase().includes(term))
-				.slice(0, 20)
-				.map((name) => ({ kind: "mention", name }) as ChatSuggestion);
-		}
-		if (wt) {
-			const term = wt.partial.toLowerCase().trim();
-			return this.app.vault
-				.getFiles()
-				.filter((f) => !term || f.basename.toLowerCase().includes(term) || f.path.toLowerCase().includes(term))
-				.sort((a, b) => a.path.localeCompare(b.path))
-				.slice(0, 20)
-				.map((file) => ({ kind: "file", file }) as ChatSuggestion);
-		}
-		return [];
-	}
-
-	renderSuggestion(s: ChatSuggestion, el: HTMLElement): void {
-		el.addClass("covault-chat-suggest");
-		if (s.kind === "mention") {
-			el.createDiv({ cls: "covault-chat-suggest-name", text: `@${s.name}` });
-		} else {
-			el.createDiv({ cls: "covault-chat-suggest-name", text: s.file.basename });
-			if (s.file.parent && s.file.parent.path !== "/") el.createDiv({ cls: "covault-chat-suggest-path", text: s.file.path });
-		}
-	}
-
-	selectSuggestion(s: ChatSuggestion): void {
-		if (s.kind === "mention") this.replace(this.mentionToken(), `@[${s.name}] `);
-		else this.replace(this.wikiToken(), `[[${s.file.basename}]]`);
-	}
-
-	private replace(tok: Tok | null, ins: string): void {
-		if (!tok) {
-			this.close();
-			return;
-		}
-		const val = this.inputEl.value;
-		this.inputEl.value = val.slice(0, tok.start) + ins + val.slice(tok.end);
-		const caret = tok.start + ins.length;
-		this.inputEl.setSelectionRange(caret, caret);
-		this.inputEl.dispatchEvent(new Event("input"));
-		this.inputEl.focus();
-		this.close();
-	}
 }
 
 /**
@@ -154,6 +34,13 @@ export class ChatSection implements PanelSection {
 
 	private get manager(): boolean {
 		return this.host.settings.role === "manager";
+	}
+
+	/** 채널 종류별 루시드 아이콘. */
+	private channelIcon(id: string): string {
+		if (id === CLASS_CHANNEL) return "megaphone";
+		if (id.startsWith("group:")) return "users-round";
+		return "user"; // dm
 	}
 
 	private channels(): Channel[] {
@@ -192,7 +79,7 @@ export class ChatSection implements PanelSection {
 			this.groupMembers = new Map(g.map((x) => [x.channel, x.memberNames ?? {}]));
 			if (sig === this.groupSig) return;
 			this.groupSig = sig;
-			this.groups = g.map((x) => ({ id: x.channel, label: `👥 ${x.name}` }));
+			this.groups = g.map((x) => ({ id: x.channel, label: x.name }));
 			if (this.root) this.draw();
 		} catch {
 			/* 무시 */
@@ -206,18 +93,30 @@ export class ChatSection implements PanelSection {
 		c.empty();
 		c.addClass("covault-chat");
 
-		// 채널 선택
+		// 채널 선택(루시드 아이콘 메뉴) — 학급/그룹/DM을 아이콘으로 구분.
 		const head = c.createDiv({ cls: "covault-chat-head" });
-		const sel = head.createEl("select", { cls: "covault-chat-channel dropdown" });
-		for (const ch of this.channels()) {
-			const opt = sel.createEl("option", { text: ch.label });
-			opt.value = ch.id;
-		}
-		sel.value = this.channel;
-		sel.onchange = () => {
-			this.channel = sel.value;
-			this.lastSig = "";
-			void this.reload();
+		const chans = this.channels();
+		const cur = chans.find((ch) => ch.id === this.channel) ?? chans[0];
+		const picker = head.createEl("button", { cls: "covault-chat-channel" });
+		setIcon(picker.createSpan({ cls: "covault-chat-channel-icon" }), this.channelIcon(this.channel));
+		picker.createSpan({ cls: "covault-chat-channel-label", text: cur?.label ?? "" });
+		setIcon(picker.createSpan({ cls: "covault-chat-channel-caret" }), "chevron-down");
+		picker.onclick = (e) => {
+			const menu = new Menu();
+			for (const ch of this.channels()) {
+				menu.addItem((it) =>
+					it
+						.setIcon(this.channelIcon(ch.id))
+						.setTitle(ch.label)
+						.setChecked(ch.id === this.channel)
+						.onClick(() => {
+							this.channel = ch.id;
+							this.lastSig = "";
+							this.draw();
+						}),
+				);
+			}
+			menu.showAtMouseEvent(e);
 		};
 
 		this.listEl = c.createDiv({ cls: "covault-chat-list" });

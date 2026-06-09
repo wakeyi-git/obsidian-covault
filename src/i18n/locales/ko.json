@@ -14,14 +14,13 @@
 		"no_messages": "아직 메시지가 없습니다.",
 		"class_needs_homeroom": "학급 공동 공간을 지정하면 학급 대화를 쓸 수 있습니다.",
 		"shared_folder_hint": "공유 폴더에 있는 노트/파일만 상대에게 열립니다.",
-		"group_chat": "그룹 대화",
-		"group_not_shared": "공유 공간 파일이 아니어서 그룹 대화방을 만들 수 없습니다.",
 		"reply": "답글",
 		"replying_to": "{name}에게 답글",
 		"reply_deleted": "원본이 삭제됨",
 		"feedback_not_found": "피드백을 찾을 수 없습니다.",
 		"attach_feedback": "피드백 참조",
-		"no_feedback_here": "현재 노트에 피드백이 없습니다."
+		"no_feedback_here": "현재 노트에 피드백이 없습니다.",
+		"group_needs_homeroom": "그룹 대화방은 학급 공동 공간이 필요합니다."
 	},
 	"realtime": {
 		"tab": "실시간",
@@ -75,7 +74,8 @@
 		"realtime_snapshot_not_saved_may_not": "실시간 스냅샷 미저장({reason}): {path} — 비실시간 멤버에 전파되지 않을 수 있습니다.",
 		"snapshot_save_failed": "스냅샷 저장 실패: {path} — {error}",
 		"assigned_n": "지정 {n}명",
-		"member_off": "실시간 편집이 꺼져 있습니다."
+		"member_off": "실시간 편집이 꺼져 있습니다.",
+		"apply_group": "그룹으로 참여자 설정…"
 	},
 	"dashboard": {
 		"dashboard": "대시보드",
@@ -898,5 +898,17 @@
 		"open_a_note_to_see_its": "노트를 열면 버전 기록이 표시됩니다.",
 		"failed_to_load_version_history": "버전 기록을 불러오지 못했습니다.",
 		"msg_2": "{who} {by} · {device}"
+	},
+	"group": {
+		"groups": "그룹",
+		"new": "새 그룹",
+		"name": "그룹 이름",
+		"members": "구성원",
+		"none": "그룹이 없습니다. 구성원을 묶어 그룹을 만들어 보세요.",
+		"open_chat": "그룹 대화",
+		"delete_confirm": "그룹 '{name}'을(를) 삭제할까요? 그룹 대화방도 삭제됩니다.",
+		"n_members": "{n}명",
+		"name_required": "그룹 이름을 입력하세요.",
+		"manage_hint": "그룹은 대화방과 라이브 세션 참여자 지정에 쓰입니다."
 	}
 }

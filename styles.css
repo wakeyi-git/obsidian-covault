@@ -772,7 +772,41 @@
 .covault-chat-head {
 	padding-bottom: 8px;
 }
+/* 채널 선택 버튼(아이콘 + 라벨 + 캐럿) */
 .covault-chat-channel {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	text-align: left;
+}
+.covault-chat-channel-icon {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-muted);
+}
+.covault-chat-channel-label {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.covault-chat-channel-caret {
+	display: inline-flex;
+	flex: none;
+	color: var(--text-muted);
+}
+.covault-chat-channel-icon .svg-icon,
+.covault-chat-channel-caret .svg-icon {
+	width: 16px;
+	height: 16px;
+}
+/* 실시간 참여자: 그룹 적용 셀렉터 */
+.covault-rt-groupapply {
+	margin-bottom: 6px;
+}
+.covault-rt-groupapply select {
 	width: 100%;
 }
 .covault-chat-list {

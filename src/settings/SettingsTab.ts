@@ -1,7 +1,9 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting, SettingGroup } from "obsidian";
-import { CoVaultSettings, MemberConfig, SharedSpace } from "./types";
+import { CoVaultSettings, MemberConfig, SharedSpace, GroupConfig } from "./types";
 import { ExportModal, ImportModal } from "../ui/BackupModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
+import { GroupEditModal } from "../ui/GroupEditModal";
+import { resolveMemberNames } from "../core/classroom/people";
 import { MemberBulkImportModal } from "../ui/MemberBulkImportModal";
 import { PathSuggest } from "../ui/PathSuggest";
 import { validateFolderName, foldersOverlap } from "../core/path/path";
@@ -83,6 +85,12 @@ export interface SettingsHost extends Plugin {
 	/** 공유 파일 읽기 전용 정책 토글(교사). 실시간 탭과 공유. */
 	setSharedReadOnly(on: boolean): Promise<void>;
 	redeployRealtime(): Promise<void>;
+	/** 명명 그룹 생성/수정(교사). */
+	saveGroup(group: GroupConfig): Promise<void>;
+	/** 명명 그룹 삭제(교사). 그룹 대화방도 삭제. */
+	deleteGroup(id: string): Promise<void>;
+	/** 그룹 대화방을 대화 탭에서 연다. */
+	openGroupChat(groupId: string): Promise<void>;
 	exportSettingsJson(): string;
 	importSettingsJson(json: string): Promise<{ ok: boolean; error?: string }>;
 	openResetModal(): void;
@@ -312,6 +320,21 @@ export class CoVaultSettingTab extends PluginSettingTab {
 						this.display();
 					}),
 			),
+		);
+
+		// 명명 그룹 (대화방 + 라이브 세션 참여자 지정)
+		const grp = this.group(t("group.groups"), t("group.manage_hint"));
+		if (s.groups.length === 0) grp.addSetting((set) => set.setName(t("group.none")).setDisabled(true));
+		for (const g of s.groups) {
+			grp.addSetting((set) => {
+				set.setName(g.name).setDesc(resolveMemberNames(g.memberIds, s.members).join(", ") || "—");
+				set.addExtraButton((b) => b.setIcon("messages-square").setTooltip(t("group.open_chat")).onClick(() => void this.host.openGroupChat(g.id)));
+				set.addExtraButton((b) => b.setIcon("pencil").setTooltip(t("dashboard.edit")).onClick(() => this.editGroup(g)));
+				set.addExtraButton((b) => b.setIcon("trash-2").setTooltip(t("common.delete")).onClick(() => this.confirmDeleteGroup(g)));
+			});
+		}
+		grp.addSetting((set) =>
+			set.setClass("covault-add-row").addButton((b) => b.setButtonText(t("group.new")).setCta().onClick(() => this.editGroup(null))),
 		);
 
 		// 콘텐츠 템플릿 (알림장·수업·과제)
@@ -904,6 +927,30 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		const g = new SettingGroup(this.containerEl).setHeading(heading);
 		if (desc) g.addSetting((set) => set.setDesc(desc));
 		return g;
+	}
+
+	/** 명명 그룹 생성/수정 모달. */
+	private editGroup(group: GroupConfig | null): void {
+		const members = this.host.settings.members
+			.filter((m) => m.memberId)
+			.map((m) => ({ memberId: m.memberId, memberName: m.memberName || m.memberId }));
+		new GroupEditModal(this.app, members, group, async (g) => {
+			await this.host.saveGroup(g);
+			this.display();
+		}).open();
+	}
+
+	private confirmDeleteGroup(g: GroupConfig): void {
+		new ConfirmModal(this.app, {
+			title: t("common.delete"),
+			message: t("group.delete_confirm", { name: g.name }),
+			confirmText: t("common.delete"),
+			warning: true,
+			onConfirm: async () => {
+				await this.host.deleteGroup(g.id);
+				this.display();
+			},
+		}).open();
 	}
 
 	/** 폴더 경로 입력 검증: 비었으면 통과(기본값 대체), 잘못된 경로면 Notice 후 false. */

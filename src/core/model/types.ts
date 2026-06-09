@@ -271,19 +271,19 @@ export function dmChannel(memberId: string): string {
 	return `dm:${memberId}`;
 }
 /**
- * 그룹 채널 id: 라이브 세션 그룹. 메시지는 그 파일이 속한 공유 공간(share_*) DB에 저장된다.
+ * 그룹 채널 id: 명명 그룹 대화방. 메시지는 그룹 문서가 사는 공유 DB(homeroom)에 저장된다.
  * remoteDb(콜론 없는 share_*)를 채널에 인코딩해 조회 시 pouch를 바로 해석한다.
  */
-export function groupChannel(remoteDb: string, dbPath: string): string {
-	return `group:${remoteDb}:${dbPath}`;
+export function groupChannel(remoteDb: string, groupId: string): string {
+	return `group:${remoteDb}:${groupId}`;
 }
-/** "group:<remoteDb>:<dbPath>" 파싱. group 채널이 아니면 null. remoteDb엔 콜론이 없다고 가정. */
-export function parseGroupChannel(channel: string): { remoteDb: string; dbPath: string } | null {
+/** "group:<remoteDb>:<groupId>" 파싱. group 채널이 아니면 null. remoteDb엔 콜론이 없다고 가정. */
+export function parseGroupChannel(channel: string): { remoteDb: string; groupId: string } | null {
 	if (!channel.startsWith("group:")) return null;
 	const rest = channel.slice("group:".length);
 	const i = rest.indexOf(":");
 	if (i < 0) return null;
-	return { remoteDb: rest.slice(0, i), dbPath: rest.slice(i + 1) };
+	return { remoteDb: rest.slice(0, i), groupId: rest.slice(i + 1) };
 }
 export function messageId(channel: string, uid: string): string {
 	return `${MESSAGE_ID_PREFIX}${channel}:${uid}`;
@@ -316,15 +316,16 @@ export function rtPartId(dbPath: string): string {
 }
 
 /**
- * 라이브 세션 그룹 대화방(공유 공간 DB에 저장). 파일당 1개(dbPath로 식별). 그 공유 공간 구성원이 접근(소프트 그룹).
+ * 명명 그룹(학급 공유 DB=homeroom에 저장). 교사가 구성원을 묶어 만든 재사용 그룹.
+ * 그룹마다 대화방(채널)을 가지며, 라이브 세션 참가자 지정에도 적용한다. 그 공유 DB 구성원이 접근(소프트 그룹).
  * 멤버 이름을 담아 학생 기기(동료 명단 없음)에서도 이름으로 표시한다.
  */
 export interface GroupDoc extends PouchDocBase {
 	type: "chatgroup";
 	schemaVersion: number;
 	workspaceId: string;
-	dbPath: string; // 공간 폴더 기준 상대 경로(=그룹 식별)
-	name: string; // 표시 이름(보통 파일 basename)
+	groupId: string; // 그룹 식별(uid)
+	name: string; // 표시 이름
 	memberIds: string[];
 	memberNames?: Record<string, string>;
 	createdAtMs: number;
@@ -333,8 +334,8 @@ export interface GroupDoc extends PouchDocBase {
 }
 
 export const CHATGROUP_ID_PREFIX = "chatgroup:";
-export function chatGroupId(dbPath: string): string {
-	return `${CHATGROUP_ID_PREFIX}${dbPath}`;
+export function chatGroupId(groupId: string): string {
+	return `${CHATGROUP_ID_PREFIX}${groupId}`;
 }
 
 /** 주간 시간표(학급 공유 DB, 주(週)별 문서). 주 시작(월요일) 날짜키로 분리. */

@@ -14,14 +14,13 @@
 		"no_messages": "No messages yet.",
 		"class_needs_homeroom": "Set a homeroom shared space to use the class chat.",
 		"shared_folder_hint": "Links open for the other side only if the note/file is in a shared folder.",
-		"group_chat": "Group chat",
-		"group_not_shared": "Can't create a group chat — not a shared-space file.",
 		"reply": "Reply",
 		"replying_to": "Replying to {name}",
 		"reply_deleted": "Original deleted",
 		"feedback_not_found": "Feedback not found.",
 		"attach_feedback": "Reference feedback",
-		"no_feedback_here": "No feedback on the current note."
+		"no_feedback_here": "No feedback on the current note.",
+		"group_needs_homeroom": "Group chat needs a homeroom shared space."
 	},
 	"realtime": {
 		"tab": "Realtime",
@@ -75,7 +74,8 @@
 		"realtime_snapshot_not_saved_may_not": "Realtime snapshot not saved ({reason}): {path} — may not propagate to non-realtime members.",
 		"snapshot_save_failed": "Snapshot save failed: {path} — {error}",
 		"assigned_n": "{n} assigned",
-		"member_off": "Live editing is off."
+		"member_off": "Live editing is off.",
+		"apply_group": "Set participants from group…"
 	},
 	"dashboard": {
 		"dashboard": "Dashboard",
@@ -898,5 +898,17 @@
 		"open_a_note_to_see_its": "Open a note to see its version history.",
 		"failed_to_load_version_history": "Failed to load version history.",
 		"msg_2": "{who} {by} · {device}"
+	},
+	"group": {
+		"groups": "Groups",
+		"new": "New group",
+		"name": "Group name",
+		"members": "Members",
+		"none": "No groups yet. Bundle members into a group.",
+		"open_chat": "Group chat",
+		"delete_confirm": "Delete group '{name}'? Its chat will be removed too.",
+		"n_members": "{n}",
+		"name_required": "Enter a group name.",
+		"manage_hint": "Groups are used for chat and live-session participants."
 	}
 }

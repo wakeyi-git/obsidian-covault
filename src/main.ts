@@ -2,7 +2,7 @@ import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { errMessage } from "./core/util/err";
 import { registerCommands as registerCovaultCommands } from "./commands";
 import { jumpToFeedback } from "./ui/feedbackJump";
-import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
+import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace, GroupConfig } from "./settings/types";
 import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc } from "./core/model/types";
@@ -138,8 +138,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			requestApply: () => this.requestApply(),
 			memberSyncByRemoteDb: (db) => this.mode?.findSyncByDb(db),
 			studentMirrorSync: () => this.mode?.findSyncByDb(this.settings.remoteDb),
-			getSyncs: () => this.mode?.getSyncs() ?? [],
-			findSyncOwning: (p) => this.mode?.findSyncOwning(p),
+			homeroomDb: () => this.core.homeroom?.remoteDb ?? null,
 		});
 		this.recoveryCtl = new RecoveryController({
 			app: this.app,
@@ -608,19 +607,41 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		}
 		await jumpToFeedback(this.app, doc, path);
 	}
-	/** 라이브 세션 카드 '그룹 대화': 그 파일의 참여자로 그룹을 만들고 대화 탭으로 이동(교사). */
-	async startGroupChat(filePath: string): Promise<void> {
-		// 참여자 = 지정 명단, 없으면 그 공유 공간 구성원. 이름은 명단으로 해석해 문서에 담는다(학생도 표시).
-		const assigned = await this.participantCtl.getFileRealtimeParticipants(filePath);
-		const sp = this.settings.sharedSpaces.find((x) => x.folder && (filePath === x.folder || filePath.startsWith(x.folder + "/")));
-		const memberIds = assigned && assigned.length ? assigned : sp?.members ?? [];
+	/** 명명 그룹 목록(관리 UI). */
+	listGroups(): GroupConfig[] {
+		return this.settings.groups;
+	}
+	/** 그룹 생성/수정(교사). settings.groups upsert + homeroom 그룹 문서(대화방) 동기화. */
+	async saveGroup(group: GroupConfig): Promise<void> {
+		if (this.settings.role !== "manager") return;
+		const i = this.settings.groups.findIndex((g) => g.id === group.id);
+		if (i >= 0) this.settings.groups[i] = group;
+		else this.settings.groups.push(group);
+		await this.saveSettings();
 		const names: Record<string, string> = {};
-		for (const id of memberIds) {
+		for (const id of group.memberIds) {
 			const m = this.settings.members.find((x) => x.memberId === id);
 			if (m?.memberName) names[id] = m.memberName;
 		}
-		const channel = await this.classroomCtl.ensureGroup(filePath, memberIds, names);
-		if (channel) await this.openChat(channel);
+		await this.classroomCtl.syncGroupDoc(group, names);
+	}
+	/** 그룹 삭제(교사). settings.groups 제거 + 그룹 대화방 삭제. */
+	async deleteGroup(id: string): Promise<void> {
+		if (this.settings.role !== "manager") return;
+		this.settings.groups = this.settings.groups.filter((g) => g.id !== id);
+		await this.saveSettings();
+		await this.classroomCtl.deleteGroupDoc(id);
+	}
+	/** 라이브 세션에 그룹 적용: 그 파일의 참여자를 그룹 구성원으로 설정(교사). */
+	async applyGroupToFile(filePath: string, groupId: string): Promise<void> {
+		const g = this.settings.groups.find((x) => x.id === groupId);
+		if (!g) return;
+		await this.participantCtl.setFileRealtimeParticipants(filePath, g.memberIds);
+	}
+	/** 그룹 대화방 열기(대화 탭). */
+	async openGroupChat(groupId: string): Promise<void> {
+		const ch = this.classroomCtl.groupChannelFor(groupId);
+		if (ch) await this.openChat(ch);
 	}
 	/** 대화 탭을 특정 채널로 연다. ChatSection이 render 시 consumePendingChatChannel로 받는다. */
 	async openChat(channel: string): Promise<void> {

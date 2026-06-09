@@ -2,7 +2,7 @@ import { App, setIcon } from "obsidian";
 import { Logger } from "../../core/log/Logger";
 import { FeedbackStore } from "../../core/feedback/FeedbackStore";
 import { ClassroomStore } from "../../core/classroom/ClassroomStore";
-import { CoVaultSettings, SharedSpace } from "../../settings/types";
+import { CoVaultSettings, SharedSpace, GroupConfig } from "../../settings/types";
 import { LinkStatus } from "../../core/sync/MirrorContext";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "../../core/sync/RestoreManager";
 import { PurgeSnapshot } from "../../core/sync/recentPurge";
@@ -11,7 +11,7 @@ import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricC
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
-export type PanelTab = "dashboard" | "chat" | "feedback" | "realtime" | "deploy" | "sync" | "recovery" | "history" | "log";
+export type PanelTab = "dashboard" | "chat" | "groups" | "feedback" | "realtime" | "deploy" | "sync" | "recovery" | "history" | "log";
 
 /** 동기화 상태 표 한 행(링크별). */
 export interface DashboardRow extends LinkStatus {
@@ -86,8 +86,16 @@ export interface MessageHost {
 	attachFileToChannel(channel: string, srcPath: string): Promise<string | null>;
 	/** 접근 가능한 그룹 대화방 목록(교사=전부, 구성원=자신 소속분). 채널 드롭다운용. */
 	listChatGroups(): Promise<Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }>>;
-	/** 라이브 세션 파일의 참여자로 그룹 대화방을 만들고 대화 탭으로 이동(교사). */
-	startGroupChat(filePath: string): Promise<void>;
+	/** 명명 그룹 목록(관리 UI). */
+	listGroups(): GroupConfig[];
+	/** 그룹 생성/수정(교사). */
+	saveGroup(group: GroupConfig): Promise<void>;
+	/** 그룹 삭제(교사). 그룹 대화방도 삭제. */
+	deleteGroup(id: string): Promise<void>;
+	/** 라이브 세션 파일의 참여자를 그룹 구성원으로 설정(교사). */
+	applyGroupToFile(filePath: string, groupId: string): Promise<void>;
+	/** 그룹 대화방을 대화 탭에서 연다. */
+	openGroupChat(groupId: string): Promise<void>;
 	/** 대화 탭을 특정 채널로 연다(그룹 대화 진입). */
 	openChat(channel: string): Promise<void>;
 	/** 보류 중 초기 대화 채널을 받아 비운다(ChatSection render 시). */

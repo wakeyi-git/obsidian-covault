@@ -25,6 +25,13 @@ export interface SharedSpace {
 	lastMemberSnapshot?: string[];
 }
 
+/** 명명 그룹(교사가 만든 구성원 묶음). 그룹 대화방 + 라이브 세션 참가자 지정에 재사용. */
+export interface GroupConfig {
+	id: string; // uid
+	name: string;
+	memberIds: string[];
+}
+
 /** 교사가 관리하는 학생 1명. 기술문서 §12.1. */
 export interface MemberConfig {
 	memberId: string;
@@ -74,6 +81,9 @@ export interface CoVaultSettings {
 
 	/** Manager Mode: 공유 공간 목록(모둠/학급 공유). */
 	sharedSpaces: SharedSpace[];
+
+	/** Manager Mode: 명명 그룹(구성원 묶음). 그룹 대화방 + 라이브 세션 참가자 지정에 사용. */
+	groups: GroupConfig[];
 
 	/** Manager Mode: 내 볼트 개인 동기화 사용 여부(개별/공동 공간·제외 폴더 제외한 나머지 노트·첨부). */
 	personalSyncEnabled?: boolean;
@@ -199,6 +209,7 @@ export const DEFAULT_SETTINGS: CoVaultSettings = {
 	localRoot: "",
 	members: [],
 	sharedSpaces: [],
+	groups: [],
 
 	excludeFolders: [".obsidian", ".trash"],
 	archiveFolder: "_삭제됨",

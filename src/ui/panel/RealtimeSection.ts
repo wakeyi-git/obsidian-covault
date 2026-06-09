@@ -180,17 +180,6 @@ export class RealtimeSection implements PanelSection {
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
-			// 그룹 대화: 이 파일 참여자로 그룹방을 만들고 대화 탭으로 이동(교사). 카드 열기와 분리.
-			if (this.manager) {
-				const gc = head.createEl("button", { cls: "clickable-icon covault-rt-groupbtn" });
-				setIcon(gc, "messages-square");
-				gc.setAttr("aria-label", t("chat.group_chat"));
-				gc.title = t("chat.group_chat");
-				gc.onclick = (e) => {
-					e.stopPropagation();
-					void this.host.startGroupChat(r.path);
-				};
-			}
 			box.createDiv({ cls: "covault-cr-muted", text: r.path });
 			// 참가자/지정 배지를 경로 아래(이전 '함께' 줄 위치)에 배치. 지정 배지 옆에는 지정된 구성원 이름.
 			if (r.open) {
@@ -236,6 +225,19 @@ export class RealtimeSection implements PanelSection {
 		const current = await this.host.getFileRealtimeParticipants(f.path); // null=기본값
 		if (this.host.app.workspace.getActiveFile()?.path !== f.path) return;
 		el.empty();
+		// 그룹 적용: 명명 그룹을 고르면 그 구성원이 이 파일의 참여자로 설정된다(교사).
+		const groups = this.host.listGroups();
+		if (this.manager && groups.length) {
+			const row = el.createDiv({ cls: "covault-rt-groupapply" });
+			const selEl = row.createEl("select", { cls: "dropdown" });
+			selEl.createEl("option", { text: t("realtime.apply_group"), attr: { value: "" } });
+			for (const g of groups) selEl.createEl("option", { text: g.name, attr: { value: g.id } });
+			selEl.onchange = async () => {
+				if (!selEl.value) return;
+				await this.host.applyGroupToFile(f.path, selEl.value);
+				await this.renderFileParticipants(true); // 체크 상태 갱신
+			};
+		}
 		// 제목·파일명 없음 — 위 목록에서 강조된(활성) 카드가 어떤 파일인지 알려준다.
 		// 기본값: 읽기 전용 정책이면 '아무도', 해제 상태면 '전원'(게이트와 일관).
 		const defaultEveryone = !s.sharedReadOnly;
