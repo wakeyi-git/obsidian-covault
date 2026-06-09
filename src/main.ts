@@ -19,8 +19,7 @@ import { SetupWizardModal } from "./ui/SetupWizardModal";
 import { ResolveChoice } from "./core/sync/ConflictManager";
 import { BulkCopy, CopyOptions, CopyResult, CopyPlan } from "./modes/manager/BulkCopy";
 import { RealtimeManager } from "./core/realtime/RealtimeManager";
-import { isValidCouchName } from "./core/path/path";
-import { getCouchPassword, getYjsSecret, persistCouchPassword } from "./core/secret";
+import { getCouchPassword, persistCouchPassword } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
@@ -29,7 +28,7 @@ import { RealtimeController } from "./modes/RealtimeController";
 import { MemberController } from "./modes/MemberController";
 import { RecoveryController } from "./modes/RecoveryController";
 import { ParticipantController } from "./modes/ParticipantController";
-import { setHomeroom } from "./core/classroom/homeroom";
+import { DeploymentController } from "./modes/DeploymentController";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
@@ -64,6 +63,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private memberCtl!: MemberController;
 	private recoveryCtl!: RecoveryController;
 	private participantCtl!: ParticipantController;
+	private deploymentCtl!: DeploymentController;
 	private applyTimer: number | null = null;
 
 	/** PanelHost: 피드백 섹션이 사용. */
@@ -150,6 +150,19 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			findSyncOwning: (p) => this.mode?.findSyncOwning(p),
 			sharedSpaces: () => this.core.sharedSpaces,
 			saveSettings: () => this.saveSettings(),
+			refreshMemberShares: () => this.refreshMemberShares(),
+		});
+		this.deploymentCtl = new DeploymentController({
+			app: this.app,
+			logger: this.logger,
+			settings: () => this.settings,
+			couchPassword: () => this.couchPassword(),
+			saveSettings: () => this.saveSettings(),
+			restartMode: () => this.restartMode(),
+			openLog: () => this.activatePanel("log"),
+			openDashboard: () => this.activatePanel("dashboard"),
+			writeMemberSync: (admin, m) => this.writeMemberSync(admin, m),
+			mintRealtimeTokens: () => this.mintRealtimeTokens(),
 			refreshMemberShares: () => this.refreshMemberShares(),
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
@@ -322,49 +335,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	// --- 공유 공간 배포 (Manager) ---
-	async deployShared(space: SharedSpace): Promise<void> {
-		await this.activatePanel("log");
-		const s = this.settings;
-		if (s.role !== "manager") {
-			this.logger.warn(t("command.available_in_manager_mode_only"), true);
-			return;
-		}
-		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
-			this.logger.warn(t("command.enter_the_admin_account_first"), true);
-			return;
-		}
-		if (!space.remoteDb) space.remoteDb = `share_${space.id}`;
-		if (!space.folder) space.folder = space.name || space.id;
-		if (!isValidCouchName(space.remoteDb)) {
-			this.logger.warn(t("command.invalid_share_db_name", { db: space.remoteDb }), true);
-			return;
-		}
-
-		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
-		const memberUsers = space.members
-			.map((sid) => s.members.find((st) => st.memberId === sid)?.username)
-			.filter((u): u is string => !!u);
-
-		this.logger.info(t("command.deploying_shared_space_members", { name: space.name, db: space.remoteDb, count: memberUsers.length }));
-		const res = await admin.provisionSharedSpace(space.remoteDb, memberUsers);
-		if (!res.ok) {
-			this.logger.error(t("command.shared_space_provisioning_failed", { err: res.error ?? "" }), true);
-			return;
-		}
-		space.provisioned = true;
-		space.lastDeployedAt = Date.now();
-		space.lastMemberSnapshot = [...space.members].sort();
-
-		// 배포 때마다 모든 실시간 토큰을 재발급한다(공유: realtime 플래그, 개인 mirror: member.realtime).
-		// 이 배포에서 모든 학생의 shares가 다시 기록되므로, 시크릿/멤버/플래그 변경 시 구 토큰 재유출을 막는다.
-		await this.mintRealtimeTokens();
-		await this.saveSettings();
-
-		// 모든 학생의 shares + rtconfig 문서 갱신(추가/제거 학생 모두 반영)
-		for (const st of s.members) await this.writeMemberSync(admin, st);
-
-		this.logger.ok(t("command.shared_space_deployment_complete", { name: space.name }), true);
-		await this.restartMode();
+	deployShared(space: SharedSpace): Promise<void> {
+		return this.deploymentCtl.deployShared(space);
 	}
 
 	/**
@@ -433,58 +405,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	/** SettingsHost: 공유 공간 하나를 학급 공동 공간으로 지정/해제(교사 전용). */
-	async setHomeroomSpace(space: SharedSpace, on: boolean): Promise<void> {
-		const s = this.settings;
-		if (s.role !== "manager") {
-			this.logger.warn(t("command.available_in_manager_mode_only"), true);
-			return;
-		}
-		s.sharedSpaces = setHomeroom(s.sharedSpaces, on ? space.id : null);
-		await this.saveSettings();
-		const hr = s.sharedSpaces.find((sp) => sp.id === space.id);
-		// 지정한 공간이 미배포면 배포(프로비저닝 + 전원 shares 갱신 + 모드 재시작 포함), 아니면 shares 전파 + 모드 재구성.
-		if (on && hr && !hr.provisioned) {
-			await this.deployShared(hr);
-		} else {
-			await this.refreshMemberShares();
-			await this.restartMode();
-		}
-		// 학급 공동 공간을 켜면 대시보드를 열어 학급 운영 기능을 바로 사용하게 한다.
-		if (on) await this.activatePanel("dashboard");
+	setHomeroomSpace(space: SharedSpace, on: boolean): Promise<void> {
+		return this.deploymentCtl.setHomeroomSpace(space, on);
 	}
 
 	/** SettingsHost: 내 볼트 개인 동기화 켜기/끄기(교사 전용). 켜면 개인 DB를 프로비저닝하고 모드 재시작. */
-	async setPersonalSync(on: boolean): Promise<void> {
-		const s = this.settings;
-		if (s.role !== "manager") {
-			this.logger.warn(t("command.available_in_manager_mode_only"), true);
-			return;
-		}
-		if (on) {
-			if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
-				this.logger.warn(t("command.enter_the_admin_account_first"), true);
-				return;
-			}
-			const db = s.personalRemoteDb || `personal_${s.userId.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^[^a-z]+/, "") || "vault"}`;
-			await this.activatePanel("log");
-			this.logger.info(t("command.provisioning_personal_db", { db }));
-			const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
-			const res = await admin.provisionPersonalDb(db, s.username);
-			if (!res.ok) {
-				this.logger.error(t("command.personal_provision_failed", { err: res.error ?? "" }), true);
-				return;
-			}
-			s.personalRemoteDb = db;
-			s.personalSyncEnabled = true;
-			await this.saveSettings();
-			await this.restartMode();
-			this.logger.ok(t("command.personal_sync_on", { db }), true);
-		} else {
-			s.personalSyncEnabled = false;
-			await this.saveSettings();
-			await this.restartMode();
-			this.logger.info(t("command.personal_sync_off"), true);
-		}
+	setPersonalSync(on: boolean): Promise<void> {
+		return this.deploymentCtl.setPersonalSync(on);
 	}
 
 	/** SettingsHost: 교사 온보딩 마법사(모달) 실행. */
@@ -631,26 +558,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	 * 실시간 토글(학생 개인 폴더/공유 공간/전체) 적용. 토큰 재발급 + 프로비저닝된 모든 학생의 shares/rtconfig
 	 * 재기록 + 모드 재시작. 공유 공간을 재배포(재프로비저닝)하지 않고 실시간 설정만 전파한다.
 	 */
-	async redeployRealtime(): Promise<void> {
-		if (this.settings.role !== "manager") return;
-		const s = this.settings;
-		const adminPw = this.couchPassword();
-		if (!s.couchdbUrl || !s.username || !adminPw) {
-			this.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
-			return;
-		}
-		const wantsRealtime = s.members.length > 0 || s.sharedSpaces.length > 0;
-		if (s.realtimeEnabled && wantsRealtime && !getYjsSecret(this.app, s.yjsSecret)) {
-			this.logger.warn(t("command.realtime_needs_yjs_secret"), true);
-		}
-		await this.mintRealtimeTokens();
-		await this.saveSettings();
-		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
-		for (const st of s.members) {
-			if (st.provisioned && st.remoteDb) await this.writeMemberSync(admin, st);
-		}
-		this.logger.ok(t("command.realtime_settings_applied"), true);
-		await this.restartMode();
+	redeployRealtime(): Promise<void> {
+		return this.deploymentCtl.redeployRealtime();
 	}
 
 	// --- 학생 온보딩: 초대 코드/딥링크로 자동 설정 ---
