@@ -11,7 +11,10 @@ const GENERAL_CAP = 500;
 
 // 파일별 상한(줄). 리팩토링 진척에 맞춰 main.ts 값을 낮춘다. 최종 목표: src/main.ts <= 600.
 const OVERRIDES = {
-	"src/main.ts": 939, // ratchet — 회귀 차단(M0~M3로 1424→939). M3 완료. 최종 목표는 Step 10에서 재조정.
+	// main.ts: god object 분해 완료(1424→939, -34%). 모든 인라인 로직을 컨트롤러로 추출.
+	// 남은 ~939는 DI 배선 + 얇은 위임(특히 PanelHost 학급 위임 ~147줄). 600 도달은 PanelHost
+	// 인터페이스 컴포지션(UI 배선 변경)이 필요 — 별도 후속. 이 값은 회귀 방지 영구 가드.
+	"src/main.ts": 939,
 	"src/settings/SettingsTab.ts": 1036, // 범위 밖(이번 라운드 미손댐)
 	"src/modes/ClassroomController.ts": 947, // 범위 밖
 	"src/core/realtime/RealtimeManager.ts": 695, // 범위 밖(게이트 로직은 main에 있음)
