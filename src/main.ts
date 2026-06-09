@@ -28,6 +28,7 @@ import { ClassroomStore } from "./core/classroom/ClassroomStore";
 import { ClassroomController } from "./modes/ClassroomController";
 import { RealtimeController } from "./modes/RealtimeController";
 import { MemberController } from "./modes/MemberController";
+import { RecoveryController } from "./modes/RecoveryController";
 import { findHomeroom, setHomeroom } from "./core/classroom/homeroom";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
@@ -61,6 +62,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private classroomCtl!: ClassroomController;
 	private realtimeCtl!: RealtimeController;
 	private memberCtl!: MemberController;
+	private recoveryCtl!: RecoveryController;
 	private applyTimer: number | null = null;
 
 	/** PanelHost: 피드백 섹션이 사용. */
@@ -129,6 +131,14 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			requestApply: () => this.requestApply(),
 			memberSyncByRemoteDb: (db) => this.mode?.findSyncByDb(db),
 			studentMirrorSync: () => this.mode?.findSyncByDb(this.settings.remoteDb),
+		});
+		this.recoveryCtl = new RecoveryController({
+			app: this.app,
+			logger: this.logger,
+			getSyncs: () => this.mode?.getSyncs() ?? [],
+			findSyncByDb: (db) => this.mode?.findSyncByDb(db),
+			findSyncOwning: (p) => this.mode?.findSyncOwning(p),
+			openLog: () => this.activatePanel("log"),
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
 		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
@@ -841,31 +851,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		this.realtime.diagnose();
 	}
 
-	// --- 충돌 해소 (ConflictHost) ---
-	async listConflicts(): Promise<ConflictRow[]> {
-		const rows: ConflictRow[] = [];
-		for (const sync of this.mode?.getSyncs() ?? []) {
-			try {
-				const infos = await sync.listConflicts();
-				for (const info of infos) rows.push({ sync, info });
-			} catch (e) {
-				this.logger.error(t("command.failed_to_fetch_conflict_list", { label: sync.label, err: errMessage(e) }));
-			}
-		}
-		return rows;
+	// --- 충돌 해소 (ConflictHost) → RecoveryController 위임 ---
+	listConflicts(): Promise<ConflictRow[]> {
+		return this.recoveryCtl.listConflicts();
 	}
-
-	async resolveConflict(row: ConflictRow, choice: ResolveChoice): Promise<void> {
-		await this.activatePanel("log");
-		await row.sync.resolveConflict(row.info.dbPath, choice);
+	resolveConflict(row: ConflictRow, choice: ResolveChoice): Promise<void> {
+		return this.recoveryCtl.resolveConflict(row, choice);
 	}
-
-	async openConflictFiles(row: ConflictRow): Promise<void> {
-		const local = this.app.vault.getAbstractFileByPath(row.info.localPath);
-		const conflict = this.app.vault.getAbstractFileByPath(row.info.conflictPath);
-		if (local instanceof TFile) await this.app.workspace.getLeaf(false).openFile(local);
-		if (conflict instanceof TFile) await this.app.workspace.getLeaf("split").openFile(conflict);
-		else this.logger.warn(t("command.remote_copy_file_not_found", { path: row.info.conflictPath }), true);
+	openConflictFiles(row: ConflictRow): Promise<void> {
+		return this.recoveryCtl.openConflictFiles(row);
 	}
 
 	// --- 설정 내보내기/가져오기 (기술문서 §22.4) ---
@@ -1108,17 +1102,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		});
 	}
 
-	// --- 버전 히스토리 (보고서 §1 P1) ---
-	async versionHistoryFor(localPath: string): Promise<VersionDoc[]> {
-		const sync = this.syncForLocalPath(localPath);
-		if (!sync) return [];
-		const dbPath = sync.ctx.toDbPath(localPath);
-		return dbPath ? sync.listVersions(dbPath) : [];
+	// --- 버전 히스토리 → RecoveryController 위임 ---
+	versionHistoryFor(localPath: string): Promise<VersionDoc[]> {
+		return this.recoveryCtl.versionHistoryFor(localPath);
 	}
-
 	restoreVersion(localPath: string, versionDocId: string, opts: { backupCurrent?: boolean }): Promise<"restored" | "missing"> {
-		const sync = this.syncForLocalPath(localPath);
-		return sync ? sync.restoreVersion(versionDocId, opts) : Promise.resolve("missing");
+		return this.recoveryCtl.restoreVersion(localPath, versionDocId, opts);
 	}
 
 	// --- 패널 버튼/명령 공용 동작 (PanelHost) ---
@@ -1190,98 +1179,36 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return { src, targets, bulk: new BulkCopy(this.app, this.settings), opts: finalOpts };
 	}
 
-	// --- 동기화 상태 (PanelHost) ---
-	async getDashboardRows(): Promise<DashboardRow[]> {
-		const rows: DashboardRow[] = [];
-		for (const sync of this.mode?.getSyncs() ?? []) {
-			let conflicts = 0;
-			try {
-				conflicts = (await sync.listConflicts()).length;
-			} catch {
-				/* 조회 실패는 0으로 */
-			}
-			rows.push({
-				memberName: sync.memberName,
-				memberId: sync.memberId,
-				remoteDb: sync.remoteDb,
-				localRoot: sync.localRoot,
-				conflicts,
-				...sync.status,
-			});
-		}
-		return rows;
+	// --- 동기화 상태 · 복구 (PanelHost) → RecoveryController 위임 ---
+	getDashboardRows(): Promise<DashboardRow[]> {
+		return this.recoveryCtl.getDashboardRows();
 	}
-
 	openConflictModal(): void {
 		new ConflictModal(this.app, this).open();
 	}
-
-	// --- 삭제 파일 복구 (보고서 §2 P1) ---
-	async listDeletedFiles(): Promise<DeletedItem[]> {
-		const out: DeletedItem[] = [];
-		for (const sync of this.mode?.getSyncs() ?? []) {
-			try {
-				out.push(...(await sync.listDeleted()));
-			} catch {
-				/* 조회 실패한 링크는 건너뜀 */
-			}
-		}
-		return out;
+	listDeletedFiles(): Promise<DeletedItem[]> {
+		return this.recoveryCtl.listDeletedFiles();
 	}
-
 	restoreDeleted(remoteDb: string, dbPath: string, opts?: RestoreOptions): Promise<RestoreResult> {
-		const sync = this.mode?.findSyncByDb(remoteDb);
-		if (!sync) return Promise.resolve("unrecoverable" as RestoreResult);
-		return sync.restoreDeleted(dbPath, opts);
+		return this.recoveryCtl.restoreDeleted(remoteDb, dbPath, opts);
 	}
-
 	purgeDeleted(remoteDb: string, dbPath: string): Promise<"purged" | "skipped"> {
-		const sync = this.mode?.findSyncByDb(remoteDb);
-		if (!sync) return Promise.resolve("skipped");
-		return sync.purgeDeleted(dbPath);
+		return this.recoveryCtl.purgeDeleted(remoteDb, dbPath);
 	}
-
-	async listDeleteModify(): Promise<DeleteModifyRow[]> {
-		const out: DeleteModifyRow[] = [];
-		for (const sync of this.mode?.getSyncs() ?? []) {
-			try {
-				for (const it of await sync.listDeleteModify()) {
-					out.push({ ...it, remoteDb: sync.remoteDb, memberName: sync.memberName });
-				}
-			} catch {
-				/* 조회 실패 링크 건너뜀 */
-			}
-		}
-		return out;
+	listDeleteModify(): Promise<DeleteModifyRow[]> {
+		return this.recoveryCtl.listDeleteModify();
 	}
-
 	resolveDeleteModify(remoteDb: string, dbPath: string, choice: DeleteModifyChoice): Promise<void> {
-		const sync = this.mode?.findSyncByDb(remoteDb);
-		return sync ? sync.resolveDeleteModify(dbPath, choice) : Promise.resolve();
+		return this.recoveryCtl.resolveDeleteModify(remoteDb, dbPath, choice);
 	}
-
-	async listRecentPurges(): Promise<PurgeRow[]> {
-		const out: PurgeRow[] = [];
-		for (const sync of this.mode?.getSyncs() ?? []) {
-			try {
-				for (const p of await sync.listRecentPurges()) {
-					out.push({ ...p, remoteDb: sync.remoteDb, memberName: sync.memberName });
-				}
-			} catch {
-				/* 조회 실패 링크 건너뜀 */
-			}
-		}
-		return out;
+	listRecentPurges(): Promise<PurgeRow[]> {
+		return this.recoveryCtl.listRecentPurges();
 	}
-
 	undoPurge(remoteDb: string, id: string): Promise<RestoreResult> {
-		const sync = this.mode?.findSyncByDb(remoteDb);
-		return sync ? sync.undoPurge(id) : Promise.resolve("unrecoverable" as RestoreResult);
+		return this.recoveryCtl.undoPurge(remoteDb, id);
 	}
-
 	clearPurge(remoteDb: string, id: string): Promise<void> {
-		const sync = this.mode?.findSyncByDb(remoteDb);
-		return sync ? sync.clearPurge(id) : Promise.resolve();
+		return this.recoveryCtl.clearPurge(remoteDb, id);
 	}
 
 	/** 통합 패널 활성화(우측 사이드바). tab을 주면 해당 탭으로 전환. */
