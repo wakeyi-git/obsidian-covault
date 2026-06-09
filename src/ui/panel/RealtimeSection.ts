@@ -180,6 +180,17 @@ export class RealtimeSection implements PanelSection {
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
+			// 그룹 대화: 이 파일 참여자로 그룹방을 만들고 대화 탭으로 이동(교사). 카드 열기와 분리.
+			if (this.manager) {
+				const gc = head.createEl("button", { cls: "clickable-icon covault-rt-groupbtn" });
+				setIcon(gc, "messages-square");
+				gc.setAttr("aria-label", t("chat.group_chat"));
+				gc.title = t("chat.group_chat");
+				gc.onclick = (e) => {
+					e.stopPropagation();
+					void this.host.startGroupChat(r.path);
+				};
+			}
 			box.createDiv({ cls: "covault-cr-muted", text: r.path });
 			// 참가자/지정 배지를 경로 아래(이전 '함께' 줄 위치)에 배치. 지정 배지 옆에는 지정된 구성원 이름.
 			if (r.open) {

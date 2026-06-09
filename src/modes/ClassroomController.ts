@@ -31,6 +31,11 @@ import {
 	messageId,
 	messagePrefix,
 	CLASS_CHANNEL,
+	groupChannel,
+	parseGroupChannel,
+	GroupDoc,
+	chatGroupId,
+	CHATGROUP_ID_PREFIX,
 	AssignmentDoc,
 	AssignmentStateDoc,
 	AssignmentGrade,
@@ -64,6 +69,9 @@ export interface ClassroomDeps {
 	requestApply(): void;
 	memberSyncByRemoteDb(db: string): MirrorSync | undefined;
 	studentMirrorSync(): MirrorSync | undefined;
+	/** 그룹 대화방(공유 공간 DB) 조회·생성용. */
+	getSyncs(): MirrorSync[];
+	findSyncOwning(localPath: string): MirrorSync | undefined;
 }
 
 /**
@@ -826,6 +834,17 @@ export class ClassroomController {
 		return this.d.studentMirrorSync();
 	}
 
+	/** 그룹 채널의 공유 공간 sync 해석(채널에 remoteDb 인코딩됨). */
+	private groupSync(channel: string) {
+		const g = parseGroupChannel(channel);
+		return g ? this.d.memberSyncByRemoteDb(g.remoteDb) : undefined;
+	}
+
+	/** class 외 채널(dm/group)의 pouch sync 해석. */
+	private channelSync(channel: string) {
+		return channel.startsWith("group:") ? this.groupSync(channel) : this.dmSync(channel);
+	}
+
 	/** 메시지 전송. 학급 채널=학급 공유 DB, DM=대상/본인 mirror DB. */
 	async sendMessage(channel: string, body: string): Promise<boolean> {
 		const s = this.d.settings();
@@ -845,7 +864,7 @@ export class ClassroomController {
 			createdAtMs: Date.now(),
 		};
 		if (channel === CLASS_CHANNEL) return this.d.classroom.put(doc);
-		const sync = this.dmSync(channel);
+		const sync = this.channelSync(channel);
 		if (!sync) return false;
 		await sync.ctx.pouch.put(doc);
 		return true;
@@ -857,9 +876,9 @@ export class ClassroomController {
 		if (channel === CLASS_CHANNEL) {
 			docs = await this.d.classroom.listByPrefix<MessageDoc>(messagePrefix(CLASS_CHANNEL));
 		} else {
-			const sync = this.dmSync(channel);
-			// 이 채널의 정확한 prefix(message:dm:<id>:)로 조회. 교사·학생이 같은 channel을 쓰므로 양쪽 일치.
-			// (이전엔 messagePrefix("dm:")가 "message:dm::"를 만들어 어떤 DM 메시지도 매칭되지 않았다.)
+			const sync = this.channelSync(channel);
+			// 이 채널의 정확한 prefix(message:dm:<id>: / message:group:<db>:<path>:)로 조회. 교사·학생이 같은
+			// channel을 쓰므로 양쪽 일치. (이전엔 messagePrefix("dm:")가 "message:dm::"를 만들어 매칭 실패했다.)
 			docs = sync ? await sync.ctx.pouch.allDocsByPrefix<MessageDoc>(messagePrefix(channel)) : [];
 		}
 		return docs.filter((d) => !d.deleted).sort((a, b) => a.createdAtMs - b.createdAtMs);
@@ -871,6 +890,10 @@ export class ClassroomController {
 		if (channel === CLASS_CHANNEL) {
 			const home = this.d.homeroomFolder();
 			return home ? `${home}/${ATTACH}` : null;
+		}
+		if (channel.startsWith("group:")) {
+			const sync = this.groupSync(channel); // 공유 공간 폴더(localRoot) 아래
+			return sync ? [sync.ctx.localRoot, ATTACH].filter(Boolean).join("/") : null;
 		}
 		const s = this.d.settings();
 		if (s.role === "manager") {
@@ -919,8 +942,62 @@ export class ClassroomController {
 			await this.d.classroom.put(dead);
 			return;
 		}
-		const sync = this.dmSync(channel);
+		const sync = this.channelSync(channel);
 		if (sync) await sync.ctx.pouch.put(dead);
+	}
+
+	/** 라이브 세션 파일의 그룹 대화방 생성/갱신(교사). 채널 문자열 반환(공유 sync 없으면 null). */
+	async ensureGroup(filePath: string, memberIds: string[], memberNames: Record<string, string>): Promise<string | null> {
+		const s = this.d.settings();
+		if (s.role !== "manager") return null;
+		const sync = this.d.findSyncOwning(filePath);
+		const dbPath = sync?.ctx.toDbPath(filePath);
+		if (!sync || !dbPath) {
+			this.d.logger.warn(t("chat.group_not_shared"), true);
+			return null;
+		}
+		const name = (filePath.split("/").pop() ?? dbPath).replace(/\.md$/i, "");
+		const existing = await sync.ctx.pouch.get<GroupDoc>(chatGroupId(dbPath)).catch(() => null);
+		await sync.ctx.pouch.put({
+			...(existing ?? {}),
+			_id: chatGroupId(dbPath),
+			type: "chatgroup",
+			schemaVersion: 1,
+			workspaceId: s.workspaceId,
+			dbPath,
+			name,
+			memberIds,
+			memberNames,
+			createdAtMs: existing?.createdAtMs ?? Date.now(),
+			createdBy: existing?.createdBy ?? s.userId,
+			deleted: false,
+		} as GroupDoc);
+		return groupChannel(sync.remoteDb, dbPath);
+	}
+
+	/** 접근 가능한 공유 공간의 그룹 대화방 목록. 교사=전부, 구성원=자신이 속한 것만. 없는 파일은 제외. */
+	async listChatGroups(): Promise<Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
+		const s = this.d.settings();
+		const out: Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }> = [];
+		const seen = new Set<string>();
+		for (const sync of this.d.getSyncs()) {
+			let docs: GroupDoc[];
+			try {
+				docs = await sync.ctx.pouch.allDocsByPrefix<GroupDoc>(CHATGROUP_ID_PREFIX);
+			} catch {
+				continue;
+			}
+			for (const g of docs) {
+				if (!g || g.deleted || !Array.isArray(g.memberIds)) continue;
+				if (s.role !== "manager" && !g.memberIds.includes(s.userId)) continue;
+				if (!this.d.app.vault.getAbstractFileByPath(sync.ctx.toLocalPath(g.dbPath))) continue; // 유령 방지
+				const channel = groupChannel(sync.remoteDb, g.dbPath);
+				if (seen.has(channel)) continue;
+				seen.add(channel);
+				out.push({ channel, name: g.name, memberIds: g.memberIds, memberNames: g.memberNames });
+			}
+		}
+		return out;
 	}
 
 	async listAllAssignmentStates(): Promise<AssignmentStateDoc[]> {

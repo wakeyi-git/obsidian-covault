@@ -61,6 +61,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private feedback!: FeedbackStore;
 	private classroom!: ClassroomStore;
 	private classroomCtl!: ClassroomController;
+	private pendingChatChannel: string | null = null; // 그룹 대화 카드 → 대화 탭 초기 채널 전달
 	private realtimeCtl!: RealtimeController;
 	private memberCtl!: MemberController;
 	private recoveryCtl!: RecoveryController;
@@ -136,6 +137,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			requestApply: () => this.requestApply(),
 			memberSyncByRemoteDb: (db) => this.mode?.findSyncByDb(db),
 			studentMirrorSync: () => this.mode?.findSyncByDb(this.settings.remoteDb),
+			getSyncs: () => this.mode?.getSyncs() ?? [],
+			findSyncOwning: (p) => this.mode?.findSyncOwning(p),
 		});
 		this.recoveryCtl = new RecoveryController({
 			app: this.app,
@@ -585,6 +588,34 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 	attachFileToChannel(channel: string, srcPath: string): Promise<string | null> {
 		return this.classroomCtl.attachFileToChannel(channel, srcPath);
+	}
+	listChatGroups(): Promise<Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
+		return this.classroomCtl.listChatGroups();
+	}
+	/** 라이브 세션 카드 '그룹 대화': 그 파일의 참여자로 그룹을 만들고 대화 탭으로 이동(교사). */
+	async startGroupChat(filePath: string): Promise<void> {
+		// 참여자 = 지정 명단, 없으면 그 공유 공간 구성원. 이름은 명단으로 해석해 문서에 담는다(학생도 표시).
+		const assigned = await this.participantCtl.getFileRealtimeParticipants(filePath);
+		const sp = this.settings.sharedSpaces.find((x) => x.folder && (filePath === x.folder || filePath.startsWith(x.folder + "/")));
+		const memberIds = assigned && assigned.length ? assigned : sp?.members ?? [];
+		const names: Record<string, string> = {};
+		for (const id of memberIds) {
+			const m = this.settings.members.find((x) => x.memberId === id);
+			if (m?.memberName) names[id] = m.memberName;
+		}
+		const channel = await this.classroomCtl.ensureGroup(filePath, memberIds, names);
+		if (channel) await this.openChat(channel);
+	}
+	/** 대화 탭을 특정 채널로 연다. ChatSection이 render 시 consumePendingChatChannel로 받는다. */
+	async openChat(channel: string): Promise<void> {
+		this.pendingChatChannel = channel;
+		await this.activatePanel("chat");
+	}
+	/** 보류 중 초기 대화 채널을 반환하고 비운다(ChatSection 전용). */
+	consumePendingChatChannel(): string | null {
+		const c = this.pendingChatChannel ?? null;
+		this.pendingChatChannel = null;
+		return c;
 	}
 
 	/**

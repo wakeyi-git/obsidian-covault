@@ -694,6 +694,11 @@
 	flex-wrap: wrap;
 	gap: 6px;
 }
+/* 그룹 대화 버튼: 헤더 오른쪽 끝 */
+.covault-rt-groupbtn {
+	margin-left: auto;
+	flex: none;
+}
 /* 활성 세션 카드: 전체 클릭으로 파일 열기 */
 .covault-rt-sescard {
 	cursor: pointer;

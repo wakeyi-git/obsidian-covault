@@ -91,6 +91,8 @@ export class ChatSection implements PanelSection {
 	private timer: number | null = null;
 	private unsub: (() => void) | null = null;
 	private lastSig = "";
+	private groups: Channel[] = []; // 그룹 대화방(라이브 세션) 채널
+	private groupSig = "";
 
 	constructor(private host: PanelHost) {}
 
@@ -100,29 +102,50 @@ export class ChatSection implements PanelSection {
 
 	private channels(): Channel[] {
 		const cls: Channel = { id: CLASS_CHANNEL, label: t("chat.class_channel") };
-		if (this.manager) {
-			const dms = this.host.settings.members
-				.filter((m) => m.memberId && m.provisioned)
-				.map((m) => ({ id: dmChannel(m.memberId), label: m.memberName || m.memberId }));
-			return [cls, ...dms];
-		}
-		return [cls, { id: dmChannel(this.host.settings.userId), label: t("chat.teacher") }];
+		const base = this.manager
+			? this.host.settings.members
+					.filter((m) => m.memberId && m.provisioned)
+					.map((m) => ({ id: dmChannel(m.memberId), label: m.memberName || m.memberId }))
+			: [{ id: dmChannel(this.host.settings.userId), label: t("chat.teacher") }];
+		return [cls, ...base, ...this.groups];
 	}
 
 	render(container: HTMLElement): void {
 		this.root = container;
+		// 그룹 대화 카드에서 넘어온 초기 채널.
+		const pending = this.host.consumePendingChatChannel();
+		if (pending) this.channel = pending;
 		// 학급 채널 변경(원격 수신)은 classroomStore가 알림 → 현재 학급 채널이면 갱신.
 		this.unsub = this.host.classroomStore.onChange(() => {
 			if (this.channel === CLASS_CHANNEL) void this.reload();
 		});
-		// DM은 개인 mirror라 별도 알림이 없어 가볍게 폴링(탭이 열린 동안만).
-		this.timer = window.setInterval(() => void this.reload(), 4000);
+		// DM/그룹은 별도 알림이 없어 가볍게 폴링(탭이 열린 동안만). 그룹 목록도 함께 갱신.
+		this.timer = window.setInterval(() => {
+			void this.refreshGroups();
+			void this.reload();
+		}, 4000);
+		void this.refreshGroups();
 		this.draw();
+	}
+
+	/** 그룹 대화방 목록을 갱신하고, 변경 시 드롭다운을 다시 그린다(입력 텍스트 보존). */
+	private async refreshGroups(): Promise<void> {
+		try {
+			const g = await this.host.listChatGroups();
+			const sig = g.map((x) => x.channel).join("|");
+			if (sig === this.groupSig) return;
+			this.groupSig = sig;
+			this.groups = g.map((x) => ({ id: x.channel, label: `👥 ${x.name}` }));
+			if (this.root) this.draw();
+		} catch {
+			/* 무시 */
+		}
 	}
 
 	private draw(): void {
 		const c = this.root;
 		if (!c) return;
+		const keepInput = this.input?.value ?? ""; // 그룹 목록 갱신 등으로 다시 그릴 때 작성 중 텍스트 보존
 		c.empty();
 		c.addClass("covault-chat");
 
@@ -161,6 +184,7 @@ export class ChatSection implements PanelSection {
 				void this.send();
 			}
 		};
+		input.value = keepInput; // 재드로우 전 작성 텍스트 복원
 		this.input = input;
 		new WikiLinkSuggest(this.host.app, input); // [[ 자동완성
 		panelButton(compose, t("chat.send"), () => this.send(), { cta: true });

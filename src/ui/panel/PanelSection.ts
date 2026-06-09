@@ -80,6 +80,14 @@ export interface MessageHost {
 	deleteMessage(channel: string, doc: MessageDoc): Promise<void>;
 	/** vault 파일을 채널 첨부 폴더로 복사하고 임베드/링크 마크다운 반환(실패 시 null). */
 	attachFileToChannel(channel: string, srcPath: string): Promise<string | null>;
+	/** 접근 가능한 그룹 대화방 목록(교사=전부, 구성원=자신 소속분). 채널 드롭다운용. */
+	listChatGroups(): Promise<Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }>>;
+	/** 라이브 세션 파일의 참여자로 그룹 대화방을 만들고 대화 탭으로 이동(교사). */
+	startGroupChat(filePath: string): Promise<void>;
+	/** 대화 탭을 특정 채널로 연다(그룹 대화 진입). */
+	openChat(channel: string): Promise<void>;
+	/** 보류 중 초기 대화 채널을 받아 비운다(ChatSection render 시). */
+	consumePendingChatChannel(): string | null;
 }
 
 /** 실시간 공동 편집 제어·상태. */
