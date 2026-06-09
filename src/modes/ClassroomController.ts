@@ -840,6 +840,7 @@ export class ClassroomController {
 			channel,
 			body: text,
 			byUser: s.userId,
+			byName: s.displayName || s.userId,
 			byRole: s.role,
 			createdAtMs: Date.now(),
 		};

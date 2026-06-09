@@ -254,6 +254,8 @@ export interface MessageDoc extends PouchDocBase {
 	channel: string; // "class" | "dm:<memberId>"
 	body: string;
 	byUser: string;
+	/** 작성자 표시 이름. 학생은 동료 명단이 없으므로 문서에 이름을 담아 ID 대신 이름으로 표시. */
+	byName?: string;
 	byRole: "member" | "manager";
 	createdAtMs: number;
 	deleted?: boolean;

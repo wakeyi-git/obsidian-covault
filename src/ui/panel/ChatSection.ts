@@ -228,7 +228,7 @@ export class ChatSection implements PanelSection {
 	private renderMessage(parent: HTMLElement, m: MessageDoc, mine: boolean): void {
 		const row = parent.createDiv({ cls: `covault-chat-msg${mine ? " is-mine" : ""}` });
 		const meta = row.createDiv({ cls: "covault-chat-meta" });
-		meta.createSpan({ cls: "covault-feedback-author", text: this.senderName(m.byUser, m.byRole) });
+		meta.createSpan({ cls: "covault-feedback-author", text: this.senderName(m.byUser, m.byRole, m.byName) });
 		meta.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(m.createdAtMs)) });
 		if (mine) {
 			const del = meta.createEl("button", { cls: "clickable-icon covault-chat-del" });
@@ -267,9 +267,12 @@ export class ChatSection implements PanelSection {
 		}
 	}
 
-	private senderName(byUser: string, byRole: "member" | "manager"): string {
+	private senderName(byUser: string, byRole: "member" | "manager", byName?: string): string {
 		const s = this.host.settings;
-		return resolveSenderName(byUser, byRole, { ownUserId: s.userId, ownName: s.displayName, members: s.members, teacherLabel: t("chat.teacher") });
+		if (byUser === s.userId) return s.displayName || byUser; // 본인
+		const fromRoster = resolveSenderName(byUser, byRole, { ownUserId: s.userId, ownName: s.displayName, members: s.members, teacherLabel: t("chat.teacher") });
+		// 명단으로 해석되면 그 이름, 아니면(학생이 동료를 모를 때) 문서에 담긴 작성자 이름 사용.
+		return fromRoster !== byUser ? fromRoster : byName || byUser;
 	}
 
 	private empty(parent: HTMLElement, text: string): void {
