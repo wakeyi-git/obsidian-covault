@@ -23,7 +23,9 @@ Highlights:
 - **Conflict preservation** — on simultaneous edits the local copy is kept and you compare/choose in the conflict UI. For both markdown and attachments the remote copy is preserved under `_충돌/` (Conflicts).
 - **Shared folders** — a group/workspace shares one folder (dedicated DB + member permissions), auto-propagated to members by manager deploy.
 - **Realtime co-editing** — character-level co-editing of shared-folder notes via Yjs. For **both markdown and Excalidraw**, cursors/names + a **participant chip** (always shown at the bottom-right) reveal who is co-editing — even on tablets/phones without a mouse (image sync; the Excalidraw plugin is required). A separate WebSocket server is needed.
+- **Realtime control & access** — a dedicated **Realtime tab** manages live editing: an on/off toggle, **per-file participant assignment** (only the members you pick co-edit a given note; others stay on plain file sync), an optional **shared-files read-only** policy (members can only edit a shared note while it's an active realtime session for them), and a live **active-sessions list** (open assigned files with one click — they stay listed even when closed). Removing a member from a file ends their live session immediately.
 - **Realtime security** — realtime tokens are issued as **per-shared-space HMAC-signed tokens**, so a leaked token only grants access to **that space's room** (not the whole workspace). The server refuses to start with a known placeholder secret, and the manager's tokens/secret are kept in **Obsidian Secret Storage** (not plaintext in `data.json`).
+- **Messenger** — a built-in **chat tab**: a **class-wide channel** (homeroom shared DB) and **1:1 DMs** (manager↔member, over the personal mirror DB). Send text, **`[[wikilink]]`s with Obsidian-style autocomplete**, URLs, and **file/image attachments** (the file is copied to the other side); links and image previews render inline. Sender names show for everyone (not raw IDs).
 - **Feedback layer** — leave comments anchored to text without editing the body (on shared and personal notes). The manager can review scattered feedback at once with the **all-unresolved feedback inbox**. Periodic in-session snapshots are also supported.
 - **Classroom dashboard** — an optional manager↔member workspace built on one auto-provisioned **homeroom** shared space: **notices** (read-confirm + class comments + private questions/replies), a **weekly timetable + lessons**, **assignments** (distribute → submit with version snapshot → grade by score/rubric/comment → return), **checklists/routines**, and a **statistics** view (read/submission/score/completion rates, CSV export). Notices and lessons are authored **right in the Obsidian editor using frontmatter** (draft → publish toggle), and notices/lessons/assignments support **reusable content templates**.
 - **Operational UX** — manager **onboarding wizard** ('Get started' checklist), **bulk member import** (paste a roster with an optional per-member folder) and **bulk invite** for all pending members, **deploy preview (dry-run) + per-member result & retry-failed**, an **action-oriented dashboard** (action cards + narrow-screen card layout), and inline settings validation (duplicate ID / URL / folder-overlap warnings).
@@ -67,6 +69,8 @@ Highlights:
 | **Operational UX** | Manager onboarding wizard · bulk member import · deploy preview/result report · action-oriented dashboard (action cards · narrow card layout) · all-unresolved feedback inbox · simplified member home · shared-space operational badges | ✅ |
 | **Realtime chips · security** | Markdown & Excalidraw participant chips (unified name/color) · Yjs secret in Secret Storage · faster startup (onLayoutReady) · plugin-guideline compliance (Vault.process, etc.) | ✅ |
 | **Classroom dashboard** | Homeroom space · notices (read-confirm/comments/private questions) · weekly timetable + lessons · assignments (distribute/submit/grade/return) · checklists/routines · statistics (CSV) · editor+frontmatter authoring (draft→publish) · content templates | ✅ |
+| **Messenger** | Class channel + 1:1 DM · text / wikilink (autocomplete) / URL / file·image attachments · inline link & image rendering · names not IDs | ✅ |
+| **Realtime control & access** | Realtime tab (toggle · in-session snapshot interval) · per-file participant assignment · shared-files read-only enforcement (markdown + Excalidraw) · active-sessions list / one-click reopen · live de-gate on removal | ✅ |
 
 ---
 
@@ -140,7 +144,7 @@ The single **🎓 ribbon** opens the unified panel; the commands below open a sp
 | Toggle auto-sync | Toggle realtime watching/subscription |
 | Reset local cache | Delete local PouchDB and re-fetch from server |
 | Open conflicts | Compare/resolve conflicts (keep local · apply remote · keep both) |
-| Open sync status | Per-member sync status table |
+| Open sync status | Per-member sync status table — also hosts the **management tools** (test connection · diagnostics · realtime status · reset cache · reset server / refresh shares) |
 | Copy to members (open deploy tab) | Pick a path (file/folder) in the deploy tab and deploy to members — substitutes `{{memberName}}`, etc. |
 | Check realtime status / Open version history | Realtime diagnostics; per-note version snapshots |
 | Open log panel | View the sync log |
@@ -187,6 +191,18 @@ closing, so non-realtime/offline members get the latest sooner (only one leader 
 co-editing even without a mouse (same for markdown and Excalidraw); on touch devices you can double-tap to enter text
 and the pointer follows your swipe immediately.
 
+**Realtime control & access (Realtime tab).** The manager controls live editing from the **Realtime tab**: the on/off
+toggle and **in-session snapshot interval** are grouped at the top, followed by an optional **shared-files read-only**
+policy and the **active-sessions list**. With read-only on, members can't freely edit shared notes — a note becomes
+editable only while it's an active realtime session **for that member**. You choose who co-edits **per file**: open a
+note, and in its highlighted session card pick the participating members (default depends on the read-only policy —
+*nobody* when read-only is on, *everyone* when off). Only the chosen members join the live session; the rest stay on plain
+file sync. Each card also lists who's co-editing **by name**, and assigned files stay in the list even when closed so you
+can reopen them with one click. Removing a member from a file **ends their live session immediately** (and re-locks the
+note under the read-only policy). Excalidraw drawings are locked/unlocked the same way (view mode). Troubleshooting
+actions (reissue/redeploy tokens, check realtime status) live in a separate section of the tab. Members get a slim
+Realtime tab that shows only the sessions they're assigned to.
+
 To run the Yjs server, see **[`server/README.md` → Yjs realtime server](server/README.md#yjs-realtime-server-optional)** (runtime files in [`server/yjs/`](server/yjs/)).
 
 **Realtime token security** — set `YJS_SECRET` on the server and the same value in the plugin's **'Yjs space secret (HMAC)'**;
@@ -210,6 +226,14 @@ location. You can resolve/delete. The panel's **'Show all unresolved'** toggle s
 at once (with member/note labels + jump-to). Feedback documents are stored in the DB the target note belongs to (personal
 mirror or shared) and propagate via the existing sync; they are metadata, not files, so nothing is written to the vault.
 Works on both shared-folder notes and regular member mirror notes.
+
+### Messenger (chat)
+The **Chat** tab provides a **class-wide channel** and **1:1 DMs** between the manager and each member. The class channel
+rides the **homeroom** shared DB (so it needs a homeroom space); DMs ride each member's **personal mirror DB**. Besides plain
+text you can send **`[[wikilinks]]`** (type `[[` for Obsidian-style file autocomplete), **URLs**, and **file/image
+attachments** — an attached file is copied into the channel's attach folder so the other side actually receives it, and
+links/image previews render inline (click to open). Messages carry the author's display **name** so everyone sees names
+rather than raw member IDs.
 
 ### Classroom dashboard
 > **Optional.** Turns the manager↔member sync into a lightweight classroom workspace. Skip it if you only need file sync.
@@ -268,9 +292,9 @@ src/
 │  │  ├─ MirrorSync.ts         # The member↔DB link engine tying the above together + state
 │  │  └─ connectionTest.ts     # Connection/permission test
 │  ├─ path/  hash/  log/       # Path mapping · contentHash · logger
-│  └─ model/types.ts           # Document model (note / asset / tombstone · classroom: notice/response/timetable/assignment/routine)
+│  └─ model/types.ts           # Document model (note / asset / tombstone · classroom: notice/response/timetable/assignment/routine · message · rtpart [per-file participants] / rtconfig)
 ├─ modes/                      # CoVaultMode / MemberMode / ManagerMode / manager/BulkCopy + domain controllers (Classroom · Realtime · Member)
-└─ ui/                         # Unified panel (Get started · Dashboard · Feedback · Deploy · Sync · Manage · Log) · panel/dashboard/* (notices/timetable/assignments/routines/statistics) · RoleSetupModal · InviteModal/BulkInviteModal · AssignmentCreateModal · GradingModal · ConfirmModal · ResetModal · BackupModal · MemberBulkImportModal
+└─ ui/                         # Unified panel (Dashboard · Chat · Feedback · Realtime · Deploy · Sync status [+ manage tools] · Recovery · History · Log) · panel/dashboard/* (notices/timetable/assignments/routines/statistics) · RoleSetupModal · InviteModal/BulkInviteModal · AssignmentCreateModal · GradingModal · RoutineEditModal · ConfirmModal · ResetModal · BackupModal · MemberBulkImportModal
 ```
 
 **Sync structure (offline-first)**
