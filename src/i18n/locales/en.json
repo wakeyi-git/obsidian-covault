@@ -18,7 +18,10 @@
 		"group_not_shared": "Can't create a group chat — not a shared-space file.",
 		"reply": "Reply",
 		"replying_to": "Replying to {name}",
-		"reply_deleted": "Original deleted"
+		"reply_deleted": "Original deleted",
+		"feedback_not_found": "Feedback not found.",
+		"attach_feedback": "Reference feedback",
+		"no_feedback_here": "No feedback on the current note."
 	},
 	"realtime": {
 		"tab": "Realtime",

@@ -889,6 +889,18 @@
 	--icon-size: 14px;
 	opacity: 0.6;
 }
+/* 멘션·피드백 참조 */
+.covault-chat-mention {
+	color: var(--interactive-accent);
+	font-weight: 600;
+}
+.covault-chat-msg.is-mine .covault-chat-mention {
+	color: var(--text-on-accent);
+	text-decoration: underline;
+}
+.covault-chat-fb {
+	font-weight: 500;
+}
 .covault-chat-compose {
 	display: flex;
 	align-items: center;

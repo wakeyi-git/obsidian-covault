@@ -1,4 +1,4 @@
-import { AbstractInputSuggest, App, FuzzySuggestModal, TFile, setIcon } from "obsidian";
+import { AbstractInputSuggest, App, FuzzySuggestModal, Notice, TFile, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { MessageDoc, CLASS_CHANNEL, dmChannel } from "../../core/model/types";
 import { parseMessageBody } from "../../core/classroom/messages";
@@ -27,51 +27,103 @@ class FilePickModal extends FuzzySuggestModal<TFile> {
 	}
 }
 
-/** 입력창에서 `[[` 입력 시 vault 파일 위키링크 자동완성(옵시디언 방식). 토큰만 교체한다. */
-class WikiLinkSuggest extends AbstractInputSuggest<TFile> {
-	constructor(app: App, private inputEl: HTMLInputElement) {
+type FbItem = { uid: string; label: string; path: string };
+
+/** 현재 노트의 피드백 선택(대화 피드백 참조용). */
+class FeedbackPickModal extends FuzzySuggestModal<FbItem> {
+	constructor(app: App, private items: FbItem[], private onPick: (i: FbItem) => void) {
+		super(app);
+		this.setPlaceholder(t("chat.attach_feedback"));
+	}
+	getItems(): FbItem[] {
+		return this.items;
+	}
+	getItemText(i: FbItem): string {
+		return i.label;
+	}
+	onChooseItem(i: FbItem): void {
+		this.onPick(i);
+	}
+}
+
+type Tok = { partial: string; start: number; end: number };
+type ChatSuggestion = { kind: "file"; file: TFile } | { kind: "mention"; name: string };
+
+/** 입력창 자동완성: `[[`→vault 파일 위키링크, `@`→구성원 멘션. 토큰만 교체한다. */
+class ChatSuggest extends AbstractInputSuggest<ChatSuggestion> {
+	constructor(app: App, private inputEl: HTMLInputElement, private mentionNames: () => string[]) {
 		super(app, inputEl);
 	}
 
-	/** 커서 앞의 닫히지 않은 `[[<부분>`을 찾는다. 없으면 null. */
-	private token(): { partial: string; start: number; end: number } | null {
+	private before(): string {
 		const val = this.inputEl.value;
-		const pos = this.inputEl.selectionStart ?? val.length;
-		const before = val.slice(0, pos);
+		return val.slice(0, this.inputEl.selectionStart ?? val.length);
+	}
+	/** 닫히지 않은 `[[<부분>`. */
+	private wikiToken(): Tok | null {
+		const before = this.before();
 		const idx = before.lastIndexOf("[[");
 		if (idx < 0) return null;
 		const between = before.slice(idx + 2);
-		if (between.includes("]]") || between.includes("[")) return null; // 이미 닫혔거나 중첩
-		return { partial: between, start: idx, end: pos };
+		if (between.includes("]]") || between.includes("[")) return null;
+		return { partial: between, start: idx, end: before.length };
+	}
+	/** 공백/`]` 없는 `@<부분>`. */
+	private mentionToken(): Tok | null {
+		const before = this.before();
+		const at = before.lastIndexOf("@");
+		if (at < 0) return null;
+		const between = before.slice(at + 1);
+		if (/[\s\]]/.test(between)) return null;
+		return { partial: between, start: at, end: before.length };
 	}
 
-	getSuggestions(_query: string): TFile[] {
-		const tok = this.token();
-		if (tok === null) return [];
-		const term = tok.partial.toLowerCase().trim();
-		const files = this.app.vault.getFiles();
-		const scored = files
-			.filter((f) => !term || f.basename.toLowerCase().includes(term) || f.path.toLowerCase().includes(term))
-			.sort((a, b) => a.path.localeCompare(b.path));
-		return scored.slice(0, 20);
+	getSuggestions(_q: string): ChatSuggestion[] {
+		const wt = this.wikiToken();
+		const mt = this.mentionToken();
+		// 커서에 더 가까운(start 큰) 토큰 우선.
+		if (mt && (!wt || mt.start > wt.start)) {
+			const term = mt.partial.toLowerCase().trim();
+			return this.mentionNames()
+				.filter((n) => !term || n.toLowerCase().includes(term))
+				.slice(0, 20)
+				.map((name) => ({ kind: "mention", name }) as ChatSuggestion);
+		}
+		if (wt) {
+			const term = wt.partial.toLowerCase().trim();
+			return this.app.vault
+				.getFiles()
+				.filter((f) => !term || f.basename.toLowerCase().includes(term) || f.path.toLowerCase().includes(term))
+				.sort((a, b) => a.path.localeCompare(b.path))
+				.slice(0, 20)
+				.map((file) => ({ kind: "file", file }) as ChatSuggestion);
+		}
+		return [];
 	}
 
-	renderSuggestion(f: TFile, el: HTMLElement): void {
+	renderSuggestion(s: ChatSuggestion, el: HTMLElement): void {
 		el.addClass("covault-chat-suggest");
-		el.createDiv({ cls: "covault-chat-suggest-name", text: f.basename });
-		if (f.parent && f.parent.path !== "/") el.createDiv({ cls: "covault-chat-suggest-path", text: f.path });
+		if (s.kind === "mention") {
+			el.createDiv({ cls: "covault-chat-suggest-name", text: `@${s.name}` });
+		} else {
+			el.createDiv({ cls: "covault-chat-suggest-name", text: s.file.basename });
+			if (s.file.parent && s.file.parent.path !== "/") el.createDiv({ cls: "covault-chat-suggest-path", text: s.file.path });
+		}
 	}
 
-	selectSuggestion(f: TFile): void {
-		const tok = this.token();
-		const val = this.inputEl.value;
-		const link = `[[${f.basename}]]`;
-		if (tok === null) {
+	selectSuggestion(s: ChatSuggestion): void {
+		if (s.kind === "mention") this.replace(this.mentionToken(), `@[${s.name}] `);
+		else this.replace(this.wikiToken(), `[[${s.file.basename}]]`);
+	}
+
+	private replace(tok: Tok | null, ins: string): void {
+		if (!tok) {
 			this.close();
 			return;
 		}
-		this.inputEl.value = val.slice(0, tok.start) + link + val.slice(tok.end);
-		const caret = tok.start + link.length;
+		const val = this.inputEl.value;
+		this.inputEl.value = val.slice(0, tok.start) + ins + val.slice(tok.end);
+		const caret = tok.start + ins.length;
 		this.inputEl.setSelectionRange(caret, caret);
 		this.inputEl.dispatchEvent(new Event("input"));
 		this.inputEl.focus();
@@ -93,6 +145,7 @@ export class ChatSection implements PanelSection {
 	private lastSig = "";
 	private groups: Channel[] = []; // 그룹 대화방(라이브 세션) 채널
 	private groupSig = "";
+	private groupMembers = new Map<string, Record<string, string>>(); // 채널 → memberId:이름(멘션 후보)
 	private msgs: MessageDoc[] = []; // 현재 채널 메시지(답글 부모 조회용)
 	private replyTo: MessageDoc | null = null; // 작성 중 답글 대상
 	private replyBanner: HTMLElement | null = null;
@@ -136,6 +189,7 @@ export class ChatSection implements PanelSection {
 		try {
 			const g = await this.host.listChatGroups();
 			const sig = g.map((x) => x.channel).join("|");
+			this.groupMembers = new Map(g.map((x) => [x.channel, x.memberNames ?? {}]));
 			if (sig === this.groupSig) return;
 			this.groupSig = sig;
 			this.groups = g.map((x) => ({ id: x.channel, label: `👥 ${x.name}` }));
@@ -183,6 +237,11 @@ export class ChatSection implements PanelSection {
 		file.setAttr("aria-label", t("chat.attach_file"));
 		file.title = t("chat.attach_file");
 		file.onclick = () => this.pickFile();
+		const fb = compose.createEl("button", { cls: "clickable-icon covault-chat-attach" });
+		setIcon(fb, "message-square-quote");
+		fb.setAttr("aria-label", t("chat.attach_feedback"));
+		fb.title = t("chat.attach_feedback");
+		fb.onclick = () => this.pickFeedback();
 		const input = compose.createEl("input", { cls: "covault-chat-input", attr: { type: "text", placeholder: t("chat.placeholder") } });
 		input.onkeydown = (e) => {
 			if (e.key === "Enter" && !e.shiftKey) {
@@ -192,7 +251,7 @@ export class ChatSection implements PanelSection {
 		};
 		input.value = keepInput; // 재드로우 전 작성 텍스트 복원
 		this.input = input;
-		new WikiLinkSuggest(this.host.app, input); // [[ 자동완성
+		new ChatSuggest(this.host.app, input, () => this.mentionNames()); // [[ 파일 + @ 멘션 자동완성
 		panelButton(compose, t("chat.send"), () => this.send(), { cta: true });
 
 		c.createDiv({ cls: "covault-cr-muted covault-chat-hint", text: t("chat.shared_folder_hint") });
@@ -212,6 +271,24 @@ export class ChatSection implements PanelSection {
 		new FilePickModal(this.host.app, async (f) => {
 			const md = await this.host.attachFileToChannel(this.channel, f.path);
 			if (md) this.insertSnippet(md);
+		}).open();
+	}
+
+	/** 현재 노트(실시간 공동 편집 중인 노트)의 피드백을 골라 참조 토큰으로 삽입. */
+	private async pickFeedback(): Promise<void> {
+		const f = this.host.app.workspace.getActiveFile();
+		if (!f) {
+			new Notice(t("chat.no_feedback_here"));
+			return;
+		}
+		const items = await this.host.listFeedback(f.path);
+		if (!items.length) {
+			new Notice(t("chat.no_feedback_here"));
+			return;
+		}
+		new FeedbackPickModal(this.host.app, items, (it) => {
+			const label = it.label.replace(/[|()]/g, " ").trim() || (it.path.split("/").pop() ?? it.path); // 토큰 깨짐 방지
+			this.insertSnippet(`((fb|${it.path}|${it.uid}|${label}))`);
 		}).open();
 	}
 
@@ -266,7 +343,9 @@ export class ChatSection implements PanelSection {
 	/** 본문에서 링크/멘션 토큰을 걷어낸 짧은 미리보기. */
 	private snippet(body: string, max = 60): string {
 		const text = parseMessageBody(body)
-			.map((s) => (s.kind === "text" ? s.text : s.kind === "url" ? s.url : s.target))
+			.map((s) =>
+				s.kind === "text" ? s.text : s.kind === "url" ? s.url : s.kind === "wikilink" ? s.target : s.kind === "mention" ? `@${s.name}` : s.label,
+			)
 			.join(" ")
 			.replace(/\s+/g, " ")
 			.trim();
@@ -338,6 +417,14 @@ export class ChatSection implements PanelSection {
 					e.preventDefault();
 					window.open(seg.url, "_blank");
 				};
+			} else if (seg.kind === "mention") {
+				bubble.createSpan({ cls: "covault-chat-mention", text: `@${seg.name}` });
+			} else if (seg.kind === "feedback") {
+				const a = bubble.createEl("a", { cls: "covault-chat-link covault-chat-fb", text: `💬 ${seg.label}` });
+				a.onclick = (e) => {
+					e.preventDefault();
+					void this.host.openFeedback(seg.path, seg.uid);
+				};
 			} else {
 				const dest = this.host.app.metadataCache.getFirstLinkpathDest(seg.target, "");
 				const isImg = !!dest && /^(png|jpe?g|gif|webp|svg|bmp)$/i.test(dest.extension);
@@ -355,6 +442,18 @@ export class ChatSection implements PanelSection {
 				}
 			}
 		}
+	}
+
+	/** @멘션 자동완성 후보 이름: 본인·선생님·(교사)명단·현재 그룹 멤버. */
+	private mentionNames(): string[] {
+		const s = this.host.settings;
+		const set = new Set<string>();
+		if (s.displayName) set.add(s.displayName);
+		set.add(t("chat.teacher"));
+		for (const m of s.members) if (m.memberName) set.add(m.memberName);
+		const gm = this.groupMembers.get(this.channel);
+		if (gm) for (const n of Object.values(gm)) if (n) set.add(n);
+		return [...set];
 	}
 
 	private senderName(byUser: string, byRole: "member" | "manager", byName?: string): string {

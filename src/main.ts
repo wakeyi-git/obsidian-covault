@@ -1,6 +1,7 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { errMessage } from "./core/util/err";
 import { registerCommands as registerCovaultCommands } from "./commands";
+import { jumpToFeedback } from "./ui/feedbackJump";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace } from "./settings/types";
 import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
@@ -591,6 +592,21 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 	listChatGroups(): Promise<Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
 		return this.classroomCtl.listChatGroups();
+	}
+	/** PanelHost: 노트의 피드백 목록(대화 피드백 참조 picker용). */
+	async listFeedback(path: string): Promise<Array<{ uid: string; label: string; path: string }>> {
+		const docs = await this.feedback.listFor(path);
+		return docs.map((d) => ({ uid: d._id.split(":").pop() ?? d._id, label: (d.content || "").replace(/\s+/g, " ").trim().slice(0, 40) || path.split("/").pop() || path, path }));
+	}
+	/** PanelHost: 피드백 참조 클릭 → 앵커 위치로 이동. */
+	async openFeedback(path: string, uid: string): Promise<void> {
+		const docs = await this.feedback.listFor(path);
+		const doc = docs.find((d) => (d._id.split(":").pop() ?? "") === uid);
+		if (!doc) {
+			new Notice(t("chat.feedback_not_found"));
+			return;
+		}
+		await jumpToFeedback(this.app, doc, path);
 	}
 	/** 라이브 세션 카드 '그룹 대화': 그 파일의 참여자로 그룹을 만들고 대화 탭으로 이동(교사). */
 	async startGroupChat(filePath: string): Promise<void> {

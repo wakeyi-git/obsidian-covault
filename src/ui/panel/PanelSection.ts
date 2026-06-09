@@ -40,6 +40,10 @@ export interface CoreHost {
 	classroomStore: ClassroomStore;
 	/** 학급 공동 공간이 지정·배포·수신되어 사용 가능한지. */
 	homeroomReady(): boolean;
+	/** 노트 경로의 피드백 목록(대화 피드백 참조 picker용). */
+	listFeedback(path: string): Promise<Array<{ uid: string; label: string; path: string }>>;
+	/** 피드백 참조 클릭 → 해당 앵커 위치로 이동. */
+	openFeedback(path: string, uid: string): Promise<void>;
 	/** 설정 저장(대시보드 카드 배치 등 UI에서 직접 갱신용). */
 	saveSettings(): Promise<void>;
 	/** 플러그인 설정 탭 열기(대시보드 조치 카드 CTA용). */

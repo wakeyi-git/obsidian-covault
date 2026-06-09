@@ -18,7 +18,10 @@
 		"group_not_shared": "공유 공간 파일이 아니어서 그룹 대화방을 만들 수 없습니다.",
 		"reply": "답글",
 		"replying_to": "{name}에게 답글",
-		"reply_deleted": "원본이 삭제됨"
+		"reply_deleted": "원본이 삭제됨",
+		"feedback_not_found": "피드백을 찾을 수 없습니다.",
+		"attach_feedback": "피드백 참조",
+		"no_feedback_here": "현재 노트에 피드백이 없습니다."
 	},
 	"realtime": {
 		"tab": "실시간",

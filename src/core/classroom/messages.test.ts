@@ -30,4 +30,24 @@ describe("parseMessageBody", () => {
 		const segs = parseMessageBody("[[안내]] 와 https://x.io 참고");
 		expect(segs.map((s) => s.kind)).toEqual(["wikilink", "text", "url", "text"]);
 	});
+
+	it("멘션 @[이름]", () => {
+		const segs = parseMessageBody("@[김유민] 확인해줘");
+		expect(segs).toEqual([
+			{ kind: "mention", name: "김유민", raw: "@[김유민]" },
+			{ kind: "text", text: " 확인해줘" },
+		]);
+	});
+
+	it("피드백 ((fb|경로|uid|라벨))", () => {
+		const segs = parseMessageBody("여기 ((fb|모둠활동/1모둠.md|abc123|3번째 줄)) 봐");
+		expect(segs[1]).toEqual({
+			kind: "feedback",
+			path: "모둠활동/1모둠.md",
+			uid: "abc123",
+			label: "3번째 줄",
+			raw: "((fb|모둠활동/1모둠.md|abc123|3번째 줄))",
+		});
+		expect(segs.map((s) => s.kind)).toEqual(["text", "feedback", "text"]);
+	});
 });

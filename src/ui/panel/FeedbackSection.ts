@@ -3,7 +3,7 @@ import { FeedbackStore } from "../../core/feedback/FeedbackStore";
 import { FeedbackDoc, isTextAnchor } from "../../core/model/types";
 import { PanelSection } from "./PanelSection";
 import { promptAddFeedback } from "../FeedbackView";
-import { getExcalidrawApiForFile, focusExcalidrawElements } from "../excalidrawFocus";
+import { jumpToFeedback } from "../feedbackJump";
 import { t, formatDate } from "../../i18n";
 
 /** 피드백 탭 — 활성 노트의 앵커 댓글(§19.5) + 전체 미해결 피드백함 토글. */
@@ -149,35 +149,7 @@ export class FeedbackSection implements PanelSection {
 	}
 
 	/** 해당 노트를 열고 앵커 위치로 스크롤/선택. 텍스트=오프셋, Excalidraw=요소 선택+확대. */
-	private async jumpTo(doc: FeedbackDoc, localPath: string): Promise<void> {
-		const file = this.app.vault.getAbstractFileByPath(localPath);
-		if (!(file instanceof TFile)) {
-			new Notice(t("panel.covault_note_not_found", { path: localPath }));
-			return;
-		}
-		const leaf = this.app.workspace.getLeaf(false);
-		await leaf.openFile(file, { active: true });
-
-		// Excalidraw 드로잉 앵커: 요소 선택 + 화면 맞춤(플러그인 가용 시).
-		if (!isTextAnchor(doc.anchor)) {
-			const api = getExcalidrawApiForFile(this.app, file);
-			if (!api || !focusExcalidrawElements(api, doc.anchor.elementIds)) {
-				new Notice(t("panel.could_not_focus_drawing_element"));
-			}
-			return;
-		}
-
-		const view = leaf.view;
-		if (!(view instanceof MarkdownView) || !view.editor) return;
-		const editor = view.editor;
-		const content = editor.getValue();
-		let idx = doc.anchor.textQuote ? content.indexOf(doc.anchor.textQuote) : -1;
-		if (idx < 0) idx = Math.min(doc.anchor.start, content.length);
-		const len = doc.anchor.textQuote ? doc.anchor.textQuote.length : 0;
-		const from = editor.offsetToPos(idx);
-		const to = editor.offsetToPos(Math.min(idx + len, content.length));
-		editor.focus();
-		editor.setSelection(from, to);
-		editor.scrollIntoView({ from, to }, true);
+	private jumpTo(doc: FeedbackDoc, localPath: string): Promise<void> {
+		return jumpToFeedback(this.app, doc, localPath);
 	}
 }
