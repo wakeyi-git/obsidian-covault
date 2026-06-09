@@ -15,7 +15,10 @@
 		"class_needs_homeroom": "Set a homeroom shared space to use the class chat.",
 		"shared_folder_hint": "Links open for the other side only if the note/file is in a shared folder.",
 		"group_chat": "Group chat",
-		"group_not_shared": "Can't create a group chat — not a shared-space file."
+		"group_not_shared": "Can't create a group chat — not a shared-space file.",
+		"reply": "Reply",
+		"replying_to": "Replying to {name}",
+		"reply_deleted": "Original deleted"
 	},
 	"realtime": {
 		"tab": "Realtime",

@@ -577,8 +577,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	listPrivateResponses(): Promise<ResponseDoc[]> {
 		return this.classroomCtl.listPrivateResponses();
 	}
-	sendMessage(channel: string, body: string): Promise<boolean> {
-		return this.classroomCtl.sendMessage(channel, body);
+	sendMessage(channel: string, body: string, replyTo?: string): Promise<boolean> {
+		return this.classroomCtl.sendMessage(channel, body, replyTo);
 	}
 	listMessages(channel: string): Promise<MessageDoc[]> {
 		return this.classroomCtl.listMessages(channel);

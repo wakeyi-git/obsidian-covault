@@ -844,6 +844,51 @@
 	--icon-size: 14px;
 	opacity: 0.6;
 }
+/* 답글 배너(작성칸 위) */
+.covault-chat-reply-banner {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	padding: 4px 8px;
+	margin-top: 6px;
+	border-left: 3px solid var(--interactive-accent);
+	background: var(--background-modifier-hover);
+	border-radius: 4px;
+}
+.covault-chat-reply-to {
+	font-weight: 600;
+	flex: none;
+}
+.covault-chat-reply-snip {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.covault-chat-reply-cancel {
+	margin-left: auto;
+	flex: none;
+	--icon-size: 14px;
+}
+/* 메시지 내 답글 인용 */
+.covault-chat-quote {
+	font-size: 12px;
+	padding: 2px 8px;
+	margin-bottom: 2px;
+	border-left: 2px solid var(--background-modifier-border);
+	display: flex;
+	gap: 6px;
+	max-width: 100%;
+	overflow: hidden;
+}
+.covault-chat-quote-author {
+	font-weight: 600;
+	flex: none;
+}
+.covault-chat-replybtn {
+	--icon-size: 14px;
+	opacity: 0.6;
+}
 .covault-chat-compose {
 	display: flex;
 	align-items: center;

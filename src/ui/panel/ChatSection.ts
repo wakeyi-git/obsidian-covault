@@ -93,6 +93,9 @@ export class ChatSection implements PanelSection {
 	private lastSig = "";
 	private groups: Channel[] = []; // 그룹 대화방(라이브 세션) 채널
 	private groupSig = "";
+	private msgs: MessageDoc[] = []; // 현재 채널 메시지(답글 부모 조회용)
+	private replyTo: MessageDoc | null = null; // 작성 중 답글 대상
+	private replyBanner: HTMLElement | null = null;
 
 	constructor(private host: PanelHost) {}
 
@@ -165,6 +168,9 @@ export class ChatSection implements PanelSection {
 
 		this.listEl = c.createDiv({ cls: "covault-chat-list" });
 
+		// 답글 배너(작성 중 답글 대상)
+		this.replyBanner = c.createDiv({ cls: "covault-chat-reply-banner" });
+
 		// 입력줄
 		const compose = c.createDiv({ cls: "covault-chat-compose" });
 		const note = compose.createEl("button", { cls: "clickable-icon covault-chat-attach" });
@@ -191,6 +197,7 @@ export class ChatSection implements PanelSection {
 
 		c.createDiv({ cls: "covault-cr-muted covault-chat-hint", text: t("chat.shared_folder_hint") });
 
+		this.renderReplyBanner(); // 재드로우 후 답글 상태 복원
 		this.lastSig = "";
 		void this.reload();
 	}
@@ -219,9 +226,51 @@ export class ChatSection implements PanelSection {
 	private async send(): Promise<void> {
 		const body = this.input?.value.trim();
 		if (!body) return;
-		const ok = await this.host.sendMessage(this.channel, body);
+		const ok = await this.host.sendMessage(this.channel, body, this.replyTo?._id);
 		if (ok && this.input) this.input.value = "";
+		if (ok) {
+			this.replyTo = null;
+			this.renderReplyBanner();
+		}
 		await this.reload();
+	}
+
+	/** 답글 작성 모드 진입: 부모 메시지를 인용해 표시. */
+	private startReply(m: MessageDoc): void {
+		this.replyTo = m;
+		this.renderReplyBanner();
+		this.input?.focus();
+	}
+
+	/** 작성칸 위 답글 배너(취소 가능) 갱신. */
+	private renderReplyBanner(): void {
+		const box = this.replyBanner;
+		if (!box) return;
+		box.empty();
+		if (!this.replyTo) {
+			box.hide();
+			return;
+		}
+		box.show();
+		box.createSpan({ cls: "covault-chat-reply-to", text: t("chat.replying_to", { name: this.senderName(this.replyTo.byUser, this.replyTo.byRole, this.replyTo.byName) }) });
+		box.createSpan({ cls: "covault-chat-reply-snip covault-cr-muted", text: this.snippet(this.replyTo.body) });
+		const cancel = box.createEl("button", { cls: "clickable-icon covault-chat-reply-cancel" });
+		setIcon(cancel, "x");
+		cancel.setAttr("aria-label", t("common.cancel"));
+		cancel.onclick = () => {
+			this.replyTo = null;
+			this.renderReplyBanner();
+		};
+	}
+
+	/** 본문에서 링크/멘션 토큰을 걷어낸 짧은 미리보기. */
+	private snippet(body: string, max = 60): string {
+		const text = parseMessageBody(body)
+			.map((s) => (s.kind === "text" ? s.text : s.kind === "url" ? s.url : s.target))
+			.join(" ")
+			.replace(/\s+/g, " ")
+			.trim();
+		return text.length > max ? text.slice(0, max - 1) + "…" : text;
 	}
 
 	private async reload(): Promise<void> {
@@ -244,6 +293,7 @@ export class ChatSection implements PanelSection {
 			this.empty(list, t("chat.no_messages"));
 			return;
 		}
+		this.msgs = msgs;
 		const me = this.host.settings.userId;
 		for (const m of msgs) this.renderMessage(list, m, m.byUser === me);
 		list.scrollTop = list.scrollHeight;
@@ -254,6 +304,11 @@ export class ChatSection implements PanelSection {
 		const meta = row.createDiv({ cls: "covault-chat-meta" });
 		meta.createSpan({ cls: "covault-feedback-author", text: this.senderName(m.byUser, m.byRole, m.byName) });
 		meta.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(m.createdAtMs)) });
+		const reply = meta.createEl("button", { cls: "clickable-icon covault-chat-replybtn" });
+		setIcon(reply, "reply");
+		reply.setAttr("aria-label", t("chat.reply"));
+		reply.title = t("chat.reply");
+		reply.onclick = () => this.startReply(m);
 		if (mine) {
 			const del = meta.createEl("button", { cls: "clickable-icon covault-chat-del" });
 			setIcon(del, "x");
@@ -262,6 +317,17 @@ export class ChatSection implements PanelSection {
 				await this.host.deleteMessage(this.channel, m);
 				await this.reload();
 			};
+		}
+		// 답글 인용: 부모 메시지 요약(현재 로드된 목록에서 찾음).
+		if (m.replyTo) {
+			const parentMsg = this.msgs.find((x) => x._id === m.replyTo);
+			const quote = row.createDiv({ cls: "covault-chat-quote covault-cr-muted" });
+			if (parentMsg) {
+				quote.createSpan({ cls: "covault-chat-quote-author", text: this.senderName(parentMsg.byUser, parentMsg.byRole, parentMsg.byName) });
+				quote.createSpan({ text: this.snippet(parentMsg.body, 50) });
+			} else {
+				quote.createSpan({ text: t("chat.reply_deleted") });
+			}
 		}
 		const bubble = row.createDiv({ cls: "covault-chat-bubble" });
 		for (const seg of parseMessageBody(m.body)) {

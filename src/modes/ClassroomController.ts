@@ -845,8 +845,8 @@ export class ClassroomController {
 		return channel.startsWith("group:") ? this.groupSync(channel) : this.dmSync(channel);
 	}
 
-	/** 메시지 전송. 학급 채널=학급 공유 DB, DM=대상/본인 mirror DB. */
-	async sendMessage(channel: string, body: string): Promise<boolean> {
+	/** 메시지 전송. 학급 채널=학급 공유 DB, DM=대상/본인 mirror DB. replyTo=답글 대상 _id. */
+	async sendMessage(channel: string, body: string, replyTo?: string): Promise<boolean> {
 		const s = this.d.settings();
 		const text = body.trim();
 		if (!text) return false;
@@ -861,6 +861,7 @@ export class ClassroomController {
 			byUser: s.userId,
 			byName: s.displayName || s.userId,
 			byRole: s.role,
+			...(replyTo ? { replyTo } : {}),
 			createdAtMs: Date.now(),
 		};
 		if (channel === CLASS_CHANNEL) return this.d.classroom.put(doc);

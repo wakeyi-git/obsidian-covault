@@ -72,8 +72,8 @@ export interface NoticeHost {
 
 /** 대화(메신저) — 학급 채널 + 1:1 DM. */
 export interface MessageHost {
-	/** 메시지 전송(channel="class" 또는 "dm:<memberId>"). */
-	sendMessage(channel: string, body: string): Promise<boolean>;
+	/** 메시지 전송(channel="class"·"dm:<id>"·"group:..."). replyTo=답글 대상 _id. */
+	sendMessage(channel: string, body: string, replyTo?: string): Promise<boolean>;
 	/** 채널 메시지 목록(오래된→최신). */
 	listMessages(channel: string): Promise<MessageDoc[]>;
 	/** 메시지 삭제(본인 메시지). */

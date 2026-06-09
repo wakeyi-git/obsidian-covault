@@ -257,6 +257,8 @@ export interface MessageDoc extends PouchDocBase {
 	/** 작성자 표시 이름. 학생은 동료 명단이 없으므로 문서에 이름을 담아 ID 대신 이름으로 표시. */
 	byName?: string;
 	byRole: "member" | "manager";
+	/** 답글 대상 메시지 _id(있으면 인용 표시). */
+	replyTo?: string;
 	createdAtMs: number;
 	deleted?: boolean;
 }
