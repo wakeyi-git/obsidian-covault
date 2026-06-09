@@ -19,7 +19,7 @@ import { SetupWizardModal } from "./ui/SetupWizardModal";
 import { ResolveChoice } from "./core/sync/ConflictManager";
 import { BulkCopy, CopyOptions, CopyResult, CopyPlan } from "./modes/manager/BulkCopy";
 import { RealtimeManager } from "./core/realtime/RealtimeManager";
-import { getCouchPassword, persistCouchPassword } from "./core/secret";
+import { getCouchPassword } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
@@ -30,6 +30,7 @@ import { RecoveryController } from "./modes/RecoveryController";
 import { ParticipantController } from "./modes/ParticipantController";
 import { DeploymentController } from "./modes/DeploymentController";
 import { ServerResetController } from "./modes/ServerResetController";
+import { OnboardingController } from "./modes/OnboardingController";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
@@ -39,7 +40,7 @@ import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "
 import { testConnection } from "./core/sync/connectionTest";
 import { runDiagnostics } from "./core/sync/diagnostics";
 import { CouchAdmin } from "./core/couch/CouchAdmin";
-import { INVITE_ACTION, parseInvite, isInviteExpired } from "./core/invite/invite";
+import { INVITE_ACTION } from "./core/invite/invite";
 import { exportSettings, importSettings } from "./settings/portable";
 import { ResetModal } from "./ui/ResetModal";
 import { initI18n, t } from "./i18n";
@@ -66,6 +67,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private participantCtl!: ParticipantController;
 	private deploymentCtl!: DeploymentController;
 	private serverResetCtl!: ServerResetController;
+	private onboardingCtl!: OnboardingController;
 	private applyTimer: number | null = null;
 
 	/** PanelHost: 피드백 섹션이 사용. */
@@ -192,6 +194,31 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				this.core.sharedSpaces = [];
 			},
 		});
+		this.onboardingCtl = new OnboardingController({
+			app: this.app,
+			logger: this.logger,
+			settings: () => this.settings,
+			saveSettings: () => this.saveSettings(),
+			stopMode: async () => {
+				await this.mode?.stop();
+				this.mode = null;
+			},
+			startMode: () => this.startMode(),
+			destroyLocalCaches: () => this.destroyLocalCaches(),
+			openLog: () => this.activatePanel("log"),
+			promptRoleSetup: () => this.promptRoleSetup(),
+			probeStatus: async (db) => {
+				const probe = this.core.createPouch(db);
+				try {
+					const info = await probe.rawInfo();
+					return info.status ?? null;
+				} catch {
+					return null; // 서버 도달 실패 → startMode 재시도에 맡긴다
+				} finally {
+					await probe.close();
+				}
+			},
+		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
 		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
 		this.core.onParticipantsChange = () => this.realtime?.invalidateParticipants();
@@ -291,15 +318,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	/** 역할 재설정(데이터 초기화). 설정 탭에서 호출. 로컬 캐시까지 비운다. */
-	async resetSetup(): Promise<void> {
-		await this.mode?.stop();
-		this.mode = null;
-		await this.destroyLocalCaches();
-		this.settings.setupComplete = false;
-		this.settings.lastSeqByDb = {};
-		await this.saveSettings();
-		this.logger.warn(t("command.reset_the_role_sync_state_and"), true);
-		this.promptRoleSetup();
+	resetSetup(): Promise<void> {
+		return this.onboardingCtl.resetSetup();
 	}
 
 	/** 현재 역할이 로컬 캐시를 가진 모든 DB(개인/학생 mirror + 공유 공간). 중복 제거. */
@@ -590,59 +610,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	// --- 학생 온보딩: 초대 코드/딥링크로 자동 설정 ---
-	async ingestInvite(input: string): Promise<void> {
-		const payload = parseInvite(input);
-		if (!payload) {
-			new Notice(t("command.covault_could_not_parse_the"));
-			this.logger.error(t("command.failed_to_parse_invite_code"));
-			return;
-		}
-		// 만료된 초대는 적용하지 않는다 — 새 초대를 요청하도록 안내(설정을 건드리지 않음).
-		if (isInviteExpired(payload, Math.floor(Date.now() / 1000))) {
-			new Notice(t("command.invite_expired_request_new"));
-			this.logger.error(t("command.invite_expired_request_new"));
-			return;
-		}
-		await this.mode?.stop();
-		this.mode = null;
-
-		const s = this.settings;
-		s.role = "member";
-		s.setupComplete = true;
-		s.couchdbUrl = payload.couchdbUrl;
-		s.workspaceId = payload.workspaceId;
-		s.userId = payload.memberId;
-		s.displayName = payload.memberName;
-		s.username = payload.username;
-		// 받은 학생 비밀번호는 Secret Storage에 보관(data.json 평문 회피). 미지원 환경만 평문 폴백.
-		persistCouchPassword(this.app, s, payload.password);
-		s.remoteDb = payload.remoteDb;
-		s.localRoot = ""; // 학생 vault 전체
-		s.lastSeqByDb = {};
-		await this.saveSettings();
-
-		await this.activatePanel("log");
-		this.logger.ok(t("command.invite_applied_starting_sync", { name: payload.memberName, db: payload.remoteDb }), true);
-
-		// 파싱 성공 ≠ 인증 성공. 즉시 인증을 확인해 옛/무효 초대를 명확히 안내한다(네트워크 실패는 startMode가 재시도).
-		try {
-			const probe = this.core.createPouch(s.remoteDb);
-			try {
-				const info = await probe.rawInfo();
-				if (info.status === 401) {
-					new Notice(t("panel.covault_invite_auth_failed_your"));
-					this.logger.error(t("panel.invite_auth_failed_401_your_manager"), true);
-				} else if (info.status === 403) {
-					this.logger.warn(t("panel.invite_permission_error_403_check_this"), true);
-				}
-			} finally {
-				await probe.close();
-			}
-		} catch {
-			/* 서버 도달 실패 → startMode 재시도에 맡긴다 */
-		}
-
-		await this.startMode();
+	ingestInvite(input: string): Promise<void> {
+		return this.onboardingCtl.ingestInvite(input);
 	}
 
 	// --- 연결 테스트 (설정 버튼) — 항상 최신 설정으로, 역할별 DB 전체 검사 ---
