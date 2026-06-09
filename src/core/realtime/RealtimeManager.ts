@@ -520,9 +520,13 @@ export class RealtimeManager {
 		return lower.endsWith(".excalidraw") || lower.endsWith(".excalidraw.md");
 	}
 
-	/** 실시간 지원 excalidraw 형식(.excalidraw.md만). 스냅샷이 markdown 업로드 경로를 타야 전파된다. */
+	/**
+	 * 실시간 지원 excalidraw 형식: 마크다운(.md)인 엑스칼리드로. 이 검사는 이미 excalidraw 뷰에 열린
+	 * 파일에만 적용되므로, .excalidraw.md 뿐 아니라 이름이 .md로 바뀐 엑스칼리드로(예: 파일이름.md)도 지원한다.
+	 * .md는 스냅샷이 markdown 업로드 경로를 타 전파되며, 순수 .excalidraw(비-markdown)만 제외한다.
+	 */
 	private isSupportedExcalidraw(p: string): boolean {
-		return p.toLowerCase().endsWith(".excalidraw.md");
+		return p.toLowerCase().endsWith(".md");
 	}
 
 	/** Excalidraw 뷰의 imperative API 획득. 뷰 속성 → ExcalidrawAutomate 순으로 시도. */

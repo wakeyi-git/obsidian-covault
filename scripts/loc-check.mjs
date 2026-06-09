@@ -17,7 +17,7 @@ const OVERRIDES = {
 	"src/main.ts": 939,
 	"src/settings/SettingsTab.ts": 1036, // 범위 밖(이번 라운드 미손댐)
 	"src/modes/ClassroomController.ts": 947, // 범위 밖
-	"src/core/realtime/RealtimeManager.ts": 695, // 범위 밖(게이트 로직은 main에 있음)
+	"src/core/realtime/RealtimeManager.ts": 699, // 범위 밖(게이트 로직은 main에 있음)
 };
 
 function walk(dir) {
