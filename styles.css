@@ -1445,6 +1445,26 @@
 .covault-cr-card-title {
 	font-weight: 600;
 }
+/* 제목(위) + 마감일(아래) 세로 스택 — 각각 한 줄(넘치면 말줄임) */
+.covault-cr-card-titles {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+}
+.covault-cr-card-titles .covault-cr-card-title {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.covault-cr-card-due {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
 .covault-cr-card-desc {
 	font-size: 12px;
 	color: var(--text-muted);

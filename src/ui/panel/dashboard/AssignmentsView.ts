@@ -144,8 +144,10 @@ export class AssignmentsView {
 			const counts = statusCounts(rows);
 			const card = list.createDiv({ cls: "covault-cr-card" });
 			const top = card.createDiv({ cls: "covault-cr-card-head" });
-			top.createSpan({ cls: "covault-cr-card-title", text: def.title });
-			if (def.dueAt) top.createSpan({ cls: "covault-feedback-time", text: formatDate(new Date(def.dueAt)) });
+			// 제목(위) + 마감일(아래)을 세로로 쌓고, 편집/삭제는 오른쪽에.
+			const titles = top.createDiv({ cls: "covault-cr-card-titles" });
+			titles.createSpan({ cls: "covault-cr-card-title", text: def.title });
+			if (def.dueAt) titles.createSpan({ cls: "covault-cr-card-due", text: t("dashboard.due", { date: formatDate(new Date(def.dueAt)) }) });
 			iconButton(top, "pencil", t("common.edit"), () => this.editAssignment(def));
 			iconButton(top, "trash-2", t("common.delete"), () => this.confirmDelete(def));
 
