@@ -580,7 +580,8 @@
 		"invalid_member_id": "Invalid member ID: {value} (use lowercase letters/digits/_/-; start with a letter or digit)",
 		"invalid_username": "Invalid account name: {value} (use lowercase letters/digits/_/-)",
 		"invalid_mirror_db_name": "Invalid Mirror DB name: {value} (use lowercase letters/digits/_/-)",
-		"invalid_share_db_name": "Invalid shared DB name: {value} (use lowercase letters/digits/_/-)"
+		"invalid_share_db_name": "Invalid shared DB name: {value} (use lowercase letters/digits/_/-)",
+		"system": "System"
 	},
 	"invite": {
 		"invite_member": "Invite member — {name}",

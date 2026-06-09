@@ -580,7 +580,8 @@
 		"invalid_member_id": "구성원 ID 형식 오류: {value} (소문자·숫자·_·- 만, 소문자/숫자로 시작)",
 		"invalid_username": "계정 이름 형식 오류: {value} (소문자·숫자·_·- 만)",
 		"invalid_mirror_db_name": "Mirror DB 이름 형식 오류: {value} (소문자·숫자·_·- 만)",
-		"invalid_share_db_name": "공동 DB 이름 형식 오류: {value} (소문자·숫자·_·- 만)"
+		"invalid_share_db_name": "공동 DB 이름 형식 오류: {value} (소문자·숫자·_·- 만)",
+		"system": "시스템"
 	},
 	"invite": {
 		"invite_member": "구성원 초대 — {name}",

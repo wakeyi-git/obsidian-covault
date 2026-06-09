@@ -6,11 +6,8 @@ import { GroupsSection } from "./panel/GroupsSection";
 import { RealtimeSection } from "./panel/RealtimeSection";
 import { FeedbackSection } from "./panel/FeedbackSection";
 // (시작하기 마법사는 설정에서 모달로 실행 — 패널 탭 제거)
-import { SyncStatusSection } from "./panel/SyncStatusSection";
 import { DeploySection } from "./panel/DeploySection";
-import { DeletedRecoverySection } from "./panel/DeletedRecoverySection";
-import { VersionHistorySection } from "./panel/VersionHistorySection";
-import { LogSection } from "./panel/LogSection";
+import { SystemSection } from "./panel/SystemSection";
 import { t } from "../i18n";
 
 export const PANEL_VIEW_TYPE = "covault-panel";
@@ -29,14 +26,8 @@ function tabLabel(tab: PanelTab): string {
 			return t("realtime.tab");
 		case "deploy":
 			return t("common.deploy");
-		case "sync":
-			return t("panel.sync_status");
-		case "recovery":
-			return t("recovery.recover_deleted");
-		case "history":
-			return t("version.version_history_2");
-		case "log":
-			return t("panel.log");
+		case "system":
+			return t("panel.system");
 	}
 }
 
@@ -54,14 +45,8 @@ function tabIcon(tab: PanelTab): string {
 			return "radio";
 		case "deploy":
 			return "send";
-		case "sync":
-			return "refresh-cw";
-		case "recovery":
-			return "archive-restore";
-		case "history":
-			return "history";
-		case "log":
-			return "scroll-text";
+		case "system":
+			return "settings-2";
 	}
 }
 
@@ -71,7 +56,7 @@ function tabIcon(tab: PanelTab): string {
  */
 export class CoVaultPanelView extends ItemView {
 	private current: PanelSection | null = null;
-	private activeTab: PanelTab = "sync";
+	private activeTab: PanelTab = "dashboard";
 	private tabBar: HTMLElement | null = null;
 	private body: HTMLElement | null = null;
 
@@ -92,8 +77,8 @@ export class CoVaultPanelView extends ItemView {
 	private tabs(): PanelTab[] {
 		const manager = this.host.settings.role === "manager";
 		return manager
-			? ["dashboard", "chat", "groups", "feedback", "realtime", "deploy", "sync", "recovery", "history", "log"]
-			: ["dashboard", "chat", "feedback", "realtime", "sync", "recovery", "history", "log"];
+			? ["dashboard", "chat", "feedback", "realtime", "groups", "deploy", "system"]
+			: ["dashboard", "chat", "feedback", "realtime", "system"];
 	}
 
 	async onOpen(): Promise<void> {
@@ -103,7 +88,7 @@ export class CoVaultPanelView extends ItemView {
 		this.tabBar = c.createDiv({ cls: "covault-panel-tabs" });
 		this.body = c.createDiv({ cls: "covault-panel-body" });
 		this.attachEdgeScroll(this.tabBar);
-		if (!this.tabs().includes(this.activeTab)) this.activeTab = "sync";
+		if (!this.tabs().includes(this.activeTab)) this.activeTab = "dashboard";
 		this.renderTabBar();
 		this.renderSection();
 	}
@@ -204,15 +189,10 @@ export class CoVaultPanelView extends ItemView {
 				return new FeedbackSection(this.host.app, this.host.feedbackStore);
 			case "deploy":
 				return new DeploySection(this.host);
-			case "recovery":
-				return new DeletedRecoverySection(this.host);
-			case "history":
-				return new VersionHistorySection(this.host);
-			case "log":
-				return new LogSection(this.host.logger);
-			case "sync":
+			case "system":
+				return new SystemSection(this.host);
 			default:
-				return new SyncStatusSection(this.host);
+				return new DashboardSection(this.host);
 		}
 	}
 }

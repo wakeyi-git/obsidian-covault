@@ -1,5 +1,5 @@
 import { Plugin } from "obsidian";
-import { PanelTab } from "./ui/panel/PanelSection";
+import { PanelTab, SystemView } from "./ui/panel/PanelSection";
 import { SyncDirection } from "./core/sync/FullSync";
 import { t } from "./i18n";
 
@@ -10,6 +10,7 @@ import { t } from "./i18n";
 export interface CommandActions {
 	openPanel(): void;
 	openTab(tab: PanelTab): void;
+	openSystemView(view: SystemView): void;
 	cleanupClassroom(): void;
 	testConnection(): void;
 	runDiagnostics(): void;
@@ -30,7 +31,7 @@ export function registerCommands(plugin: Plugin, a: CommandActions): void {
 	plugin.addCommand({ id: "covault-open-panel", name: t("command.open_panel"), callback: () => a.openPanel() });
 	plugin.addCommand({ id: "covault-open-dashboard", name: t("command.open_dashboard"), callback: () => a.openTab("dashboard") });
 	plugin.addCommand({ id: "covault-cleanup-classroom", name: t("command.cleanup_classroom_docs"), callback: () => a.cleanupClassroom() });
-	plugin.addCommand({ id: "covault-open-log", name: t("command.open_log_panel"), callback: () => a.openTab("log") });
+	plugin.addCommand({ id: "covault-open-log", name: t("command.open_log_panel"), callback: () => a.openSystemView("log") });
 	plugin.addCommand({ id: "covault-test-connection", name: t("panel.test_connection_permissions"), callback: () => a.testConnection() });
 	plugin.addCommand({ id: "covault-diagnostics", name: t("command.run_full_diagnostics_server_read_write"), callback: () => a.runDiagnostics() });
 	plugin.addCommand({ id: "covault-full-sync", name: t("panel.full_sync"), callback: () => a.fullSync("both") });
@@ -39,7 +40,7 @@ export function registerCommands(plugin: Plugin, a: CommandActions): void {
 	plugin.addCommand({ id: "covault-toggle-autosync", name: t("command.toggle_auto_sync"), callback: () => a.toggleAutoSync() });
 	plugin.addCommand({ id: "covault-reset-local", name: t("command.reset_local_cache_re_fetch_from"), callback: () => a.resetLocalCache() });
 	plugin.addCommand({ id: "covault-conflicts", name: t("command.open_conflict_list"), callback: () => a.openConflicts() });
-	plugin.addCommand({ id: "covault-dashboard", name: t("command.open_sync_status"), callback: () => a.openTab("sync") });
+	plugin.addCommand({ id: "covault-dashboard", name: t("command.open_sync_status"), callback: () => a.openSystemView("sync") });
 	plugin.addCommand({ id: "covault-deploy", name: t("deploy.copy_to_members_open_deploy_tab"), callback: () => a.openTab("deploy") });
 	plugin.addCommand({ id: "covault-realtime-status", name: t("panel.check_realtime_status"), callback: () => a.realtimeStatus() });
 	plugin.addCommand({ id: "covault-add-feedback", name: t("command.add_feedback_selection"), callback: () => a.addFeedback() });

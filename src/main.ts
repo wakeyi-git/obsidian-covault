@@ -35,7 +35,7 @@ import { OnboardingController } from "./modes/OnboardingController";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
-import { PanelHost, PanelTab, DashboardRow, DeleteModifyRow, PurgeRow } from "./ui/panel/PanelSection";
+import { PanelHost, PanelTab, SystemView, DashboardRow, DeleteModifyRow, PurgeRow } from "./ui/panel/PanelSection";
 import { MirrorSync } from "./core/sync/MirrorSync";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "./core/sync/RestoreManager";
 import { testConnection } from "./core/sync/connectionTest";
@@ -63,6 +63,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private classroom!: ClassroomStore;
 	private classroomCtl!: ClassroomController;
 	private pendingChatChannel: string | null = null; // 그룹 대화 카드 → 대화 탭 초기 채널 전달
+	private pendingSystemView: SystemView | null = null; // 명령/CTA → 시스템 탭 초기 서브뷰 전달
 	private realtimeCtl!: RealtimeController;
 	private memberCtl!: MemberController;
 	private recoveryCtl!: RecoveryController;
@@ -102,7 +103,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			app: this.app,
 			settings: () => this.settings,
 			realtime: () => this.realtime,
-			openLog: () => this.activatePanel("log"),
+			openLog: () => this.openLog(),
 		});
 		this.memberCtl = new MemberController({
 			app: this.app,
@@ -111,7 +112,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			couchPassword: () => this.couchPassword(),
 			saveSettings: () => this.saveSettings(),
 			requestApply: () => this.requestApply(),
-			openLog: () => this.activatePanel("log"),
+			openLog: () => this.openLog(),
 			mintMirror: (m) => this.realtimeCtl.mintMirror(m),
 		});
 		this.registerEditorExtension(realtimeEditorExtension());
@@ -146,7 +147,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			getSyncs: () => this.mode?.getSyncs() ?? [],
 			findSyncByDb: (db) => this.mode?.findSyncByDb(db),
 			findSyncOwning: (p) => this.mode?.findSyncOwning(p),
-			openLog: () => this.activatePanel("log"),
+			openLog: () => this.openLog(),
 		});
 		this.participantCtl = new ParticipantController({
 			app: this.app,
@@ -166,7 +167,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			couchPassword: () => this.couchPassword(),
 			saveSettings: () => this.saveSettings(),
 			restartMode: () => this.restartMode(),
-			openLog: () => this.activatePanel("log"),
+			openLog: () => this.openLog(),
 			openDashboard: () => this.activatePanel("dashboard"),
 			writeMemberSync: (admin, m) => this.writeMemberSync(admin, m),
 			mintRealtimeTokens: () => this.mintRealtimeTokens(),
@@ -177,7 +178,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			settings: () => this.settings,
 			couchPassword: () => this.couchPassword(),
 			saveSettings: () => this.saveSettings(),
-			openLog: () => this.activatePanel("log"),
+			openLog: () => this.openLog(),
 			stopMode: async () => {
 				await this.mode?.stop();
 				this.mode = null;
@@ -208,7 +209,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			},
 			startMode: () => this.startMode(),
 			destroyLocalCaches: () => this.destroyLocalCaches(),
-			openLog: () => this.activatePanel("log"),
+			openLog: () => this.openLog(),
 			promptRoleSetup: () => this.promptRoleSetup(),
 			probeStatus: async (db) => {
 				const probe = this.core.createPouch(db);
@@ -362,7 +363,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/** 로컬 캐시 초기화 후 서버에서 다시 받기. 명령에서 호출. */
 	async resetLocalCache(): Promise<void> {
-		await this.activatePanel("log");
+		await this.openLog();
 		await this.mode?.stop();
 		this.mode = null;
 		await this.destroyLocalCaches();
@@ -500,7 +501,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 	/** 명령용: 로그 패널을 열고 중복/고아 학급 문서 정리 실행(결과는 로그에 표시). */
 	private async runCleanupClassroom(): Promise<void> {
-		await this.activatePanel("log");
+		await this.openLog();
 		await this.cleanupClassroomDocs();
 	}
 	openLesson(uid: string): Promise<void> {
@@ -655,6 +656,21 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		this.pendingChatChannel = null;
 		return c;
 	}
+	/** 시스템 탭을 특정 서브뷰(동기화/복구/이력/로그)로 연다. */
+	async openSystemView(view: SystemView): Promise<void> {
+		this.pendingSystemView = view;
+		await this.activatePanel("system");
+	}
+	/** 보류 중 초기 시스템 서브뷰를 반환하고 비운다(SystemSection 전용). */
+	consumePendingSystemView(): SystemView | null {
+		const v = this.pendingSystemView ?? null;
+		this.pendingSystemView = null;
+		return v;
+	}
+	/** 로그 패널 열기(시스템 탭 → 로그 서브뷰). 진단·동기화 출력 표시용. */
+	openLog(): Promise<void> {
+		return this.openSystemView("log");
+	}
 
 	/**
 	 * 모든 실시간 서명 토큰을 재발급/회수(교사). 전역 실시간(realtimeEnabled) + 시크릿이 있으면 모든 공유 공간과
@@ -693,7 +709,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	// --- 연결 테스트 (설정 버튼) — 항상 최신 설정으로, 역할별 DB 전체 검사 ---
 	async testConnection(): Promise<void> {
-		await this.activatePanel("log");
+		await this.openLog();
 		const s = this.settings;
 		// 관리자: 구성원 DB가 없어도 먼저 프로비저닝 권한(_users)을 검증한다(첫 구성원 추가 전에도 의미 있는 결과).
 		if (s.role === "manager") {
@@ -718,7 +734,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/** 종합 진단: 서버 도달 + 활성 링크별 읽기/쓰기 권한 + 실시간 상태. */
 	async runDiagnostics(): Promise<void> {
-		await this.activatePanel("log");
+		await this.openLog();
 		const targets = (this.mode?.getSyncs() ?? []).map((s) => ({ db: s.remoteDb, label: s.label }));
 		await runDiagnostics(this.core, targets);
 		this.realtime.diagnose();
@@ -830,6 +846,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		registerCovaultCommands(this, {
 			openPanel: () => void this.activatePanel(),
 			openTab: (tab) => void this.activatePanel(tab),
+			openSystemView: (view) => void this.openSystemView(view),
 			cleanupClassroom: () => this.runCleanupClassroom(),
 			testConnection: () => void this.testConnection(),
 			runDiagnostics: () => void this.runDiagnostics(),
@@ -860,7 +877,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/** 전체/업로드/다운로드 수동 동기화. */
 	async fullSync(dir: "both" | "up" | "down"): Promise<void> {
-		await this.activatePanel("log");
+		await this.openLog();
 		await this.mode?.fullSync(dir);
 	}
 
@@ -871,7 +888,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/** 공유 공간 새로고침(학생=shares 재조회, 교사=재시작). */
 	async refreshShares(): Promise<void> {
-		await this.activatePanel("log");
+		await this.openLog();
 		if (this.settings.role === "member" && this.mode?.refreshShares) await this.mode.refreshShares();
 		else await this.restartMode();
 	}

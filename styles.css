@@ -106,6 +106,42 @@
 	border-bottom-color: var(--interactive-accent);
 }
 
+/* 시스템 탭의 서브탭 바(동기화/복구/이력/로그) */
+.covault-system-subtabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-bottom: 10px;
+	padding-bottom: 6px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.covault-system-subtab {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 12px;
+	padding: 4px 10px;
+	border-radius: 6px;
+	color: var(--text-muted);
+	background: transparent;
+	cursor: pointer;
+}
+.covault-system-subtab:hover {
+	background: var(--background-modifier-hover);
+}
+.covault-system-subtab.is-active {
+	color: var(--text-on-accent);
+	background: var(--interactive-accent);
+	font-weight: 600;
+}
+.covault-system-subtab-icon {
+	display: inline-flex;
+}
+.covault-system-subtab-icon .svg-icon {
+	width: 14px;
+	height: 14px;
+}
+
 .covault-panel-body {
 	flex: 1;
 	overflow-y: auto;

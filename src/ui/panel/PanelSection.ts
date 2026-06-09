@@ -11,7 +11,9 @@ import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricC
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
-export type PanelTab = "dashboard" | "chat" | "groups" | "feedback" | "realtime" | "deploy" | "sync" | "recovery" | "history" | "log";
+export type PanelTab = "dashboard" | "chat" | "groups" | "feedback" | "realtime" | "deploy" | "system";
+/** 시스템 탭의 서브뷰(동기화·복구·이력·로그). */
+export type SystemView = "sync" | "recovery" | "history" | "log";
 
 /** 동기화 상태 표 한 행(링크별). */
 export interface DashboardRow extends LinkStatus {
@@ -50,6 +52,8 @@ export interface CoreHost {
 	openSettings(): void;
 	/** 통합 패널의 특정 탭 열기(마법사 → 대시보드 등). */
 	activatePanel(tab?: PanelTab): Promise<void>;
+	/** 시스템 탭의 초기 서브뷰를 받아 비운다(SystemSection render 시). */
+	consumePendingSystemView(): SystemView | null;
 	/** 교사 온보딩 완료 표시(마법사 자동 노출 중단). */
 	completeOnboarding(): Promise<void>;
 }
