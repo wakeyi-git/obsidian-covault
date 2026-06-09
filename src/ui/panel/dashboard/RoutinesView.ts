@@ -150,7 +150,9 @@ export class RoutinesView {
 			for (const item of items) {
 				const doneMembers = members.filter((m) => checkedBy.get(m.memberId)?.has(item.id));
 				const notDone = members.filter((m) => !checkedBy.get(m.memberId)?.has(item.id));
-				const row = matrix.createDiv({ cls: "covault-cr-matrix-row is-clickable" });
+				// 항목별로 (행 + 상세)를 한 블록으로 묶어 구분선을 항목 사이에만 둔다(행↔명단 사이 이중선 제거).
+				const itemEl = matrix.createDiv({ cls: "covault-cr-matrix-item" });
+				const row = itemEl.createDiv({ cls: "covault-cr-matrix-row is-clickable" });
 				row.createSpan({ cls: "covault-cr-matrix-name", text: item.label });
 				const mp = row.createDiv({ cls: "covault-cr-progress" });
 				mp.createEl("i").style.width = `${members.length ? Math.round((doneMembers.length / members.length) * 100) : 0}%`;
@@ -158,13 +160,15 @@ export class RoutinesView {
 				const chev = row.createSpan({ cls: "covault-cr-rowchev" });
 				setIcon(chev, "chevron-right");
 				// 상세(완료/미완료 명단)는 미리 만들어 두고 토글만 한다 — 펼칠 때마다 전수 재조회(reload) 제거.
-				const detail = matrix.createDiv({ cls: "covault-cr-itemdetail" });
+				const detail = itemEl.createDiv({ cls: "covault-cr-itemdetail" });
 				detail.style.display = "none";
+				itemEl.toggleClass("is-open", false);
 				this.namesGroup(detail, t("dashboard.completed_n", { n: doneMembers.length }), doneMembers.map((m) => m.memberName), "is-ok");
 				this.namesGroup(detail, t("dashboard.incomplete_n", { n: notDone.length }), notDone.map((m) => m.memberName), "is-warn");
 				row.onclick = () => {
 					const open = detail.style.display === "none";
 					detail.style.display = open ? "" : "none";
+					itemEl.toggleClass("is-open", open);
 					setIcon(chev, open ? "chevron-down" : "chevron-right");
 				};
 			}

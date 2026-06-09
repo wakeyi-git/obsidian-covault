@@ -1575,15 +1575,20 @@
 	margin-top: 4px;
 	border-top: 1px solid var(--background-modifier-border);
 }
+/* 항목 블록(행 + 상세). 구분선은 항목 사이에만(첫 항목 제외) → 행↔명단 사이 이중선 없음 */
+.covault-cr-matrix-item + .covault-cr-matrix-item {
+	border-top: 1px solid var(--background-modifier-border);
+}
+.covault-cr-matrix-item.is-open {
+	background: var(--background-secondary-alt);
+	border-radius: 6px;
+}
 .covault-cr-matrix-row {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	padding: 4px 2px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-.covault-cr-matrix-row:last-child {
-	border-bottom: none;
+	padding: 6px 6px;
+	border-radius: 6px;
 }
 .covault-cr-matrix-row:hover {
 	background: var(--background-modifier-hover);
@@ -1694,10 +1699,9 @@
 	width: 14px;
 	height: 14px;
 }
+/* 항목 펼침 명단 — 행 바로 아래, 구분선 없이 살짝 들여쓰기 */
 .covault-cr-itemdetail {
-	margin-top: 6px;
-	padding-top: 6px;
-	border-top: 1px solid var(--background-modifier-border);
+	padding: 2px 6px 8px 14px;
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
