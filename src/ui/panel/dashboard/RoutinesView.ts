@@ -121,6 +121,22 @@ export class RoutinesView {
 			const card = list.createDiv({ cls: "covault-cr-card" });
 			const top = card.createDiv({ cls: "covault-cr-card-head" });
 			top.createSpan({ cls: "covault-cr-card-title", text: r.title });
+			// 이 루틴의 모든 항목 명단을 한 번에 펼치기/접기. 항목 ref는 아래 루프에서 채운다.
+			const detailEls: HTMLElement[] = [];
+			const chevEls: HTMLElement[] = [];
+			const itemEls: HTMLElement[] = [];
+			const setAll = (open: boolean): void => {
+				for (let i = 0; i < detailEls.length; i++) {
+					detailEls[i].style.display = open ? "" : "none";
+					itemEls[i].toggleClass("is-open", open);
+					setIcon(chevEls[i], open ? "chevron-down" : "chevron-right");
+				}
+				setIcon(expandAll, open ? "chevrons-down-up" : "chevrons-up-down");
+				expandAll.setAttr("aria-label", open ? t("dashboard.collapse_all") : t("dashboard.expand_all"));
+			};
+			const expandAll = iconButton(top, "chevrons-up-down", t("dashboard.expand_all"), () =>
+				setAll(detailEls.some((d) => d.style.display === "none")),
+			);
 			if (ri > 0) iconButton(top, "chevron-up", t("dashboard.move_up"), () => move(ri, -1));
 			if (ri < routines.length - 1) iconButton(top, "chevron-down", t("dashboard.move_down"), () => move(ri, 1));
 			iconButton(top, "pencil", t("dashboard.edit"), () =>
@@ -163,6 +179,9 @@ export class RoutinesView {
 				const detail = itemEl.createDiv({ cls: "covault-cr-itemdetail" });
 				detail.style.display = "none";
 				itemEl.toggleClass("is-open", false);
+				detailEls.push(detail);
+				chevEls.push(chev);
+				itemEls.push(itemEl);
 				this.namesGroup(detail, t("dashboard.completed_n", { n: doneMembers.length }), doneMembers.map((m) => m.memberName), "is-ok");
 				this.namesGroup(detail, t("dashboard.incomplete_n", { n: notDone.length }), notDone.map((m) => m.memberName), "is-warn");
 				row.onclick = () => {

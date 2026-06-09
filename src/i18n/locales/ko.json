@@ -220,7 +220,9 @@
 		"add_lesson": "이 칸에 수업 안내 추가",
 		"period_suffix": "교시",
 		"edit": "편집",
-		"edit_routine": "루틴 편집"
+		"edit_routine": "루틴 편집",
+		"expand_all": "모두 펼치기",
+		"collapse_all": "모두 접기"
 	},
 	"deploy": {
 		"copy_to_members": "구성원에게 복사",
