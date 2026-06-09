@@ -310,7 +310,7 @@
 		"display_name": "표시 이름",
 		"admin_account": "관리자 계정",
 		"credentials_for_creating_member_accounts_dbs": "구성원 계정·DB·권한 생성용 자격증명(이 기기에만 저장) — 칸을 벗어나면 변경이 자동 적용됩니다.",
-		"admin_username": "관리자 사용자",
+		"admin_username": "관리자 아이디",
 		"admin_password": "관리자 비밀번호",
 		"connection_test": "연결 테스트",
 		"checks_access_and_permissions_for_every": "모든 구성원 mirror DB 접근/권한을 확인합니다.",

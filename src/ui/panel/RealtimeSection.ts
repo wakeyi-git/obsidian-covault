@@ -144,8 +144,15 @@ export class RealtimeSection implements PanelSection {
 			r.participants = o.participants;
 			byPath.set(o.path, r);
 		}
-		const rows = [...byPath.values()].sort((a, b) => Number(b.open) - Number(a.open) || a.path.localeCompare(b.path));
 		const activePath = this.host.app.workspace.getActiveFile()?.path ?? "";
+		// 활성 공유 파일이 세션/지정에 없으면(예: 아직 라이브가 아닌 Excalidraw, 읽기모드 노트) 카드로 추가해
+		// 마크다운과 똑같이 참여자를 설정·관리하게 한다(교사). 활성 카드에 참여자 칩이 붙는다.
+		if (this.manager && activePath && !byPath.has(activePath)) {
+			const sp = this.host.settings.sharedSpaces;
+			const inSpace = sp.some((x) => x.folder && (activePath === x.folder || activePath.startsWith(x.folder + "/")));
+			if (inSpace) byPath.set(activePath, { path: activePath, open: false, participants: 0, memberIds: null });
+		}
+		const rows = [...byPath.values()].sort((a, b) => Number(b.open) - Number(a.open) || a.path.localeCompare(b.path));
 
 		// 변화 없으면 재구성 생략(불필요한 DOM 교체로 카드 클릭이 씹히는 것 방지).
 		// 열린 파일은 참가자 수만, 닫힌 지정 파일은 지정 명단만 본다 — 참여자 칩 토글이 목록을
