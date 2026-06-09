@@ -7,7 +7,6 @@ import { FeedbackSection } from "./panel/FeedbackSection";
 // (시작하기 마법사는 설정에서 모달로 실행 — 패널 탭 제거)
 import { SyncStatusSection } from "./panel/SyncStatusSection";
 import { DeploySection } from "./panel/DeploySection";
-import { ManageSection } from "./panel/ManageSection";
 import { DeletedRecoverySection } from "./panel/DeletedRecoverySection";
 import { VersionHistorySection } from "./panel/VersionHistorySection";
 import { LogSection } from "./panel/LogSection";
@@ -29,8 +28,6 @@ function tabLabel(tab: PanelTab): string {
 			return t("common.deploy");
 		case "sync":
 			return t("panel.sync_status");
-		case "manage":
-			return t("panel.manage");
 		case "recovery":
 			return t("recovery.recover_deleted");
 		case "history":
@@ -54,8 +51,6 @@ function tabIcon(tab: PanelTab): string {
 			return "send";
 		case "sync":
 			return "refresh-cw";
-		case "manage":
-			return "users";
 		case "recovery":
 			return "archive-restore";
 		case "history":
@@ -92,8 +87,8 @@ export class CoVaultPanelView extends ItemView {
 	private tabs(): PanelTab[] {
 		const manager = this.host.settings.role === "manager";
 		return manager
-			? ["dashboard", "chat", "feedback", "realtime", "deploy", "sync", "manage", "recovery", "history", "log"]
-			: ["dashboard", "chat", "feedback", "realtime", "sync", "manage", "recovery", "history", "log"];
+			? ["dashboard", "chat", "feedback", "realtime", "deploy", "sync", "recovery", "history", "log"]
+			: ["dashboard", "chat", "feedback", "realtime", "sync", "recovery", "history", "log"];
 	}
 
 	async onOpen(): Promise<void> {
@@ -202,8 +197,6 @@ export class CoVaultPanelView extends ItemView {
 				return new FeedbackSection(this.host.app, this.host.feedbackStore);
 			case "deploy":
 				return new DeploySection(this.host);
-			case "manage":
-				return new ManageSection(this.host);
 			case "recovery":
 				return new DeletedRecoverySection(this.host);
 			case "history":

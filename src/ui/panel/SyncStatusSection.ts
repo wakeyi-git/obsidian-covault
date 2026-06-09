@@ -95,6 +95,28 @@ export class SyncStatusSection implements PanelSection {
 		this.timer = window.setInterval(() => {
 			if (!document.hidden) void this.renderTable();
 		}, 5000);
+
+		// 관리/도구(이전 '관리' 탭 통합): 연결·진단·캐시·실시간 점검 + 서버 초기화/공유 새로고침.
+		this.renderTools(container);
+	}
+
+	/** 이전 '관리' 탭을 동기화 상태 탭 하단으로 통합. 정적이라 한 번만 렌더. */
+	private renderTools(container: HTMLElement): void {
+		container.createDiv({ cls: "covault-dash-label", text: t("panel.manage") });
+		const item = (label: string, desc: string, onClick: () => void | Promise<void>, opts?: { warning?: boolean }) => {
+			const row = container.createDiv({ cls: "covault-manage-item" });
+			panelButton(row, label, onClick, opts);
+			row.createDiv({ cls: "covault-panel-hint", text: desc });
+		};
+		item(t("panel.test_connection_permissions"), t("panel.checks_the_couchdb_connection_and_read"), () => this.host.testConnection());
+		item(t("panel.run_full_diagnostics"), t("panel.checks_server_reachability_per_link_permissions"), () => this.host.runDiagnostics());
+		item(t("panel.check_realtime_status"), t("panel.logs_the_current_file_s_realtime"), () => this.host.realtimeStatus());
+		item(t("panel.reset_local_cache"), t("panel.clears_the_local_pouchdb_and_re"), () => this.host.resetLocalCache());
+		if (this.host.settings.role === "manager") {
+			item(t("panel.reset_server_data"), t("panel.deletes_the_member_shared_dbs_on"), () => this.host.openResetModal(), { warning: true });
+		} else {
+			item(t("panel.refresh_shared_spaces"), t("panel.re_fetches_the_shared_spaces_deployed"), () => this.host.refreshShares());
+		}
 	}
 
 	dispose(): void {

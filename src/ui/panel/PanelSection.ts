@@ -11,7 +11,7 @@ import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricC
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
-export type PanelTab = "dashboard" | "chat" | "feedback" | "realtime" | "deploy" | "sync" | "manage" | "recovery" | "history" | "log";
+export type PanelTab = "dashboard" | "chat" | "feedback" | "realtime" | "deploy" | "sync" | "recovery" | "history" | "log";
 
 /** 동기화 상태 표 한 행(링크별). */
 export interface DashboardRow extends LinkStatus {
