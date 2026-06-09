@@ -224,8 +224,16 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		this.core.onParticipantsChange = () => this.realtime?.invalidateParticipants();
 		// 알림장·수업은 편집창 + 프론트매터로 작성한다 — 파일 프론트매터 변경/삭제/이름변경을 게시 메타에 반영(교사).
 		this.registerEvent(this.app.metadataCache.on("changed", (file) => { if (file instanceof TFile) void this.classroomCtl.syncNoticeFromFile(file); }));
-		this.registerEvent(this.app.vault.on("delete", (file) => { if (file instanceof TFile) void this.classroomCtl.onNoticeFileDeleted(file.path); }));
-		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => { if (file instanceof TFile) void this.classroomCtl.onNoticeFileRenamed(file, oldPath); }));
+		this.registerEvent(this.app.vault.on("delete", (file) => {
+			if (!(file instanceof TFile)) return;
+			void this.classroomCtl.onNoticeFileDeleted(file.path);
+			void this.participantCtl.onFileDeleted(file.path); // 실시간 지정 문서 정리
+		}));
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+			if (!(file instanceof TFile)) return;
+			void this.classroomCtl.onNoticeFileRenamed(file, oldPath);
+			void this.participantCtl.onFileRenamed(oldPath, file.path); // 실시간 지정 문서 이전
+		}));
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.onWorkspaceChange()));
 		this.registerEvent(this.app.workspace.on("file-open", () => this.onWorkspaceChange()));
 		this.registerEvent(this.app.workspace.on("layout-change", () => this.onWorkspaceChange()));

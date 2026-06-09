@@ -99,6 +99,8 @@ export class ParticipantController {
 				if (!visibleToUser(d.memberIds, s.userId, s.role)) continue;
 				const path = sync.ctx.toLocalPath(d.dbPath);
 				if (seen.has(path)) continue;
+				// 존재하지 않는 파일(이름변경·삭제로 생긴 고아 지정 문서)은 유령 카드가 되므로 제외.
+				if (!this.d.app.vault.getAbstractFileByPath(path)) continue;
 				seen.add(path);
 				out.push({ path, memberIds: d.memberIds, memberNames: d.memberNames });
 			}
@@ -146,6 +148,49 @@ export class ParticipantController {
 				updatedBy: s.userId,
 			} as RtPartDoc);
 		}
+		this.d.realtime().invalidateParticipants(path);
+	}
+
+	/** 파일 이름 변경 시 지정 문서를 옛 dbPath → 새 dbPath로 이전(멤버/이름 보존). 교사만. */
+	async onFileRenamed(oldPath: string, newPath: string): Promise<void> {
+		const s = this.d.settings();
+		if (s.role !== "manager") return; // 지정은 교사가 관리. 다른 기기엔 동기화로 전달됨.
+		const oldSync = this.d.findSyncOwning(oldPath);
+		const oldDbPath = oldSync?.ctx.toDbPath(oldPath);
+		if (!oldSync || !oldDbPath) return;
+		const oldDoc = await oldSync.ctx.pouch.get<RtPartDoc>(rtPartId(oldDbPath)).catch(() => null);
+		if (!oldDoc || oldDoc.deleted || !Array.isArray(oldDoc.memberIds)) return;
+
+		// 새 위치에 먼저 기록(실패해도 옛 지정을 잃지 않게), 그다음 옛 문서 정리.
+		const newSync = this.d.findSyncOwning(newPath);
+		const newDbPath = newSync?.ctx.toDbPath(newPath);
+		if (newSync && newDbPath) {
+			await newSync.ctx.pouch.put({
+				_id: rtPartId(newDbPath),
+				type: "rtpart",
+				schemaVersion: 1,
+				workspaceId: s.workspaceId,
+				dbPath: newDbPath,
+				memberIds: oldDoc.memberIds,
+				memberNames: oldDoc.memberNames,
+				updatedAtMs: Date.now(),
+				updatedBy: s.userId,
+			} as RtPartDoc);
+		}
+		await oldSync.ctx.pouch.put({ ...oldDoc, deleted: true, updatedAtMs: Date.now() }).catch(() => {});
+		this.d.realtime().invalidateParticipants(oldPath);
+		this.d.realtime().invalidateParticipants(newPath);
+	}
+
+	/** 파일 삭제 시 지정 문서 정리(soft-delete). 교사만. */
+	async onFileDeleted(path: string): Promise<void> {
+		const s = this.d.settings();
+		if (s.role !== "manager") return;
+		const sync = this.d.findSyncOwning(path);
+		const dbPath = sync?.ctx.toDbPath(path);
+		if (!sync || !dbPath) return;
+		const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath)).catch(() => null);
+		if (doc && !doc.deleted) await sync.ctx.pouch.put({ ...doc, deleted: true, updatedAtMs: Date.now() }).catch(() => {});
 		this.d.realtime().invalidateParticipants(path);
 	}
 
