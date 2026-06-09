@@ -29,6 +29,7 @@ import { MemberController } from "./modes/MemberController";
 import { RecoveryController } from "./modes/RecoveryController";
 import { ParticipantController } from "./modes/ParticipantController";
 import { DeploymentController } from "./modes/DeploymentController";
+import { ServerResetController } from "./modes/ServerResetController";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
@@ -64,6 +65,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private recoveryCtl!: RecoveryController;
 	private participantCtl!: ParticipantController;
 	private deploymentCtl!: DeploymentController;
+	private serverResetCtl!: ServerResetController;
 	private applyTimer: number | null = null;
 
 	/** PanelHost: 피드백 섹션이 사용. */
@@ -164,6 +166,31 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			writeMemberSync: (admin, m) => this.writeMemberSync(admin, m),
 			mintRealtimeTokens: () => this.mintRealtimeTokens(),
 			refreshMemberShares: () => this.refreshMemberShares(),
+		});
+		this.serverResetCtl = new ServerResetController({
+			logger: this.logger,
+			settings: () => this.settings,
+			couchPassword: () => this.couchPassword(),
+			saveSettings: () => this.saveSettings(),
+			openLog: () => this.activatePanel("log"),
+			stopMode: async () => {
+				await this.mode?.stop();
+				this.mode = null;
+			},
+			cancelPendingApply: () => {
+				if (this.applyTimer) {
+					window.clearTimeout(this.applyTimer);
+					this.applyTimer = null;
+				}
+			},
+			destroyDbCache: async (db) => {
+				const p = this.core.createPouch(db);
+				await p.destroyLocal();
+				await p.close();
+			},
+			clearCoreSharedSpaces: () => {
+				this.core.sharedSpaces = [];
+			},
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
 		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
@@ -686,143 +713,16 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	 * 로컬 캐시·프로비저닝 상태를 비운다. 학급 구성(목록)은 유지 → 재초대·재배포로 복구.
 	 * Yjs 실시간 데이터는 플러그인이 못 지우므로 수동 안내만 표시한다.
 	 */
-	/** 한 구성원의 서버 데이터(미러 DB + 계정) 삭제. 교사 전용. 실패해도 가능한 만큼 진행. */
-	async deleteMemberServer(member: MemberConfig): Promise<void> {
-		const s = this.settings;
-		if (s.role !== "manager") return;
-		await this.activatePanel("log");
-		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
-			this.logger.warn(t("command.enter_the_admin_account_first"), true);
-			return;
-		}
-		// 삭제 대상 DB로의 replication을 멈춘다(삭제 직후 재생성 방지). 호출측이 restartMode로 재구성.
-		await this.mode?.stop();
-		this.mode = null;
-		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
-		if (member.remoteDb) {
-			const r = await admin.deleteDatabase(member.remoteDb);
-			if (r.ok) this.logger.ok(t("command.db_deleted", { db: member.remoteDb }), true);
-			else this.logger.error(t("command.failed_to_delete_db", { db: member.remoteDb, err: r.error ?? "" }), true);
-			try {
-				const p = this.core.createPouch(member.remoteDb);
-				await p.destroyLocal();
-				await p.close();
-			} catch {
-				/* 캐시 없음 등 무시 */
-			}
-		}
-		if (member.username) {
-			const r = await admin.deleteUser(member.username);
-			if (r.ok) this.logger.ok(t("command.account_deleted", { user: member.username }), true);
-			else this.logger.error(t("command.failed_to_delete_account", { user: member.username, err: r.error ?? "" }), true);
-		}
+	deleteMemberServer(member: MemberConfig): Promise<void> {
+		return this.serverResetCtl.deleteMemberServer(member);
 	}
 
-	/** 한 공동 공간의 서버 데이터(공유 DB) 삭제. 교사 전용. */
-	async deleteSharedServer(space: SharedSpace): Promise<void> {
-		const s = this.settings;
-		if (s.role !== "manager") return;
-		await this.activatePanel("log");
-		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
-			this.logger.warn(t("command.enter_the_admin_account_first"), true);
-			return;
-		}
-		await this.mode?.stop();
-		this.mode = null;
-		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
-		if (space.remoteDb) {
-			const r = await admin.deleteDatabase(space.remoteDb);
-			if (r.ok) this.logger.ok(t("command.db_deleted", { db: space.remoteDb }), true);
-			else this.logger.error(t("command.failed_to_delete_db", { db: space.remoteDb, err: r.error ?? "" }), true);
-			try {
-				const p = this.core.createPouch(space.remoteDb);
-				await p.destroyLocal();
-				await p.close();
-			} catch {
-				/* 캐시 없음 등 무시 */
-			}
-		}
+	deleteSharedServer(space: SharedSpace): Promise<void> {
+		return this.serverResetCtl.deleteSharedServer(space);
 	}
 
-	async resetServerData(deleteAccounts: boolean): Promise<void> {
-		await this.activatePanel("log");
-		const s = this.settings;
-		if (s.role !== "manager") {
-			this.logger.warn(t("command.available_in_manager_mode_only"), true);
-			return;
-		}
-		if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
-			this.logger.warn(t("command.enter_the_admin_account_first"), true);
-			return;
-		}
-		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
-		const chk = await admin.checkAdmin();
-		if (!chk.ok) {
-			this.logger.error(t("command.admin_authentication_failed", { err: chk.error ?? "" }), true);
-			return;
-		}
-
-		// 실행 중 엔진 정지(삭제할 DB로의 replication 차단). 대기 중 자동-적용도 취소.
-		if (this.applyTimer) {
-			window.clearTimeout(this.applyTimer);
-			this.applyTimer = null;
-		}
-		await this.mode?.stop();
-		this.mode = null;
-
-		const dbs = [
-			...s.members.map((st) => st.remoteDb).filter((d) => d),
-			...s.sharedSpaces.map((sp) => sp.remoteDb).filter((d) => d),
-		];
-		this.logger.info(t("command.starting_server_data_reset_db_s", { count: dbs.length, accounts: deleteAccounts ? t("command.member_accounts") : "" }), true);
-
-		for (const db of dbs) {
-			const r = await admin.deleteDatabase(db);
-			if (r.ok) this.logger.ok(t("command.db_deleted", { db }));
-			else this.logger.error(t("command.failed_to_delete_db", { db, err: r.error ?? "" }));
-			// 로컬 PouchDB 캐시도 제거
-			try {
-				const p = this.core.createPouch(db);
-				await p.destroyLocal();
-				await p.close();
-			} catch {
-				/* 캐시 없음 등 무시 */
-			}
-		}
-
-		if (deleteAccounts) {
-			for (const st of s.members) {
-				if (!st.username) continue;
-				const r = await admin.deleteUser(st.username);
-				if (r.ok) this.logger.ok(t("command.account_deleted", { user: st.username }));
-				else this.logger.error(t("command.failed_to_delete_account", { user: st.username, err: r.error ?? "" }));
-			}
-		}
-
-		// 로컬 상태 초기화
-		if (deleteAccounts) {
-			// 계정까지 삭제 → 학급 명단(학생·공유 공간)도 완전 비움(처음부터 다시 구성)
-			s.members = [];
-			s.sharedSpaces = [];
-			this.core.sharedSpaces = [];
-		} else {
-			// DB만 삭제 → 명단 유지, 프로비저닝 상태만 리셋(재초대로 복구)
-			for (const st of s.members) st.provisioned = false;
-			for (const sp of s.sharedSpaces) sp.provisioned = false;
-		}
-		s.lastSeqByDb = {};
-		await this.saveSettings();
-
-		this.logger.warn(
-			t("command.reset_yjs_realtime_data_manually_restart"),
-			true,
-		);
-		this.logger.ok(
-			deleteAccounts
-				? t("command.server_data_and_accounts_reset_the")
-				: t("command.server_data_reset_complete_invite_members"),
-			true,
-		);
+	resetServerData(deleteAccounts: boolean): Promise<void> {
+		return this.serverResetCtl.resetServerData(deleteAccounts);
 	}
 
 	/** 언어 변경 시 로케일 재초기화 + 열린 패널 새로고침(설정 탭은 호출 측에서 display). */
