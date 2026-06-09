@@ -1,6 +1,6 @@
 import { EventRef, Setting, TFile, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
-import { getSecretValue, YJS_SECRET_ID } from "../../core/secret";
+import { getYjsSecret } from "../../core/secret";
 import { t } from "../../i18n";
 
 /**
@@ -98,7 +98,7 @@ export class RealtimeSection implements PanelSection {
 		void this.renderFileParticipants();
 
 		// 문제 해결.
-		const secretPresent = !!getSecretValue(this.host.app, YJS_SECRET_ID, s.yjsSecret);
+		const secretPresent = !!getYjsSecret(this.host.app, s.yjsSecret);
 		c.createDiv({ cls: "covault-dash-label", text: t("realtime.troubleshooting") });
 		const actions = c.createDiv({ cls: "covault-panel-actions" });
 		const redeploy = panelButton(actions, t("realtime.redeploy_tokens"), () => this.run(() => this.host.redeployRealtime()), { cta: true });

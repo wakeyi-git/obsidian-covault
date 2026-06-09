@@ -68,3 +68,28 @@ export function setSecretValue(app: App, id: string, secret: string): boolean {
 export function hasSecretStorage(app: App): boolean {
 	return !!store(app);
 }
+
+// --- 도메인별 편의(고정 id 반복·persist 로직 중복 제거) ---
+
+/** 활성 CouchDB 비밀번호 조회(시크릿 우선, 없으면 평문 fallback). */
+export function getCouchPassword(app: App, fallback: string | undefined): string {
+	return getSecretValue(app, COUCH_PASSWORD_ID, fallback);
+}
+
+/** Yjs 공간 시크릿 조회(시크릿 우선, 없으면 평문 fallback). */
+export function getYjsSecret(app: App, fallback: string | undefined): string {
+	return getSecretValue(app, YJS_SECRET_ID, fallback);
+}
+
+/**
+ * CouchDB 비밀번호 저장: Secret Storage 우선(성공 시 평문 제거+플래그), 미지원이면 평문 보관.
+ * settings를 구조적으로만 받아 core가 설정 타입에 결합되지 않게 한다(ingestInvite·설정 탭 공용).
+ */
+export function persistCouchPassword(app: App, settings: { password?: string; passwordSet?: boolean }, pw: string): void {
+	if (setSecretValue(app, COUCH_PASSWORD_ID, pw)) {
+		settings.passwordSet = true;
+		settings.password = "";
+	} else {
+		settings.password = pw;
+	}
+}

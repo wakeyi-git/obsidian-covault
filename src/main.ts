@@ -19,7 +19,7 @@ import { ResolveChoice } from "./core/sync/ConflictManager";
 import { BulkCopy, CopyOptions, CopyResult, CopyPlan } from "./modes/manager/BulkCopy";
 import { RealtimeManager } from "./core/realtime/RealtimeManager";
 import { isValidCouchName } from "./core/path/path";
-import { getSecretValue, setSecretValue, YJS_SECRET_ID, COUCH_PASSWORD_ID } from "./core/secret";
+import { getCouchPassword, getYjsSecret, persistCouchPassword } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
@@ -179,7 +179,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/** 활성 CouchDB 비밀번호(Secret Storage 우선, 평문 폴백). */
 	private couchPassword(): string {
-		return getSecretValue(this.app, COUCH_PASSWORD_ID, this.settings.password);
+		return getCouchPassword(this.app, this.settings.password);
 	}
 
 	async saveSettings(): Promise<void> {
@@ -749,7 +749,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			return;
 		}
 		const wantsRealtime = s.members.length > 0 || s.sharedSpaces.length > 0;
-		if (s.realtimeEnabled && wantsRealtime && !getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret)) {
+		if (s.realtimeEnabled && wantsRealtime && !getYjsSecret(this.app, s.yjsSecret)) {
 			this.logger.warn(t("command.realtime_needs_yjs_secret"), true);
 		}
 		await this.mintRealtimeTokens();
@@ -788,12 +788,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		s.displayName = payload.memberName;
 		s.username = payload.username;
 		// 받은 학생 비밀번호는 Secret Storage에 보관(data.json 평문 회피). 미지원 환경만 평문 폴백.
-		if (setSecretValue(this.app, COUCH_PASSWORD_ID, payload.password)) {
-			s.passwordSet = true;
-			s.password = "";
-		} else {
-			s.password = payload.password;
-		}
+		persistCouchPassword(this.app, s, payload.password);
 		s.remoteDb = payload.remoteDb;
 		s.localRoot = ""; // 학생 vault 전체
 		s.lastSeqByDb = {};

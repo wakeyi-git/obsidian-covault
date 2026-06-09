@@ -1,7 +1,7 @@
 import { App, Modal, Notice, Setting, setIcon } from "obsidian";
 import { CoVaultSettings } from "../settings/types";
 import { PanelTab } from "./panel/PanelSection";
-import { getSecretValue, COUCH_PASSWORD_ID } from "../core/secret";
+import { getCouchPassword } from "../core/secret";
 import { t } from "../i18n";
 
 /** 마법사가 의존하는 플러그인 동작(설정 탭에서 주입). 플러그인 인스턴스가 모두 구현한다. */
@@ -39,7 +39,7 @@ export class SetupWizardModal extends Modal {
 		const membersWithId = s.members.filter((st) => st.memberId);
 		const provisioned = s.members.filter((st) => st.provisioned).length;
 		const synced = Object.keys(s.lastSeqByDb ?? {}).length > 0;
-		const hasPassword = !!getSecretValue(this.host.app, COUCH_PASSWORD_ID, s.password);
+		const hasPassword = !!getCouchPassword(this.host.app, s.password);
 		const openSettings = { label: t("panel.open_settings"), run: () => this.close() };
 		return [
 			{

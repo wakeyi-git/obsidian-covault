@@ -2,7 +2,7 @@ import { App } from "obsidian";
 import { CoVaultSettings, MemberConfig } from "../settings/types";
 import { RealtimeManager } from "../core/realtime/RealtimeManager";
 import { mintSpaceToken } from "../core/realtime/spaceToken";
-import { getSecretValue, YJS_SECRET_ID } from "../core/secret";
+import { getYjsSecret } from "../core/secret";
 
 /**
  * RealtimeController 의존성. settings는 load/import에서 교체되므로 getter로 제공.
@@ -33,7 +33,7 @@ export class RealtimeController {
 	 */
 	async mintAll(): Promise<void> {
 		const s = this.d.settings();
-		const yjsSecret = getSecretValue(this.d.app, YJS_SECRET_ID, s.yjsSecret);
+		const yjsSecret = getYjsSecret(this.d.app, s.yjsSecret);
 		const on = s.realtimeEnabled && !!yjsSecret;
 		const ttl = this.ttl(s);
 		for (const sp of s.sharedSpaces) {
@@ -49,7 +49,7 @@ export class RealtimeController {
 	 */
 	async mintMirror(member: MemberConfig): Promise<void> {
 		const s = this.d.settings();
-		const yjsSecret = getSecretValue(this.d.app, YJS_SECRET_ID, s.yjsSecret);
+		const yjsSecret = getYjsSecret(this.d.app, s.yjsSecret);
 		if (s.realtimeEnabled && yjsSecret && member.memberId && !member.realtimeBlocked) {
 			member.realtimeToken = await mintSpaceToken(yjsSecret, {
 				workspaceId: s.workspaceId,

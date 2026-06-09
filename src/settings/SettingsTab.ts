@@ -7,7 +7,7 @@ import { PathSuggest } from "../ui/PathSuggest";
 import { validateFolderName, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
 import { sharedSpaceStatus } from "./sharedSpaceStatus";
-import { getSecretValue, setSecretValue, hasSecretStorage, YJS_SECRET_ID, COUCH_PASSWORD_ID } from "../core/secret";
+import { setSecretValue, hasSecretStorage, getYjsSecret, getCouchPassword, persistCouchPassword, YJS_SECRET_ID } from "../core/secret";
 import { t } from "../i18n";
 
 // SettingGroup.listEl은 Obsidian 런타임에 1.11.0부터 존재하지만(공식 @since 1.11.0),
@@ -159,7 +159,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		// 실시간 자격증명 판단: 운영자는 공간 시크릿(HMAC 키)을, 구성원은 shares로 받은 공간 토큰을 본다.
 		// (구성원은 시크릿을 갖지 않으며, 토큰은 개인 mirror DB로 자동 전달된다.)
 		const realtimeCredPresent =
-			s.role === "manager" ? !!getSecretValue(this.app, YJS_SECRET_ID, s.yjsSecret) : this.host.realtimeTokenReceived();
+			s.role === "manager" ? !!getYjsSecret(this.app, s.yjsSecret) : this.host.realtimeTokenReceived();
 		const issues = validateSettings(s, { realtimeCredPresent });
 		if (issues.length === 0) return;
 		const box = this.containerEl.createDiv({ cls: "covault-issues" });
@@ -359,7 +359,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.setName(t("settings.yjs_space_secret_hmac_recommended"))
 				.setDesc(t("settings.when_set_issues_a_signed_token"))
 				.addText((txt) => {
-					txt.setPlaceholder(t("settings.same_as_server_yjs_secret")).setValue(getSecretValue(this.host.app, YJS_SECRET_ID, s.yjsSecret)).onChange(async (v) => {
+					txt.setPlaceholder(t("settings.same_as_server_yjs_secret")).setValue(getYjsSecret(this.host.app, s.yjsSecret)).onChange(async (v) => {
 						const val = v.trim();
 						setSecretValue(this.host.app, YJS_SECRET_ID, val);
 						s.yjsSecretSet = !!val;
@@ -982,14 +982,8 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		group.addSetting((set) =>
 			set.setName(t("settings.admin_password")).addText((txt) => {
 				// Secret Storage 우선 저장(평문 data.json 회피), 미지원 환경만 평문 폴백.
-				txt.setPlaceholder("********").setValue(getSecretValue(this.host.app, COUCH_PASSWORD_ID, s.password)).onChange(async (v) => {
-					const val = v.trim();
-					if (setSecretValue(this.host.app, COUCH_PASSWORD_ID, val)) {
-						s.passwordSet = true;
-						s.password = "";
-					} else {
-						s.password = val;
-					}
+				txt.setPlaceholder("********").setValue(getCouchPassword(this.host.app, s.password)).onChange(async (v) => {
+					persistCouchPassword(this.host.app, s, v.trim());
 					await this.host.saveSettings();
 				});
 				txt.inputEl.type = "password";
