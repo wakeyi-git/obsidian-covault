@@ -707,10 +707,17 @@
 	box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
-/* 활성 세션 카드: 경로 아래에 놓이는 지정/참가자 배지(이전 '함께' 줄 위치) */
+/* 활성 세션 카드: 경로 아래 배지 + 지정 구성원 이름(한 줄, 넘치면 줄바꿈) */
 .covault-rt-sesbadge {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
 	margin-top: 4px;
-	align-self: flex-start;
+}
+.covault-rt-sesnames {
+	min-width: 0;
+	flex: 1;
 }
 
 /* 활성 파일 참여자 칩 박스 — 활성 카드 안에서 펼쳐진다(카드 내용과 구분선으로 분리) */

@@ -174,15 +174,21 @@ export class RealtimeSection implements PanelSection {
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
 			box.createDiv({ cls: "covault-cr-muted", text: r.path });
-			// 참가자/지정 배지를 경로 아래(이전 '함께' 줄 위치)에 배치. 별도 '함께 이름' 줄은 제거.
+			// 참가자/지정 배지를 경로 아래(이전 '함께' 줄 위치)에 배치. 지정 배지 옆에는 지정된 구성원 이름.
 			if (r.open) {
-				const badge = box.createDiv({ cls: "covault-cr-badge is-accent covault-rt-sesbadge" });
+				const row = box.createDiv({ cls: "covault-rt-sesbadge" });
+				const badge = row.createSpan({ cls: "covault-cr-badge is-accent" });
 				setIcon(badge.createSpan(), "users");
 				badge.createSpan({ text: t("realtime.participants_n", { n: r.participants }) });
 			} else if (r.memberIds != null) {
-				const badge = box.createDiv({ cls: "covault-cr-badge covault-rt-sesbadge" });
+				const row = box.createDiv({ cls: "covault-rt-sesbadge" });
+				const badge = row.createSpan({ cls: "covault-cr-badge" });
 				setIcon(badge.createSpan(), "user-check");
 				badge.createSpan({ text: t("realtime.assigned_n", { n: r.memberIds.length }) });
+				// 지정된 구성원 이름: 문서의 이름(학생은 동료 명단이 없음) → 로컬 명단 → id 순.
+				const fromRoster = new Map(this.host.settings.members.map((m) => [m.memberId, m.memberName]));
+				const names = r.memberIds.map((id) => r.memberNames?.[id] || fromRoster.get(id) || id);
+				if (names.length) row.createSpan({ cls: "covault-cr-muted covault-rt-sesnames", text: names.join(", ") });
 			}
 		}
 		// 참여자 칩 박스(안정 노드)를 활성 카드 안으로 펼친다 — 재구성하지 않고 이동만 해 클릭 안정.
