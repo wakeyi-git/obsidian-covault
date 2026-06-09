@@ -125,8 +125,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			homeroomFolder: () => this.homeroomFolder(),
 			saveSettings: () => this.saveSettings(),
 			requestApply: () => this.requestApply(),
-			memberSyncByRemoteDb: (db) => this.memberSyncByRemoteDb(db),
-			studentMirrorSync: () => this.studentMirrorSync(),
+			memberSyncByRemoteDb: (db) => this.mode?.findSyncByDb(db),
+			studentMirrorSync: () => this.mode?.findSyncByDb(this.settings.remoteDb),
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
 		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
@@ -376,7 +376,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private homeroomPouch(): PouchService | undefined {
 		const h = this.core.homeroom;
 		if (!h) return undefined;
-		return (this.mode?.getSyncs() ?? []).find((s) => s.ctx.remoteDb === h.remoteDb)?.ctx.pouch;
+		return this.mode?.findSyncByDb(h.remoteDb)?.ctx.pouch;
 	}
 
 	/** 학급 운영 기능의 기준 폴더(지정된 학급 공동 공간의 폴더). 미지정이면 null. */
@@ -597,12 +597,6 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		new SetupWizardModal(this.app, this).open();
 	}
 
-	private memberSyncByRemoteDb(db: string): MirrorSync | undefined {
-		return (this.mode?.getSyncs() ?? []).find((s) => s.ctx.remoteDb === db);
-	}
-	private studentMirrorSync(): MirrorSync | undefined {
-		return this.memberSyncByRemoteDb(this.settings.remoteDb);
-	}
 
 	// --- 학급 운영(대시보드): ClassroomController에 위임 ---
 	newNotice(): Promise<boolean> {
@@ -1308,13 +1302,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	restoreDeleted(remoteDb: string, dbPath: string, opts?: RestoreOptions): Promise<RestoreResult> {
-		const sync = (this.mode?.getSyncs() ?? []).find((s) => s.remoteDb === remoteDb);
+		const sync = this.mode?.findSyncByDb(remoteDb);
 		if (!sync) return Promise.resolve("unrecoverable" as RestoreResult);
 		return sync.restoreDeleted(dbPath, opts);
 	}
 
 	purgeDeleted(remoteDb: string, dbPath: string): Promise<"purged" | "skipped"> {
-		const sync = (this.mode?.getSyncs() ?? []).find((s) => s.remoteDb === remoteDb);
+		const sync = this.mode?.findSyncByDb(remoteDb);
 		if (!sync) return Promise.resolve("skipped");
 		return sync.purgeDeleted(dbPath);
 	}
@@ -1334,7 +1328,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	resolveDeleteModify(remoteDb: string, dbPath: string, choice: DeleteModifyChoice): Promise<void> {
-		const sync = (this.mode?.getSyncs() ?? []).find((s) => s.remoteDb === remoteDb);
+		const sync = this.mode?.findSyncByDb(remoteDb);
 		return sync ? sync.resolveDeleteModify(dbPath, choice) : Promise.resolve();
 	}
 
@@ -1353,12 +1347,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	}
 
 	undoPurge(remoteDb: string, id: string): Promise<RestoreResult> {
-		const sync = (this.mode?.getSyncs() ?? []).find((s) => s.remoteDb === remoteDb);
+		const sync = this.mode?.findSyncByDb(remoteDb);
 		return sync ? sync.undoPurge(id) : Promise.resolve("unrecoverable" as RestoreResult);
 	}
 
 	clearPurge(remoteDb: string, id: string): Promise<void> {
-		const sync = (this.mode?.getSyncs() ?? []).find((s) => s.remoteDb === remoteDb);
+		const sync = this.mode?.findSyncByDb(remoteDb);
 		return sync ? sync.clearPurge(id) : Promise.resolve();
 	}
 
@@ -1382,10 +1376,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/** 로컬 경로를 담당하는 동기화 링크(피드백 저장/조회 + 실시간 스냅샷 대상). 없으면 undefined. */
 	private syncForLocalPath(localPath: string): MirrorSync | undefined {
-		for (const sync of this.mode?.getSyncs() ?? []) {
-			if (sync.owns(localPath)) return sync;
-		}
-		return undefined;
+		return this.mode?.findSyncOwning(localPath);
 	}
 
 	/** autoSync 토글 — 모드를 재시작해 감시/구독을 켜거나 끈다. */

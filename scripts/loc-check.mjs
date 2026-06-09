@@ -11,7 +11,7 @@ const GENERAL_CAP = 500;
 
 // 파일별 상한(줄). 리팩토링 진척에 맞춰 main.ts 값을 낮춘다. 최종 목표: src/main.ts <= 600.
 const OVERRIDES = {
-	"src/main.ts": 1424, // ratchet — 단계마다 낮춤(목표 600)
+	"src/main.ts": 1415, // ratchet — 단계마다 낮춤(목표 600)
 	"src/settings/SettingsTab.ts": 1036, // 범위 밖(이번 라운드 미손댐)
 	"src/modes/ClassroomController.ts": 947, // 범위 밖
 	"src/core/realtime/RealtimeManager.ts": 695, // 범위 밖(게이트 로직은 main에 있음)

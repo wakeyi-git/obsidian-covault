@@ -3,6 +3,7 @@ import { errMessage } from "../../core/util/err";
 import { MirrorSync } from "../../core/sync/MirrorSync";
 import { SyncDirection } from "../../core/sync/FullSync";
 import { computeChildRoots } from "../../core/sync/childRoots";
+import { pickSyncByDb, pickSyncOwning } from "../../core/sync/syncLookup";
 import { SharesDoc, SHARES_DOC_ID, RtConfigDoc, RTCONFIG_DOC_ID } from "../../core/model/types";
 import { CoVaultMode } from "../CoVaultMode";
 import { t } from "../../i18n";
@@ -36,6 +37,14 @@ export class MemberMode implements CoVaultMode {
 
 	getSyncs(): MirrorSync[] {
 		return this.syncs;
+	}
+
+	findSyncByDb(db: string): MirrorSync | undefined {
+		return pickSyncByDb(this.syncs, db);
+	}
+
+	findSyncOwning(localPath: string): MirrorSync | undefined {
+		return pickSyncOwning(this.syncs, localPath);
 	}
 
 	/** 공유 공간 변경(또는 수동 새로고침) 시 링크 재구성. */

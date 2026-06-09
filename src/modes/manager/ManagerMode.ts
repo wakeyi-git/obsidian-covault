@@ -2,6 +2,7 @@ import { CoreServices } from "../../core/CoreServices";
 import { MirrorSync } from "../../core/sync/MirrorSync";
 import { SyncDirection } from "../../core/sync/FullSync";
 import { computeChildRoots } from "../../core/sync/childRoots";
+import { pickSyncByDb, pickSyncOwning } from "../../core/sync/syncLookup";
 import { CoVaultMode } from "../CoVaultMode";
 import { t } from "../../i18n";
 
@@ -109,5 +110,13 @@ export class ManagerMode implements CoVaultMode {
 
 	getSyncs(): MirrorSync[] {
 		return this.syncs;
+	}
+
+	findSyncByDb(db: string): MirrorSync | undefined {
+		return pickSyncByDb(this.syncs, db);
+	}
+
+	findSyncOwning(localPath: string): MirrorSync | undefined {
+		return pickSyncOwning(this.syncs, localPath);
 	}
 }
