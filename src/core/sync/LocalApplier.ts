@@ -50,6 +50,9 @@ export class LocalApplier {
 					} else if (change.doc && (change.doc as any).type === "rtpart") {
 						// 파일별 실시간 참여자 변경 → 게이트 재평가(활성 세션도 취소 시 종료)
 						this.ctx.core.onParticipantsChange();
+					} else if (change.doc && (change.doc as any).type === "grouprequest") {
+						// 그룹 신청 변경 → 교사: 대기 신청 처리, 구성원: 신청 상태 갱신
+						this.ctx.core.onGroupRequestChange();
 					} else if (change.doc && (change.doc as any).type === "feedback") {
 						// 피드백(§19.5)은 파일이 아니라 메타데이터 → vault에 쓰지 않고 패널만 갱신
 						this.ctx.core.onFeedbackChange();

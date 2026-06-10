@@ -15,8 +15,8 @@ export interface SharedSpace {
 	folder: string; // 각 vault 내 폴더명
 	members: string[]; // memberId[]
 	provisioned?: boolean;
-	/** 공간 종류. "homeroom"=학급 운영 대시보드(알림장·시간표·루틴 등)를 담는 전원 공유 공간. 미설정=일반 모둠 공유. */
-	kind?: "homeroom";
+	/** 공간 종류. "homeroom"=학급 운영 대시보드를 담는 전원 공유 공간. "group"=구성원 신청으로 만든 그룹 공간. 미설정=일반 모둠 공유. */
+	kind?: "homeroom" | "group";
 	/** 이 공간의 실시간 서명 토큰(HMAC 모드). 실시간 사용 시 배포에서 발급되어 shares 문서로 학생에 전달된다. */
 	token?: string;
 	/** 마지막 배포 시각(epoch ms). */
@@ -32,6 +32,10 @@ export interface GroupConfig {
 	memberIds: string[];
 	/** 임시 그룹(세션 카드에서 즉석 생성) — 그룹 관리 UI에는 숨기고 대화방 목록에서 삭제. */
 	temp?: boolean;
+	/** 그룹 공간(전용 SharedSpace) id — 구성원 신청 승인으로 만들어진 그룹. 삭제 시 공간도 해제. */
+	spaceId?: string;
+	/** 신청자 memberId(구성원 자율 그룹). */
+	requestedBy?: string;
 }
 
 /** 교사가 관리하는 학생 1명. 기술문서 §12.1. */
@@ -86,6 +90,13 @@ export interface CoVaultSettings {
 
 	/** Manager Mode: 명명 그룹(구성원 묶음). 그룹 대화방 + 라이브 세션 참가자 지정에 사용. */
 	groups: GroupConfig[];
+
+	/** Manager Mode: 구성원 그룹 신청을 자동 승인(기본 false=수동 승인). */
+	groupAutoApprove?: boolean;
+	/** Manager Mode: 구성원 1인당 대기/보유 가능한 자율 그룹 상한(기본 3). */
+	groupMaxPerMember?: number;
+	/** 공유 DB validate_doc_update 배포 버전 — 다르면 시작 시 1회 재배포(교사). */
+	validateDocVersion?: number;
 
 	/** Manager Mode: 내 볼트 개인 동기화 사용 여부(개별/공동 공간·제외 폴더 제외한 나머지 노트·첨부). */
 	personalSyncEnabled?: boolean;
@@ -221,6 +232,7 @@ export const DEFAULT_SETTINGS: CoVaultSettings = {
 	members: [],
 	sharedSpaces: [],
 	groups: [],
+	groupMaxPerMember: 3,
 
 	excludeFolders: [".obsidian", ".trash"],
 	archiveFolder: "_삭제됨",

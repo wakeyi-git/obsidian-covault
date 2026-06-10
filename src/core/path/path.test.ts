@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateVaultPath, validateFolderName, foldersOverlap, insertLabelBeforeExt } from "./path";
+import { validateVaultPath, validateFolderName, foldersOverlap, insertLabelBeforeExt, uniqueGroupFolder } from "./path";
 
 describe("validateVaultPath / validateFolderName", () => {
 	it("정상 상대 경로는 허용", () => {
@@ -59,5 +59,21 @@ describe("foldersOverlap", () => {
 	it("빈 값은 겹침 아님", () => {
 		expect(foldersOverlap("", "_충돌")).toBe(false);
 		expect(foldersOverlap("_삭제됨", "")).toBe(false);
+	});
+});
+
+describe("uniqueGroupFolder", () => {
+	it("충돌 없으면 그대로", () => {
+		expect(uniqueGroupFolder("모둠1", ["프로젝트", "학급"])).toBe("모둠1");
+	});
+
+	it("동일/중첩 폴더와 충돌하면 접미를 붙인다", () => {
+		expect(uniqueGroupFolder("모둠1", ["모둠1"])).toBe("모둠1-2");
+		expect(uniqueGroupFolder("모둠1", ["모둠1/하위"])).toBe("모둠1-2");
+		expect(uniqueGroupFolder("모둠1", ["모둠1", "모둠1-2"])).toBe("모둠1-3");
+	});
+
+	it("정규화 후 비교한다", () => {
+		expect(uniqueGroupFolder("모둠1/", ["모둠1"])).toBe("모둠1-2");
 	});
 });

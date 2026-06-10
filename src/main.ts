@@ -3,7 +3,7 @@ import { errMessage } from "./core/util/err";
 import { registerCommands as registerCovaultCommands } from "./commands";
 import { jumpToFeedback } from "./ui/feedbackJump";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace, GroupConfig } from "./settings/types";
-import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc } from "./core/model/types";
+import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc, GroupRequestDoc } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc } from "./core/model/types";
 import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
@@ -27,6 +27,7 @@ import { ClassroomStore } from "./core/classroom/ClassroomStore";
 import { ClassroomController } from "./modes/ClassroomController";
 import { RealtimeController } from "./modes/RealtimeController";
 import { MemberController } from "./modes/MemberController";
+import { GroupRequestController } from "./modes/GroupRequestController";
 import { RecoveryController } from "./modes/RecoveryController";
 import { ParticipantController } from "./modes/ParticipantController";
 import { DeploymentController } from "./modes/DeploymentController";
@@ -69,6 +70,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private recoveryCtl!: RecoveryController;
 	private participantCtl!: ParticipantController;
 	private deploymentCtl!: DeploymentController;
+	private groupRequestCtl!: GroupRequestController;
+	private groupRequestTimer: number | null = null; // grouprequest 변경 → 교사 처리 debounce
 	private serverResetCtl!: ServerResetController;
 	private onboardingCtl!: OnboardingController;
 	private applyTimer: number | null = null;
@@ -176,6 +179,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			mintRealtimeTokens: () => this.mintRealtimeTokens(),
 			refreshMemberShares: () => this.refreshMemberShares(),
 		});
+		this.groupRequestCtl = new GroupRequestController({
+			logger: this.logger,
+			classroom: this.classroom,
+			settings: () => this.settings,
+			homeroomReady: () => this.homeroomReady(),
+			saveSettings: () => this.saveSettings(),
+			deployShared: (space, opts) => this.deploymentCtl.deployShared(space, opts),
+			saveGroup: (g) => this.saveGroup(g),
+		});
 		this.serverResetCtl = new ServerResetController({
 			logger: this.logger,
 			settings: () => this.settings,
@@ -229,6 +241,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		this.core.onClassroomChange = () => this.classroom.refresh();
 		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
 		this.core.onParticipantsChange = () => this.realtime?.invalidateParticipants();
+		// 그룹 신청 변경 — 교사: debounce 후 대기 신청 처리(자동 승인이면 배포 포함), 구성원: 패널이 폴링으로 갱신.
+		this.core.onGroupRequestChange = () => {
+			if (this.settings.role !== "manager") return;
+			if (this.groupRequestTimer) window.clearTimeout(this.groupRequestTimer);
+			this.groupRequestTimer = window.setTimeout(() => {
+				this.groupRequestTimer = null;
+				void this.groupRequestCtl.processPending();
+			}, 2000);
+		};
 		// 알림장·수업은 편집창 + 프론트매터로 작성한다 — 파일 프론트매터 변경/삭제/이름변경을 게시 메타에 반영(교사).
 		this.registerEvent(this.app.metadataCache.on("changed", (file) => { if (file instanceof TFile) void this.classroomCtl.syncNoticeFromFile(file); }));
 		this.registerEvent(this.app.vault.on("delete", (file) => {
@@ -305,6 +326,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		await this.realtime?.refresh();
 		void this.participantCtl.backfillRtPartNames(); // 구버전 지정 문서에 이름 채우기(학생 카드에 이름 표시)
 		void this.classroomCtl.cleanupLegacyGroups(); // 0.100.x 파일별 그룹 문서 정리(드롭다운 유령 제거)
+		if (this.settings.role === "manager") {
+			void this.deploymentCtl.redeployValidate(); // validate 버전 마이그레이션(1회, 실패 시 다음 시작 재시도)
+			void this.groupRequestCtl.syncRoster(); // 학급 명단 배포(구성원 그룹 신청 UI 선택지)
+			void this.groupRequestCtl.processPending(); // 오프라인 동안 쌓인 그룹 신청 캐치업
+		}
 	}
 
 	/** 최초 실행 역할 선택 모달 → 역할 잠금 + 모드 시작. 학생은 초대 코드로 바로 설정 가능. */
@@ -630,12 +656,23 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		}
 		await this.classroomCtl.syncGroupDoc(group, names);
 	}
-	/** 그룹 삭제(교사). settings.groups 제거 + 그룹 대화방 삭제. */
+	/** 그룹 삭제(교사). settings.groups 제거 + 그룹 대화방 삭제. 그룹 공간(신청-승인)이 있으면 공간도 해제. */
 	async deleteGroup(id: string): Promise<void> {
 		if (this.settings.role !== "manager") return;
-		this.settings.groups = this.settings.groups.filter((g) => g.id !== id);
+		const g = this.settings.groups.find((x) => x.id === id);
+		this.settings.groups = this.settings.groups.filter((x) => x.id !== id);
 		await this.saveSettings();
 		await this.classroomCtl.deleteGroupDoc(id);
+		// 그룹 공간 해제: 서버 DB 삭제 → 설정 제거 → 전 구성원 shares 재전파 → 모드 재구성.
+		// 각자 로컬 폴더의 파일은 남는다(데이터 보존 — 동기화·실시간만 끊긴다).
+		const space = g?.spaceId ? this.settings.sharedSpaces.find((sp) => sp.id === g.spaceId) : undefined;
+		if (space) {
+			await this.serverResetCtl.deleteSharedServer(space); // stopMode 포함
+			this.settings.sharedSpaces = this.settings.sharedSpaces.filter((sp) => sp.id !== space.id);
+			await this.saveSettings();
+			await this.refreshMemberShares();
+			await this.restartMode();
+		}
 	}
 	/** 라이브 세션에 그룹 적용: 그 파일의 참여자를 그룹 구성원으로 설정(교사). */
 	async applyGroupToFile(filePath: string, groupId: string): Promise<void> {
@@ -667,6 +704,28 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			await this.saveGroup(g);
 		}
 		await this.openGroupChat(g.id);
+	}
+	/** PanelHost: 구성원 자율 그룹 신청-승인(GroupRequestController 위임). */
+	requestGroup(input: { name: string; folder: string; memberIds: string[] }): Promise<boolean> {
+		return this.groupRequestCtl.requestGroup(input);
+	}
+	listMyGroupRequests(): Promise<GroupRequestDoc[]> {
+		return this.groupRequestCtl.listMyRequests();
+	}
+	cancelGroupRequest(req: GroupRequestDoc): Promise<void> {
+		return this.groupRequestCtl.cancelRequest(req);
+	}
+	listPendingGroupRequests(): Promise<GroupRequestDoc[]> {
+		return this.groupRequestCtl.listPendingRequests();
+	}
+	approveGroupRequest(req: GroupRequestDoc): Promise<boolean> {
+		return this.groupRequestCtl.approveRequest(req);
+	}
+	rejectGroupRequest(req: GroupRequestDoc, reason?: string): Promise<void> {
+		return this.groupRequestCtl.rejectRequest(req, reason);
+	}
+	rosterMembers(): Promise<Array<{ memberId: string; name: string }>> {
+		return this.groupRequestCtl.rosterMembers();
 	}
 	/** 대화 탭을 특정 채널로 연다. ChatSection이 render 시 consumePendingChatChannel로 받는다. */
 	async openChat(channel: string): Promise<void> {

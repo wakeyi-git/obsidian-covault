@@ -7,7 +7,7 @@ import { LinkStatus } from "../../core/sync/MirrorContext";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "../../core/sync/RestoreManager";
 import { PurgeSnapshot } from "../../core/sync/recentPurge";
 import { DeleteModifyItem } from "../../core/sync/deleteModifyQueue";
-import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion, RoutineDoc, RoutineStateDoc, NoticeDoc, ResponseDoc, MessageDoc } from "../../core/model/types";
+import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion, RoutineDoc, RoutineStateDoc, NoticeDoc, ResponseDoc, MessageDoc, GroupRequestDoc } from "../../core/model/types";
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
 
 /** 통합 패널 탭 식별자. */
@@ -102,6 +102,20 @@ export interface MessageHost {
 	openGroupChat(groupId: string): Promise<void>;
 	/** 세션 참여자 명단으로 그룹 대화 열기(교사) — 일치 그룹 재사용, 없으면 임시 그룹 생성. */
 	openSessionGroupChat(memberIds: string[]): Promise<void>;
+	/** 그룹 신청(구성원). 검증 실패 시 false. */
+	requestGroup(input: { name: string; folder: string; memberIds: string[] }): Promise<boolean>;
+	/** 내 그룹 신청 목록(구성원, 최신순). */
+	listMyGroupRequests(): Promise<GroupRequestDoc[]>;
+	/** 내 신청 취소(pending만). */
+	cancelGroupRequest(req: GroupRequestDoc): Promise<void>;
+	/** 대기 중 그룹 신청 목록(교사). */
+	listPendingGroupRequests(): Promise<GroupRequestDoc[]>;
+	/** 신청 승인(교사) — 그룹 공간 배포 포함. */
+	approveGroupRequest(req: GroupRequestDoc): Promise<boolean>;
+	/** 신청 거절(교사). */
+	rejectGroupRequest(req: GroupRequestDoc, reason?: string): Promise<void>;
+	/** 학급 명단(구성원 신청 모달 선택지 — 교사가 배포한 roster). */
+	rosterMembers(): Promise<Array<{ memberId: string; name: string }>>;
 	/** 대화 탭을 특정 채널로 연다(그룹 대화 진입). */
 	openChat(channel: string): Promise<void>;
 	/** 보류 중 초기 대화 채널을 받아 비운다(ChatSection render 시). */

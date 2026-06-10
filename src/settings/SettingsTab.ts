@@ -337,6 +337,32 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		grp.addSetting((set) =>
 			set.setClass("covault-add-row").addButton((b) => b.setButtonText(t("group.new")).setCta().onClick(() => this.editGroup(null))),
 		);
+		// 구성원 자율 그룹(신청-승인) 정책.
+		grp.addSetting((set) =>
+			set
+				.setName(t("group.auto_approve"))
+				.setDesc(t("group.auto_approve_desc"))
+				.addToggle((tg) =>
+					tg.setValue(!!s.groupAutoApprove).onChange(async (v) => {
+						s.groupAutoApprove = v;
+						await this.host.saveSettings();
+					}),
+				),
+		);
+		grp.addSetting((set) =>
+			set
+				.setName(t("group.max_per_member"))
+				.setDesc(t("group.max_per_member_desc"))
+				.addText((tx) =>
+					tx.setValue(String(s.groupMaxPerMember ?? 3)).onChange(async (v) => {
+						const n = parseInt(v, 10);
+						if (Number.isFinite(n) && n >= 0) {
+							s.groupMaxPerMember = n;
+							await this.host.saveSettings();
+						}
+					}),
+				),
+		);
 
 		// 콘텐츠 템플릿 (알림장·수업·과제)
 		const tpl = this.group(t("settings.content_templates"), t("settings.content_templates_desc"));

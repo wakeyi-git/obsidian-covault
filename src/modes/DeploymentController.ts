@@ -1,7 +1,7 @@
 import { App } from "obsidian";
 import { Logger } from "../core/log/Logger";
 import { CoVaultSettings, SharedSpace, MemberConfig } from "../settings/types";
-import { CouchAdmin } from "../core/couch/CouchAdmin";
+import { CouchAdmin, VALIDATE_DOC_VERSION } from "../core/couch/CouchAdmin";
 import { isValidCouchName } from "../core/path/path";
 import { setHomeroom } from "../core/classroom/homeroom";
 import { getYjsSecret, getRtServicePassword } from "../core/secret";
@@ -74,9 +74,36 @@ export class DeploymentController {
 		}
 	}
 
-	/** 공유 공간 프로비저닝 + 전원 shares 갱신 + 토큰 재발급 + 모드 재시작(교사). */
-	async deployShared(space: SharedSpace): Promise<void> {
-		await this.d.openLog();
+	/**
+	 * validate_doc_update를 프로비저닝된 모든 공유 DB에 재배포(버전 마이그레이션, 멱등).
+	 * 시작 시 settings.validateDocVersion이 현재 버전과 다르면 1회 호출 — 전부 성공해야 버전을 기록해
+	 * 자격증명 부재·일부 실패 시 다음 시작에 재시도된다.
+	 */
+	async redeployValidate(): Promise<void> {
+		const s = this.d.settings();
+		if (s.role !== "manager" || s.validateDocVersion === VALIDATE_DOC_VERSION) return;
+		const adminPw = this.d.couchPassword();
+		if (!s.couchdbUrl || !s.username || !adminPw) return;
+		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
+		let allOk = true;
+		for (const sp of s.sharedSpaces) {
+			if (!sp.provisioned || !sp.remoteDb) continue;
+			const r = await admin.putValidateDesignDoc(sp.remoteDb);
+			if (!r.ok) {
+				allOk = false;
+				this.d.logger.warn(t("command.validate_redeploy_failed", { db: sp.remoteDb, err: r.error ?? "" }));
+			}
+		}
+		if (allOk) {
+			s.validateDocVersion = VALIDATE_DOC_VERSION;
+			await this.d.saveSettings();
+			this.d.logger.info(t("command.validate_redeployed"));
+		}
+	}
+
+	/** 공유 공간 프로비저닝 + 전원 shares 갱신 + 토큰 재발급 + 모드 재시작(교사). quiet=패널 전환 없이(자동 승인용). */
+	async deployShared(space: SharedSpace, opts?: { quiet?: boolean }): Promise<void> {
+		if (!opts?.quiet) await this.d.openLog();
 		const s = this.d.settings();
 		if (s.role !== "manager") {
 			this.d.logger.warn(t("command.available_in_manager_mode_only"), true);

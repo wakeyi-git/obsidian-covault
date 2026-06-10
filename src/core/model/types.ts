@@ -354,6 +354,46 @@ export function chatGroupId(groupId: string): string {
 	return `${CHATGROUP_ID_PREFIX}${groupId}`;
 }
 
+/**
+ * 구성원 자율 그룹 신청(homeroom DB). 구성원이 쓰고 교사 기기가 승인/거절한다.
+ * validate_doc_update가 본인(byUsername=CouchDB 계정명) 문서만, status는 pending만 허용 —
+ * 승인/거절 위조와 타인 신청 조작을 서버가 차단한다. 승인 시 교사가 그룹+전용 공간을 배포한다.
+ */
+export interface GroupRequestDoc extends PouchDocBase {
+	type: "grouprequest";
+	schemaVersion: number;
+	workspaceId: string;
+	requestId: string; // uid — 승인 시 GroupConfig.id로 재사용
+	name: string; // 그룹 이름
+	folder: string; // 희망 그룹 공간 폴더명(승인 시 충돌 보정될 수 있음)
+	memberIds: string[]; // 신청자 본인 포함
+	memberNames?: Record<string, string>;
+	byUser: string; // 앱 정체성(memberId)
+	byUsername: string; // CouchDB 계정명 — validate 소유 검사용(userCtx.name과 비교)
+	status: "pending" | "approved" | "rejected";
+	reason?: string; // 거절 사유(교사)
+	spaceId?: string; // 승인 시 생성된 그룹 공간 id
+	createdAtMs: number;
+	decidedAtMs?: number;
+	deleted?: boolean; // 구성원 본인 취소
+}
+
+export const GROUPREQUEST_ID_PREFIX = "grouprequest:";
+export function groupRequestId(uid: string): string {
+	return `${GROUPREQUEST_ID_PREFIX}${uid}`;
+}
+
+/** 학급 명단(homeroom DB, 교사 전용 쓰기). 구성원 기기에는 동료 명단이 없어 그룹 신청 UI의 선택지로 쓴다. */
+export interface RosterDoc extends PouchDocBase {
+	type: "roster";
+	schemaVersion: number;
+	workspaceId: string;
+	members: Array<{ memberId: string; name: string }>;
+	updatedAtMs: number;
+}
+
+export const ROSTER_DOC_ID = "roster";
+
 /** 주간 시간표(학급 공유 DB, 주(週)별 문서). 주 시작(월요일) 날짜키로 분리. */
 export interface TimetableDoc extends PouchDocBase {
 	type: "timetable";

@@ -66,6 +66,18 @@ export function foldersOverlap(a: string, b: string): boolean {
 	return x.startsWith(y + "/") || y.startsWith(x + "/");
 }
 
+/** 그룹 공간 폴더 유일화: 기존 폴더들과 같거나 중첩되면 "-2", "-3"… 접미로 충돌을 피한다(그룹 신청 승인 시). */
+export function uniqueGroupFolder(requested: string, taken: string[]): string {
+	const base = normalizePath(requested);
+	const collides = (cand: string) => taken.some((x) => foldersOverlap(cand, x));
+	if (!collides(base)) return base;
+	for (let i = 2; i < 100; i++) {
+		const cand = `${base}-${i}`;
+		if (!collides(cand)) return cand;
+	}
+	return `${base}-${Date.now().toString(36)}`;
+}
+
 /** 경로 세그먼트 안전 결합. 빈 root는 무시. */
 export function safeJoin(...parts: string[]): string {
 	return normalizePath(parts.filter((x) => x && x.length > 0).join("/"));

@@ -43,6 +43,9 @@ export class CoreServices {
 	 *  구성원이 지정에서 빠지면 이미 열려 있던 활성 세션도 종료해 즉시 편집을 막는다. */
 	onParticipantsChange: () => void = () => {};
 
+	/** 그룹 신청(grouprequest) 변경 알림. main이 연결 — 교사는 대기 신청 처리, 구성원은 상태 갱신. */
+	onGroupRequestChange: () => void = () => {};
+
 	private persistTimer: ReturnType<typeof setTimeout> | null = null;
 	private readonly persistDelayMs = 1500;
 

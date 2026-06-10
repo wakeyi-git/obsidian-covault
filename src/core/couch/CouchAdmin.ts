@@ -1,6 +1,36 @@
 import { createObsidianFetch } from "./obsidianFetch";
 import { t } from "../../i18n";
 
+/** validate_doc_update 배포 버전. 내용이 바뀌면 올린다 — 교사 시작 시 settings.validateDocVersion과 비교해 1회 재배포. */
+export const VALIDATE_DOC_VERSION = 2;
+
+/**
+ * 공유 DB validate_doc_update 소스(CouchDB가 평가하는 함수 문자열). 테스트에서 직접 평가해 검증한다.
+ * - 교사(_admin)는 우회. 구성원(member)은:
+ *   · 교사 전용 타입(게시물 메타 + 인가·명단 문서) 쓰기 금지 — rtpart/rtcontrol을 구성원이 써서
+ *     스스로 실시간 인가를 부여하던 구멍 봉쇄, chatgroup/roster 위·변조 차단
+ *   · response(읽음/댓글)는 자기 소유만
+ *   · grouprequest(그룹 신청)는 본인(byUsername=CouchDB 계정명) 문서만 + status는 pending만(승인 위조 차단)
+ * - message(대화)는 협업 콘텐츠로 소유 검사하지 않는다 — byUser는 앱 정체성이라 계정명과 다를 수 있다.
+ */
+export const VALIDATE_DOC_SOURCE =
+	"function (newDoc, oldDoc, userCtx) {\n" +
+	"  if (userCtx && userCtx.roles && userCtx.roles.indexOf('_admin') >= 0) return;\n" +
+	"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
+	"  var teacherOnly = ['notice','timetable','routine','assignment','chatgroup','rtpart','rtcontrol','roster'];\n" +
+	"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
+	"  if (t === 'response') {\n" +
+	"    var owner = newDoc._deleted ? (oldDoc && oldDoc.byUser) : newDoc.byUser;\n" +
+	"    if (owner && owner !== userCtx.name) throw({ forbidden: 'own doc only' });\n" +
+	"  }\n" +
+	"  if (t === 'grouprequest') {\n" +
+	"    var reqOwner = newDoc._deleted ? (oldDoc && oldDoc.byUsername) : newDoc.byUsername;\n" +
+	"    if (!reqOwner || reqOwner !== userCtx.name) throw({ forbidden: 'own request only' });\n" +
+	"    if (oldDoc && oldDoc.byUsername && oldDoc.byUsername !== userCtx.name) throw({ forbidden: 'own request only' });\n" +
+	"    if (!newDoc._deleted && newDoc.status !== 'pending') throw({ forbidden: 'status is manager-only' });\n" +
+	"  }\n" +
+	"}";
+
 /**
  * CouchDB 관리자 프로비저닝. 기술문서 §13 / §22.
  *
@@ -187,25 +217,13 @@ export class CouchAdmin {
 
 	/**
 	 * 공유 DB에 validate_doc_update 디자인 문서를 배포(멱등). 서버 admin(_admin=교사)은 우회.
-	 * member(학생)는: notice/timetable/routine/assignment(교사 메타) 쓰기 금지, response는 byUser=본인만.
-	 * note/asset/feedback 등 협업 콘텐츠는 제한하지 않는다(모둠 공유 공간 호환).
+	 * member(학생)는: notice/timetable/routine/assignment(교사 메타)·chatgroup/rtpart/rtcontrol/roster(인가·명단)
+	 * 쓰기 금지, response는 byUser=본인만, grouprequest는 본인(byUsername) 것만 + status는 pending만.
+	 * note/asset/feedback/message 등 협업 콘텐츠는 제한하지 않는다(모둠 공유 공간 호환).
 	 */
-	private async putValidateDesignDoc(remoteDb: string): Promise<{ ok: boolean; error?: string }> {
-		const validate =
-			"function (newDoc, oldDoc, userCtx) {\n" +
-			"  if (userCtx && userCtx.roles && userCtx.roles.indexOf('_admin') >= 0) return;\n" +
-			"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
-			"  var teacherOnly = ['notice','timetable','routine','assignment'];\n" +
-			"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
-			// response(읽음/댓글)는 자기 소유만. message(대화)는 협업 콘텐츠(note/feedback와 동일)로 보고
-			// 소유 검사하지 않는다 — byUser는 앱 정체성(교사='manager')이라 CouchDB 계정명과 달라 정상 메시지가
-			// 거부되던 문제를 피한다. 쓰기 권한은 DB _security(구성원/관리자)가 이미 제한한다.
-			"  if (t === 'response') {\n" +
-			"    var owner = newDoc._deleted ? (oldDoc && oldDoc.byUser) : newDoc.byUser;\n" +
-			"    if (owner && owner !== userCtx.name) throw({ forbidden: 'own doc only' });\n" +
-			"  }\n" +
-			"}";
+	async putValidateDesignDoc(remoteDb: string): Promise<{ ok: boolean; error?: string }> {
 		const path = `${encodeURIComponent(remoteDb)}/_design/auth`;
+		const validate = VALIDATE_DOC_SOURCE;
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const existing = await this.req("GET", path);
 			const body: Record<string, unknown> = { _id: "_design/auth", language: "javascript", validate_doc_update: validate };
