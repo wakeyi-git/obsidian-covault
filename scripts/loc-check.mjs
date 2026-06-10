@@ -17,7 +17,7 @@ const OVERRIDES = {
 	"src/main.ts": 1035, // +Hocuspocus 전환 DI 배선 2줄(mintMemberToken·writeRtControl)
 	"src/settings/SettingsTab.ts": 1092, // 범위 밖(+그룹 관리, +실시간 서버 서비스 계정 설정)
 	"src/modes/ClassroomController.ts": 1040, // 범위 밖(+그룹 대화·대화 기능)
-	"src/core/realtime/RealtimeManager.ts": 701, // 범위 밖(게이트 로직은 main에 있음) — +서버 거부 재시도 백오프
+	"src/core/realtime/RealtimeManager.ts": 703, // 범위 밖(게이트 로직은 main에 있음) — +서버 거부 재시도 백오프
 };
 
 function walk(dir) {

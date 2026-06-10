@@ -50,6 +50,7 @@
 		"no_2": "no",
 		"realtime_connected": "Realtime connected: {path}",
 		"realtime_auth_failed": "Realtime auth rejected ({path}): {reason} — check the secret, token expiry, or file participants.",
+		"realtime_reauth_reconnect": "Realtime re-auth ({path}): the server reset the connection after a participant/policy change — reconnecting shortly.",
 		"realtime_session_started_room": "Realtime session started: {path} (room={room})",
 		"realtime_check_enabled_url_globaltoken_spacetoke": "Realtime check — enabled={enabled}, url={url}, spaceTokens={spaceTokens}",
 		"shared_folders": "Shared folders: {folders}",

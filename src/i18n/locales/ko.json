@@ -50,6 +50,7 @@
 		"no_2": "안됨",
 		"realtime_connected": "실시간 연결: {path}",
 		"realtime_auth_failed": "실시간 인증 거부({path}): {reason} — 시크릿/토큰 만료/참여자 지정을 확인하세요.",
+		"realtime_reauth_reconnect": "실시간 재인가({path}): 참여자/정책 변경으로 서버가 연결을 재설정 — 곧 재연결합니다.",
 		"realtime_session_started_room": "실시간 세션 시작: {path} (room={room})",
 		"realtime_check_enabled_url_globaltoken_spacetoke": "실시간 점검 — enabled={enabled}, url={url}, 공간토큰={spaceTokens}",
 		"shared_folders": "공동 폴더: {folders}",

@@ -314,14 +314,15 @@ export class RealtimeManager {
 			},
 			onAuthenticationFailed: ({ reason }) => {
 				// 시크릿 불일치/토큰 만료/참가자 제외(서버 강퇴 후 재인가 거부) — 백오프 후 재평가한다.
-				this.noteServerRefusal(path, dbPath, String(reason ?? ""));
+				this.noteServerRefusal(path, dbPath, String(reason ?? ""), false);
 			},
 			onClose: ({ event }) => {
 				// 서버 종료 신호: 참가자(rtpart)/정책(rtcontrol) 변경 재인가 또는 서버측 오류(시드 실패 등)로
 				// 문서 연결을 닫는다(reason="Reset Connection"). 백오프 후 재평가 — 여전히 허용이면 다시 연결된다.
-				// 일반 네트워크 끊김은 소켓이 자동 재연결·재인증하므로 여기서 처리하지 않는다.
+				// 참여자 지정/해제 때마다 일어나는 **정상 흐름**이므로 조용히(로그만) 처리한다 — 진짜 거부면
+				// 재접속 시 onAuthenticationFailed가 알림을 띄운다. 일반 네트워크 끊김은 소켓이 자동 복구한다.
 				if (event?.reason !== "Reset Connection") return;
-				this.noteServerRefusal(path, dbPath, "server closed (re-auth or server error)");
+				this.noteServerRefusal(path, dbPath, "server reset (re-auth)", true);
 			},
 			onSynced: () => {
 				if (syncedOnce) return;
@@ -368,16 +369,17 @@ export class RealtimeManager {
 
 	/**
 	 * 서버가 이 문서의 연결을 거부/종료했을 때: 세션을 정리하고 지수 백오프(2s→최대 60s) 후 재평가한다.
-	 * 알림(Notice)은 첫 실패만 — 서버가 지속 거부(시크릿 불일치, CouchDB 미연동 등)할 때 알림 폭주로
-	 * 설정 변경조차 못 하게 되는 것을 막는다. 이후 실패는 로그 패널에만 남는다.
+	 * silent=true(정상 재인가 — 참여자 지정/해제로 서버가 연결을 재설정)는 로그만 남기고,
+	 * 진짜 인증 거부는 첫 실패만 알림(Notice) — 지속 거부 시 알림 폭주로 설정 변경조차 못 하게 되는 것을 막는다.
 	 */
-	private noteServerRefusal(path: string, dbPath: string, reason: string): void {
+	private noteServerRefusal(path: string, dbPath: string, reason: string, silent: boolean): void {
 		const st = this.retryState.get(path) ?? { failures: 0, until: 0 };
 		st.failures++;
 		const delay = Math.min(60_000, 2_000 * 2 ** (st.failures - 1));
 		st.until = Date.now() + delay;
 		this.retryState.set(path, st);
-		this.core.logger.warn(t("realtime.realtime_auth_failed", { path: dbPath, reason }), st.failures === 1);
+		if (silent) this.core.logger.info(t("realtime.realtime_reauth_reconnect", { path: dbPath }));
+		else this.core.logger.warn(t("realtime.realtime_auth_failed", { path: dbPath, reason }), st.failures === 1);
 		void this.endSession(path).then(() => {
 			window.setTimeout(() => this.invalidateParticipants(path), delay);
 		});
