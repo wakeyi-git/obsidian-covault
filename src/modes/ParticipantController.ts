@@ -23,6 +23,8 @@ export interface ParticipantDeps {
 	saveSettings(): Promise<void>;
 	/** 공유 읽기전용 변경을 rtconfig로 구성원에 전파. */
 	refreshMemberShares(): Promise<void>;
+	/** 실시간 인가 기본값(rtcontrol)을 공유 공간 DB에 기록 — Hocuspocus 서버가 즉시 재인가. */
+	writeRtControl(): Promise<void>;
 }
 
 export class ParticipantController {
@@ -115,6 +117,7 @@ export class ParticipantController {
 		s.sharedReadOnly = on;
 		await this.d.saveSettings();
 		await this.d.refreshMemberShares(); // rtconfig로 전 구성원에 전파
+		await this.d.writeRtControl(); // 서버 인가 기본값 갱신(rtcontrol) → 활성 연결 재인가
 		this.d.realtime().syncOpenEditors();
 	}
 

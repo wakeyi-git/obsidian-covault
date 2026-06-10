@@ -9,6 +9,8 @@ import { App, SecretStorage } from "obsidian";
 export const YJS_SECRET_ID = "covault-yjs-secret";
 /** 활성 CouchDB 계정 비밀번호(교사 admin / 학생 본인). replication·프로비저닝에 사용. */
 export const COUCH_PASSWORD_ID = "covault-couch-password";
+/** 실시간 서버 전용 CouchDB 서비스 계정 비밀번호(교사 보유). 배포 시 계정 생성·DB 멤버 추가에 사용. */
+export const RT_SERVICE_PASSWORD_ID = "covault-rt-service-password";
 
 /** base64url 인코딩(UTF-8 안전). 키에 memberId를 충돌 없이 담는 용도. */
 function b64url(s: string): string {
@@ -79,6 +81,11 @@ export function getCouchPassword(app: App, fallback: string | undefined): string
 /** Yjs 공간 시크릿 조회(시크릿 우선, 없으면 평문 fallback). */
 export function getYjsSecret(app: App, fallback: string | undefined): string {
 	return getSecretValue(app, YJS_SECRET_ID, fallback);
+}
+
+/** 실시간 서버 CouchDB 서비스 계정 비밀번호 조회(교사). 평문 폴백 없음(Secret Storage 전용). */
+export function getRtServicePassword(app: App): string {
+	return getSecretValue(app, RT_SERVICE_PASSWORD_ID, undefined);
 }
 
 /**

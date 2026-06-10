@@ -130,6 +130,20 @@ export interface RtConfigDoc extends PouchDocBase {
 export const RTCONFIG_DOC_ID = "rtconfig";
 
 /**
+ * 실시간 인가 기본값(공유 공간 DB에 기록). 교사가 share_* DB에 직접 기록하고, Hocuspocus 서버가
+ * 파일별 지정(rtpart)이 없을 때의 기본 허용을 판단하는 데 읽는다(rtpart 없음 + sharedReadOnly=true → 거부).
+ * 서버의 _changes 감시 대상이기도 하다(변경 시 활성 연결 재인가).
+ */
+export interface RtControlDoc extends PouchDocBase {
+	type: "rtcontrol";
+	enabled: boolean;
+	sharedReadOnly: boolean;
+	updatedAtMs: number;
+}
+
+export const RTCONTROL_DOC_ID = "rtcontrol";
+
+/**
  * 피드백 앵커(판별 유니온). 마크다운 본문은 텍스트 범위, Excalidraw 드로잉은 요소 id/좌표에 앵커한다.
  * 하위호환: 기존 문서는 `kind`가 없으므로 text로 간주한다(isTextAnchor 참조).
  */

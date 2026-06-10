@@ -149,12 +149,21 @@ export interface CoVaultSettings {
 	yjsTokenTtlDays?: number;
 
 	/**
+	 * 실시간 서버 전용 CouchDB 서비스 계정명(교사). 배포 시 계정을 생성하고 모든 share/mirror DB의
+	 * _security 멤버로 추가한다 → Hocuspocus 서버가 admin 비밀번호 없이 인가 조회·스냅샷 저장을 한다.
+	 * 비밀번호는 Secret Storage(RT_SERVICE_PASSWORD_ID) 보관, 서버에는 env로 전달.
+	 */
+	rtServiceUsername?: string;
+	/** 서비스 계정 비밀번호가 Secret Storage에 저장됐는지(UI 표시용). */
+	rtServicePasswordSet?: boolean;
+
+	/**
 	 * 초대 코드 만료(일). 0=무만료. 발급 시 payload에 exp를 넣어, 만료된 QR/딥링크 적용을 차단한다.
 	 * 장기 유효 비밀번호가 든 오래된 초대 노출을 줄인다(보고서 P2 완화).
 	 */
 	inviteTtlDays?: number;
 
-	/** 실시간 세션 중 CouchDB 스냅샷 주기(초). 0=끔. 기술문서 §19.2. 교사 설정 → rtconfig로 전파. */
+	/** @deprecated 세션 중 스냅샷은 Hocuspocus 서버(STORE_DEBOUNCE_MS)가 담당 — 더는 사용되지 않음(설정 호환용 유지). */
 	realtimeSnapshotSec: number;
 	/** 공유 공간 파일을 구성원에게 읽기 전용으로 강제(실시간 세션 활성 파일만 편집 가능). 교사 설정 → rtconfig 전파. */
 	sharedReadOnly?: boolean;

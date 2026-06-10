@@ -8,11 +8,12 @@
 CoVault는 **독립적인 두 서버**가 필요합니다:
 
 - **CouchDB** — 파일 동기화를 위한 중앙 데이터베이스. **필수.**
-- **Yjs WebSocket 서버** — 문자 단위 실시간 공동 편집용. **선택** — 실시간이 필요할 때 나중에 구축하면 됩니다. 파일
+- **실시간 서버(Hocuspocus)** — 문자 단위 실시간 공동 편집용. **선택** — 실시간이 필요할 때 나중에 구축하면 됩니다. 파일
   동기화는 이 서버 없이도 완전히 동작합니다.
 
-두 서버는 **서로 통신하지 않으며**(플러그인이 둘의 유일한 클라이언트), 같은 머신에 두거나 완전히 다른 제공자에 나눠 둘 수
-있습니다. 이 폴더는 두 서버 모두를 설명하며, Yjs 서버의 구동 파일은 [`yjs/`](yjs/)에 들어 있습니다.
+실시간 서버는 CouchDB의 클라이언트이기도 합니다(파일 단위 인가 조회 + 문서 스냅샷 저장). 같은 머신에 두거나 다른
+제공자에 나눠 둘 수 있습니다 — 실시간 서버가 CouchDB 주소에 닿을 수만 있으면 됩니다. 이 폴더는 두 서버 모두를
+설명하며, 실시간 서버의 구동 파일은 [`hocuspocus/`](hocuspocus/)에 들어 있습니다.
 
 ---
 
@@ -42,24 +43,23 @@ CoVault는 **독립적인 두 서버**가 필요합니다:
 
 ## 구조와 제약
 
-플러그인은 독립된 두 엔드포인트와 통신하며, 둘을 잇는 유일한 주체입니다:
+플러그인은 독립된 두 엔드포인트와 통신하고, 실시간 서버는 CouchDB의 클라이언트이기도 합니다:
 
 ```
             ┌──────────────── CouchDB    (PouchDB HTTP/HTTPS 복제)
-플러그인     │
-(운영자/      ├──────────────── Yjs 서버    (WebSocket / WSS)
- 구성원)       │
-            └─ 실시간 스냅샷은 플러그인이 → CouchDB에 기록
+플러그인     │                      ▲
+(운영자/      ├──────────────── 실시간 서버(Hocuspocus, WebSocket/WSS)
+ 구성원)       │                      └─ 파일 단위 인가 조회(rtpart/rtcontrol) + note 스냅샷 저장
 ```
 
-- **Yjs 서버는 CouchDB에 전혀 접속하지 않습니다.** `ws`/`y-websocket` + HMAC만 사용하고 LevelDB에 로컬로 영속
-  저장합니다. 실시간 편집이 CouchDB에 반영되는 것은 *플러그인*이 라이브 문서를 주기적으로 스냅샷해 동기화 계층으로
-  되돌려 쓰기 때문이며, 서버 간 직접 연결이 아닙니다.
-- 따라서 **CouchDB와 Yjs 서버는 같은 위치에 있을 필요가 없습니다**: 서로 다른 호스트·제공자·리전이어도 무방합니다.
-  한 서버에 함께 두는 것은 순전히 운영 편의(한 대의 머신, 하나의 리버스 프록시)일 뿐입니다.
+- **실시간 서버가 CouchDB에 접속합니다**(전용 서비스 계정 권장). 파일별 참여자 지정(rtpart)을 읽어 입장을
+  서버에서 강제하고, 편집 내용을 디바운스로 CouchDB note 문서에 스냅샷합니다 — 클라이언트의 단일 작성자
+  선출·주기 스냅샷은 제거되었습니다. Yjs 상태 자체는 SQLite(`/data`)에 로컬로 영속 저장합니다.
+- **CouchDB와 실시간 서버는 같은 머신일 필요가 없습니다** — 실시간 서버에서 CouchDB 주소(`COUCHDB_URL`)에
+  닿을 수만 있으면 됩니다. 한 서버에 함께 두는 것이 운영은 가장 단순합니다(한 대의 머신, 하나의 리버스 프록시).
 - 하드 제약은 **도달성**(모든 클라이언트가 인터넷으로 둘 다에 닿을 수 있어야 함 — 원격 구성원이 있으면 어느 쪽도 LAN 전용
-  주소에 둘 수 없음), **HTTPS/WSS**(모바일은 보안 전송 필수), 그리고 Yjs 서버와 플러그인 설정 간의
-  **`YJS_SECRET` 일치**입니다.
+  주소에 둘 수 없음), **HTTPS/WSS**(모바일은 보안 전송 필수), 실시간 서버와 플러그인 설정 간의
+  **`YJS_SECRET` 일치**, 그리고 실시간 서버 → CouchDB **서비스 계정**(`COUCHDB_USER`/`COUCHDB_PASSWORD`)입니다.
 
 ---
 
@@ -213,89 +213,95 @@ CouchDB는 표준 소프트웨어라, 플러그인은 HTTPS URL + 관리자 계�
 
 ---
 
-# Yjs 실시간 서버 (선택)
+# 실시간 서버 — Hocuspocus (선택)
 
-**실시간 공동 편집**에만 필요 — 파일 동기화(CouchDB)와 독립적이라, **파일 동기화만 쓸 거면 통째로 건너뜁니다.** CouchDB가
-동작한 *뒤* 구축하세요. 구동 파일은 [`yjs/`](yjs/)에 있습니다:
+**실시간 공동 편집**에만 필요 — **파일 동기화만 쓸 거면 통째로 건너뜁니다.** CouchDB가
+동작한 *뒤* 구축하세요(실시간 서버가 CouchDB에 접속해 인가 조회·스냅샷 저장을 합니다). 구동 파일은
+[`hocuspocus/`](hocuspocus/)에 있습니다:
 
-- [`yjs/server.js`](yjs/server.js) — **공간별 HMAC `YJS_SECRET`** 인증을 쓰는 y-websocket 서버. (레거시 전역
-  `YJS_TOKEN` 모드가 코드에 남아 있지만 **더 이상 사용되지 않습니다** — 현재 플러그인은 공간별 HMAC 토큰만
-  발급하므로 `YJS_SECRET`을 설정하세요.)
-- [`yjs/Dockerfile`](yjs/Dockerfile) / [`yjs/docker-compose.yml`](yjs/docker-compose.yml) /
-  [`yjs/package.json`](yjs/package.json) — 컨테이너 빌드 + 실행(영속 저장은 `./data`, LevelDB).
-- [`yjs/disable-yjs-accesslog.sh`](yjs/disable-yjs-accesslog.sh) — 리버스 프록시 접근 로그에 `?token=`이 남지 않게
-  하는 시놀로지 DSM 헬퍼.
+- [`hocuspocus/server.js`](hocuspocus/server.js) — Hocuspocus v4 서버. **멤버별 HMAC 토큰**(`YJS_SECRET`) 인증 +
+  CouchDB 기반 **파일 단위 인가**(rtpart, 참가자 제거 시 즉시 강퇴) + **서버 시드/스냅샷**(onLoadDocument/onStoreDocument).
+- [`hocuspocus/auth.js`](hocuspocus/auth.js) / [`hocuspocus/couch.js`](hocuspocus/couch.js) — 토큰 검증·CouchDB 클라이언트.
+- [`hocuspocus/Dockerfile`](hocuspocus/Dockerfile) / [`hocuspocus/docker-compose.yml`](hocuspocus/docker-compose.yml) /
+  [`hocuspocus/package.json`](hocuspocus/package.json) — 컨테이너 빌드 + 실행(Yjs 상태 영속은 `./data`의 SQLite 단일 파일).
 
-## 따라하기: CouchDB와 같은 호스트에 Yjs
+> 토큰은 WebSocket 연결 후 **인증 메시지**로 전달됩니다(URL 쿼리 아님) — 구 y-websocket 서버에 필요했던
+> 프록시 접근 로그 마스킹(`disable-yjs-accesslog.sh`)은 폐지되었습니다.
 
-**1. 파일을 서버로 가져오기**(레포 클론, 또는 `server/yjs/` 폴더 복사):
+## 따라하기: CouchDB와 같은 호스트에 실시간 서버
+
+**1. 파일을 서버로 가져오기**(레포 클론, 또는 `server/hocuspocus/` 폴더 복사):
 ```bash
 git clone https://github.com/wakeyi-git/obsidian-covault.git
-cd obsidian-covault/server/yjs
+cd obsidian-covault/server/hocuspocus
 ```
 
-**2. 시크릿 설정 후 시작.** 길고 무작위인 `YJS_SECRET`을 생성합니다(이게 HMAC 키이며, 같은 값을 플러그인에 붙여넣습니다):
+**2. 환경 설정 후 시작.** 길고 무작위인 `YJS_SECRET`(HMAC 키 — 같은 값을 플러그인에 붙여넣습니다)과
+CouchDB 접속 정보를 `docker-compose.yml`에 채웁니다:
 ```bash
-echo "YJS_SECRET=$(openssl rand -hex 32)" >> .env
+openssl rand -hex 32            # → YJS_SECRET 값으로
+# docker-compose.yml: YJS_SECRET / COUCHDB_URL / COUCHDB_USER / COUCHDB_PASSWORD 입력
 docker compose up -d --build
-docker compose logs -f          # 기동 로그에 auth: hmac (per-space) 가 보여야 함
+docker compose logs -f          # 기동 로그에 auth: hmac per-member (file-level: on (CouchDB)) 가 보여야 함
 ```
-LAN에서 점검: `http://<host>:1234` → `Yjs WebSocket server OK`. (`YJS_SECRET`이 `CHANGE_ME` 같은 placeholder거나
-16자 미만이면 서버가 기동을 거부합니다 — 의도된 동작입니다.)
+LAN에서 점검: `http://<host>:1234` → `CoVault realtime server OK`. (`YJS_SECRET`이 없거나 `CHANGE_ME` 같은
+placeholder, 16자 미만이면 서버가 기동을 거부합니다 — 의도된 동작입니다.)
 
-**3. `wss://`로 노출.** `yjs.example.com` → `localhost:1234` 리버스 프록시 항목을 추가:
+`COUCHDB_USER`는 플러그인 설정의 **‘실시간 서버 계정’**(권장 `covault-rt`)과 같은 값으로 둡니다 — 배포 시
+플러그인이 계정을 만들고 share/mirror DB 권한을 부여합니다(admin 비밀번호를 서버에 줄 필요 없음).
+
+**3. `wss://`로 노출.** `rt.example.com` → `localhost:1234` 리버스 프록시 항목을 추가:
 - **Caddy:** Caddyfile에 블록을 추가하고 reload(WebSocket 자동 처리):
   ```caddyfile
-  yjs.example.com {
+  rt.example.com {
       reverse_proxy localhost:1234
-      log { output discard }      # ?token= 을 접근 로그에서 제외
   }
   ```
-- **시놀로지:** 두 번째 리버스 프록시 항목(`yjs.yourname.synology.me` → `localhost:1234`)을 만들고 **WebSocket
-  헤더를 켜야** 합니다 — [시놀로지 + WebSocket](#httpswss로-노출하기) 참고.
+- **시놀로지:** 두 번째 리버스 프록시 항목(`rt.yourname.synology.me` → `localhost:1234`)을 만들고 **WebSocket
+  헤더를 켜야** 합니다 — [시놀로지 + WebSocket](#httpswss로-노출하기) 참고. GUI 전체 절차는
+  `docs/hocuspocus-server-synology.md`(로컬 문서)에 있습니다.
 
-**4. 플러그인 설정.** 설정 → **Yjs 서버 URL** = `wss://yjs.example.com`, **Yjs 공간 시크릿(HMAC)** = `YJS_SECRET`과
-정확히 같은 값. 실시간을 켜고 공동 공간을 **배포**하면 공간별 서명 토큰이 구성원에게 자동 발급됩니다.
+**4. 플러그인 설정.** 설정 → **Yjs 서버 URL** = `wss://rt.example.com`, **Yjs 공간 시크릿(HMAC)** = `YJS_SECRET`과
+정확히 같은 값, **실시간 서버 계정/비밀번호** = `COUCHDB_USER`/`COUCHDB_PASSWORD`와 같은 값. 실시간을 켜고
+공동 공간을 **배포**하면 멤버별 서명 토큰이 구성원에게 자동 발급되고 서비스 계정 권한이 부여됩니다.
 
 ## 안전하게 만들기 (실사용 필수)
 
 1. **포트 1234를 직접 노출하지 마세요.** 항상 **HTTPS 리버스 프록시(`wss://`)** 뒤에 두고 WebSocket
    `Upgrade`/`Connection` 헤더를 전달합니다.
-2. **`YJS_SECRET` 일치.** 서버 환경변수와 플러그인의 *Yjs 공간 시크릿(HMAC)* 은 **같은 값**이어야 합니다. 그러면
-   유출된 공간 토큰도 해당 공간 room만 접근 가능(서버가 room이 `<workspaceId>/share/<spaceId>/`로 시작하는지 검증).
-3. **토큰을 로그에 남기지 마세요.** 토큰은 `?token=` 쿼리로 전달되므로 프록시/CDN/모니터링의 쿼리 로깅을
-   마스킹/비활성화(시놀로지 DSM: [`yjs/disable-yjs-accesslog.sh`](yjs/disable-yjs-accesslog.sh); Caddy:
-   `log { output discard }`; nginx: `access_log off` 또는 `$args` 제거 포맷). 토큰은 WSS로 전송되어 전송 중 노출은
-   없으며, 위험은 평문 토큰이 로그에 쌓이는 것입니다.
+2. **`YJS_SECRET` 일치.** 서버 환경변수와 플러그인의 *Yjs 공간 시크릿(HMAC)* 은 **같은 값**이어야 합니다.
+   토큰은 멤버별 클레임(공간·DB·멤버·역할)을 담아 서명되므로, 유출돼도 **그 공간 + 그 구성원의 권한**으로만
+   접근 가능합니다(서버가 room 접두사와 파일별 참여자까지 검증).
+3. **CouchDB 자격증명은 전용 서비스 계정으로.** admin 계정도 동작하지만 서버가 탈취되면 CouchDB 전체가
+   노출됩니다 — 플러그인의 ‘실시간 서버 계정’으로 만든 계정은 share/mirror DB에만 접근합니다.
 
-## 모든 Yjs 호스트의 공통 요건
+## 모든 실시간 서버 호스트의 공통 요건
 
-이것은 **직접 운영하는 서버(`yjs/`)** 이지 범용 Yjs 서비스가 아닙니다. 어디서 돌리든:
+이것은 **직접 운영하는 서버(`hocuspocus/`)** 이지 범용 Yjs 서비스가 아닙니다. 어디서 돌리든:
 
 - **상시 가동되는 장수명 프로세스.** WebSocket 세션은 지속적이라, 유휴 시 인스턴스를 0으로 줄이는 플랫폼은 실시간
   세션을 끊습니다. 상시 가동 인스턴스를 고르세요.
-- **LevelDB용 영속 볼륨**(컨테이너의 `/data`) — 재시작 시 스냅샷되지 않은 상태가 사라지지 않게. (정본은 플러그인
-  스냅샷으로 CouchDB에 남고, LevelDB 캐시는 재시작을 매끄럽게 할 뿐입니다.)
+- **SQLite용 영속 볼륨**(컨테이너의 `/data`) — 재시작 시 라이브 세션 상태가 사라지지 않게. (마크다운 본문의 정본은
+  서버 스냅샷으로 CouchDB에 남고, SQLite는 재시작·재접속을 매끄럽게 합니다.)
+- **CouchDB 도달성** — 서버에서 `COUCHDB_URL`로 접속 가능해야 파일 단위 인가·시드·스냅샷이 동작합니다.
 - **WSS 종단 + WebSocket 통과** — 프록시가 `Upgrade`/`Connection`을 전달하고 장수명 연결을 허용해야 함(읽기 타임아웃
   상향).
-- **작은 사양.** y-websocket은 활성 문서를 메모리에 두며, 조직 규모엔 **1 vCPU / 512 MB–1 GB** 면 충분.
+- **작은 사양.** 활성 문서만 메모리에 올리고 유휴 문서는 내려가므로, 조직 규모엔 **1 vCPU / 512 MB–1 GB** 면 충분.
 
-## Yjs 호스팅 선택지
+## 실시간 서버 호스팅 선택지
 
 **① CouchDB와 같은 머신** — *운영이 가장 단순.* 한 머신, 두 라우트의 리버스 프록시 하나(`couch.` 서브도메인 → `5984`,
-`yjs.` 서브도메인 → `1234`). 실시간은 버스트성 WebSocket, CouchDB는 평문 HTTP라 조직 부하에선 1–2 GB 머신에서 무난히
-공존합니다.
+`rt.` 서브도메인 → `1234`). `COUCHDB_URL`은 내부 주소로 바로 연결.
 
-**② 클라우드 VPS / 홈서버 (CouchDB와 분리)** — 따라하기와 동일한 단계를 별도 호스트에서. 512 MB–1 GB면 충분. 실시간을
-파일 동기화와 분리하거나 구성원에 더 가까운 리전에 두고 싶을 때 좋음.
+**② 클라우드 VPS / 홈서버 (CouchDB와 분리)** — 따라하기와 동일한 단계를 별도 호스트에서. 512 MB–1 GB면 충분.
+`COUCHDB_URL`이 공인 HTTPS 주소가 되므로 전송 구간도 암호화됩니다.
 
-**③ PaaS (Railway / Render / Fly.io)** — `yjs/` 이미지를 `/data` **영속 볼륨**과 함께 배포. 플랜이 **상시 가동
+**③ PaaS (Railway / Render / Fly.io)** — `hocuspocus/` 이미지를 `/data` **영속 볼륨**과 함께 배포. 플랜이 **상시 가동
 (scale-to-zero 아님)** 이고 WebSocket을 통과시키는지 확인하세요; 아니면 유휴 세션이 끊깁니다. TLS·도메인은 자동.
 
 **④ ⚠️ 매니지드 Yjs SaaS (PartyKit, Liveblocks, Hocuspocus Cloud, y-sweet) — 그대로 대체 불가.** 이들은 이 서버의
-공간별 HMAC `?token=` 검증이나 `<workspaceId>/share/<spaceId>/` room 검사를 구현하지 않으므로, 플러그인의 공간 격리 보안 모델이
-적용되지 않습니다(토큰이 의도보다 넓은 접근을 허용). 이 서버를 그대로 운영하세요 — 인증 방식을 다른 백엔드에 이식하는 것은
-가능하지만 설정이 아니라 수동 작업입니다.
+멤버별 HMAC 토큰 검증, room 접두사 검사, CouchDB 기반 파일 단위 인가/스냅샷을 구현하지 않으므로 CoVault의 보안·저장
+모델이 적용되지 않습니다. 이 서버를 그대로 운영하세요.
 
 ---
 

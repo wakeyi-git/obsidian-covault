@@ -9,7 +9,7 @@ import { PathSuggest } from "../ui/PathSuggest";
 import { validateFolderName, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
 import { sharedSpaceStatus } from "./sharedSpaceStatus";
-import { setSecretValue, hasSecretStorage, getYjsSecret, getCouchPassword, persistCouchPassword, YJS_SECRET_ID } from "../core/secret";
+import { setSecretValue, hasSecretStorage, getYjsSecret, getCouchPassword, persistCouchPassword, YJS_SECRET_ID, RT_SERVICE_PASSWORD_ID } from "../core/secret";
 import { t } from "../i18n";
 
 // SettingGroup.listEl은 Obsidian 런타임에 1.11.0부터 존재하지만(공식 @since 1.11.0),
@@ -407,21 +407,36 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					});
 				}),
 		);
+		// 세션 중 CouchDB 스냅샷은 Hocuspocus 서버(onStoreDocument 디바운스)가 담당한다 — 주기 설정 UI 제거.
+		// 서버가 CouchDB에 접근할 전용 계정(권장). 배포 시 계정을 만들고 share/mirror DB 권한을 부여한다.
 		rt.addSetting((set) =>
 			set
-				.setName(t("settings.in_session_snapshot_interval_sec"))
-				.setDesc(t("settings.periodically_saves_content_to_couchdb_during"))
+				.setName(t("settings.rt_service_account"))
+				.setDesc(t("settings.rt_service_account_desc"))
 				.addText((txt) => {
-					txt.setPlaceholder("0").setValue(String(s.realtimeSnapshotSec));
-					txt.inputEl.type = "number";
+					txt.setPlaceholder("covault-rt").setValue(s.rtServiceUsername ?? "");
+					noAutoCorrect(txt.inputEl);
 					txt.onChange(async (v) => {
-						const n = Number(v);
-						s.realtimeSnapshotSec = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+						s.rtServiceUsername = v.trim() || undefined;
 						await this.host.saveSettings();
 					});
 				}),
 		);
-
+		rt.addSetting((set) =>
+			set
+				.setName(t("settings.rt_service_password"))
+				.setDesc(t("settings.rt_service_password_desc"))
+				.addText((txt) => {
+					txt.setPlaceholder(s.rtServicePasswordSet ? t("common.set") : "").onChange(async (v) => {
+						const val = v.trim();
+						setSecretValue(this.host.app, RT_SERVICE_PASSWORD_ID, val);
+						s.rtServicePasswordSet = !!val;
+						await this.host.saveSettings();
+					});
+					txt.inputEl.type = "password";
+					noAutoCorrect(txt.inputEl);
+				}),
+		);
 	}
 
 	private renderSharedCard(group: SettingGroup, sp: SharedSpace, index: number): void {

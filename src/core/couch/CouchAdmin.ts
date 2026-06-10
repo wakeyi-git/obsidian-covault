@@ -85,22 +85,14 @@ export class CouchAdmin {
 	}
 
 	/**
-	 * 학생 프로비저닝(멱등). 계정/DB/권한을 보장한다.
-	 * 이미 있는 계정은 비밀번호를 갱신한다(초대 재발급).
+	 * CouchDB 계정 생성/갱신(멱등). 비밀번호를 반드시 반영한다. 409(rev 충돌)이면 최신 _rev로 재시도.
+	 * 409를 성공으로 넘기면 옛 비밀번호가 남아 로그인 401을 맞으므로 반드시 끝까지 갱신한다.
+	 * 학생 계정과 실시간 서버 서비스 계정 생성이 공유한다.
 	 */
-	async provisionMember(opts: {
-		username: string;
-		password: string;
-		remoteDb: string;
-	}): Promise<{ ok: boolean; error?: string }> {
-		const { username, password, remoteDb } = opts;
+	async ensureUser(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
 		const userId = `org.couchdb.user:${username}`;
 		const userPath = `_users/${encodeURIComponent(userId)}`;
-
-		// 1) 학생 계정 생성/갱신 (비밀번호 반드시 반영). 409(rev 충돌)이면 최신 _rev로 재시도.
-		//    409를 성공으로 넘기면 옛 비밀번호가 남아 학생이 401을 맞으므로 반드시 끝까지 갱신한다.
-		let userOk = false;
-		for (let attempt = 0; attempt < 3 && !userOk; attempt++) {
+		for (let attempt = 0; attempt < 3; attempt++) {
 			const existing = await this.req("GET", userPath);
 			const userDoc: Record<string, unknown> = { _id: userId, name: username, password, roles: [], type: "user" };
 			if (existing.status === 200 && existing.json?._rev) {
@@ -111,21 +103,35 @@ export class CouchAdmin {
 				if (delRev) userDoc._rev = delRev;
 			}
 			const putUser = await this.req("PUT", userPath, userDoc);
-			if (putUser.status < 300) {
-				userOk = true;
-			} else if (putUser.status === 409) {
-				continue; // 최신 _rev로 재시도
-			} else {
-				return {
-					ok: false,
-					error: t("couch.failed_to_create_account_http", {
-						status: putUser.status,
-						reason: this.reasonOf(putUser),
-					}),
-				};
-			}
+			if (putUser.status < 300) return { ok: true };
+			if (putUser.status === 409) continue; // 최신 _rev로 재시도
+			return {
+				ok: false,
+				error: t("couch.failed_to_create_account_http", {
+					status: putUser.status,
+					reason: this.reasonOf(putUser),
+				}),
+			};
 		}
-		if (!userOk) return { ok: false, error: t("couch.failed_to_update_account_password_repeated") };
+		return { ok: false, error: t("couch.failed_to_update_account_password_repeated") };
+	}
+
+	/**
+	 * 학생 프로비저닝(멱등). 계정/DB/권한을 보장한다.
+	 * 이미 있는 계정은 비밀번호를 갱신한다(초대 재발급).
+	 * extraMembers: _security에 추가할 부가 계정(실시간 서버 서비스 계정 — mirror 룸 인가/시드/스냅샷용).
+	 */
+	async provisionMember(opts: {
+		username: string;
+		password: string;
+		remoteDb: string;
+		extraMembers?: string[];
+	}): Promise<{ ok: boolean; error?: string }> {
+		const { username, password, remoteDb, extraMembers = [] } = opts;
+
+		// 1) 학생 계정 생성/갱신
+		const user = await this.ensureUser(username, password);
+		if (!user.ok) return user;
 
 		// 2) mirror DB 생성 (이미 있으면 412/409 무시)
 		const putDb = await this.req("PUT", encodeURIComponent(remoteDb));
@@ -139,8 +145,8 @@ export class CouchAdmin {
 			};
 		}
 
-		// 3) _security: 학생 본인만 멤버 (서버 admin은 항상 접근)
-		const sec = await this.setSecurity(remoteDb, [username]);
+		// 3) _security: 학생 본인 + (있으면) 실시간 서비스 계정 (서버 admin은 항상 접근)
+		const sec = await this.setSecurity(remoteDb, [username, ...extraMembers]);
 		if (!sec.ok) return sec;
 		return { ok: true };
 	}
@@ -158,7 +164,7 @@ export class CouchAdmin {
 	}
 
 	/**
-	 * 공유 공간 프로비저닝(멱등). DB 생성 + _security 멤버 = 참여 학생 계정들.
+	 * 공유 공간 프로비저닝(멱등). DB 생성 + _security 멤버 = 참여 학생 계정들(+ 실시간 서비스 계정).
 	 * 학생 계정은 개인 프로비저닝으로 이미 존재한다고 가정.
 	 */
 	async provisionSharedSpace(remoteDb: string, memberUsernames: string[]): Promise<{ ok: boolean; error?: string }> {
@@ -215,7 +221,8 @@ export class CouchAdmin {
 		return { ok: false, error: t("couch.failed_to_write_document_repeated_rev") };
 	}
 
-	private async setSecurity(remoteDb: string, members: string[]): Promise<{ ok: boolean; error?: string }> {
+	/** DB _security 멤버 설정(덮어쓰기). 실시간 서비스 계정 추가 등 배포 후 권한 갱신에도 쓴다. */
+	async setSecurity(remoteDb: string, members: string[]): Promise<{ ok: boolean; error?: string }> {
 		const security = { admins: { names: [], roles: [] }, members: { names: members, roles: [] } };
 		const putSec = await this.req("PUT", `${encodeURIComponent(remoteDb)}/_security`, security);
 		if (putSec.status >= 400) {

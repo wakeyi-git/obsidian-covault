@@ -41,6 +41,8 @@ function ctl(s: CoVaultSettings): MemberController {
 		requestApply: () => {},
 		openLog: async () => {},
 		mintMirror: async () => {},
+		// 멤버별 토큰 발급(실제는 RealtimeController가 m/r 클레임으로 서명) — 테스트는 결정적 문자열로 대체.
+		mintMemberToken: async (sp, memberId) => `member-token:${sp.id}:${memberId}`,
 	});
 }
 
@@ -63,6 +65,15 @@ describe("MemberController.writeMemberSync — shares/rtconfig 조립", () => {
 		expect(spaces.find((x) => x.id === "g1")!.kind).toBe("share");
 		expect(spaces.find((x) => x.id === "hr")!.kind).toBe("homeroom");
 		expect(spaces.find((x) => x.id === "mirror-a")!.kind).toBe("mirror");
+	});
+
+	it("공간 토큰은 교사용(sp.token)이 아닌 멤버별 발급 토큰을 내려보낸다", async () => {
+		const s = settings();
+		const admin = fakeAdmin();
+		await ctl(s).writeMemberSync(admin as any, member);
+		const spaces = (admin.calls.find((c) => c.doc._id === SHARES_DOC_ID)!.doc as SharesDoc).spaces;
+		expect(spaces.find((x) => x.id === "g1")!.token).toBe("member-token:g1:a"); // sp.token("t1") 아님
+		expect(spaces.find((x) => x.id === "mirror-a")!.token).toBe("rt-a"); // mirror는 member.realtimeToken 그대로
 	});
 
 	it("rtconfig는 레거시 전역 토큰을 포함하지 않는다(공간별 HMAC만)", async () => {

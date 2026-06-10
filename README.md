@@ -24,7 +24,7 @@ Highlights:
 - **Shared folders** — a group/workspace shares one folder (dedicated DB + member permissions), auto-propagated to members by manager deploy.
 - **Realtime co-editing** — character-level co-editing of shared-folder notes via Yjs. For **both markdown and Excalidraw**, cursors/names + a **participant chip** (always shown at the bottom-right) reveal who is co-editing — even on tablets/phones without a mouse (image sync; the Excalidraw plugin is required). A separate WebSocket server is needed.
 - **Realtime control & access** — a dedicated **Realtime tab** manages live editing: an on/off toggle, **per-file participant assignment** (only the members you pick co-edit a given note; others stay on plain file sync), an optional **shared-files read-only** policy (members can only edit a shared note while it's an active realtime session for them), and a live **active-sessions list** (open assigned files with one click — they stay listed even when closed). Removing a member from a file ends their live session immediately.
-- **Realtime security** — realtime tokens are issued as **per-shared-space HMAC-signed tokens**, so a leaked token only grants access to **that space's room** (not the whole workspace). The server refuses to start with a known placeholder secret, and the manager's tokens/secret are kept in **Obsidian Secret Storage** (not plaintext in `data.json`).
+- **Realtime security** — realtime tokens are issued as **per-member HMAC-signed tokens**, so a leaked token only grants **that space with that member's permissions** (not the whole workspace). Per-file participant assignment is **enforced by the server** (unassigned members are refused entry and removed members are kicked live), and tokens travel in an authentication message so they never hit proxy access logs. The server refuses to start with a known placeholder secret, and the manager's tokens/secret are kept in **Obsidian Secret Storage** (not plaintext in `data.json`).
 - **Messenger** — a built-in **chat tab**: a **class-wide channel** (homeroom shared DB) and **1:1 DMs** (manager↔member, over the personal mirror DB). Send text, **`[[wikilink]]`s with Obsidian-style autocomplete**, URLs, and **file/image attachments** (the file is copied to the other side); links and image previews render inline. Sender names show for everyone (not raw IDs).
 - **Feedback layer** — leave comments anchored to text without editing the body (on shared and personal notes). The manager can review scattered feedback at once with the **all-unresolved feedback inbox**. Periodic in-session snapshots are also supported.
 - **Classroom dashboard** — an optional manager↔member workspace built on one auto-provisioned **homeroom** shared space: **notices** (read-confirm + class comments + private questions/replies), a **weekly timetable + lessons**, **assignments** (distribute → submit with version snapshot → grade by score/rubric/comment → return), **checklists/routines**, and a **statistics** view (read/submission/score/completion rates, CSV export). Notices and lessons are authored **right in the Obsidian editor using frontmatter** (draft → publish toggle), and notices/lessons/assignments support **reusable content templates**.
@@ -34,7 +34,7 @@ Highlights:
 ### Requirements
 - **Obsidian 1.11.4+** (desktop and mobile). 1.11.4 is required because the plugin uses the Secret Storage API.
 - **Self-hosted CouchDB** (e.g. Synology NAS) — the required central server. [Setup](server/README.md#couchdb-required).
-- **Yjs WebSocket server** — only needed for realtime co-editing. Per-space HMAC tokens (`YJS_SECRET`) recommended ([setup](server/README.md#yjs-realtime-server-optional), runtime files in [`server/yjs/`](server/yjs/)).
+- **Realtime server (Hocuspocus)** — only needed for realtime co-editing. Per-member HMAC tokens (`YJS_SECRET`) + server-side per-file authorization ([setup](server/README.md#realtime-server--hocuspocus-optional), runtime files in [`server/hocuspocus/`](server/hocuspocus/)).
 - **Excalidraw plugin** — only needed for realtime co-editing of Excalidraw drawings (that feature auto-disables if not installed).
 
 ---
@@ -102,15 +102,15 @@ Copy the three outputs to the path in ② above.
 
 ## Server setup
 
-CoVault uses **two independent servers** — **CouchDB** (file sync, required) and a **Yjs WebSocket server**
-(realtime co-editing, optional). They **never talk to each other** (the plugin is the only client of both), so they can
-share one box or run on entirely different providers; the only hard requirement is that **every client (manager + all
-members) reaches each one over HTTPS/WSS**.
+CoVault uses **two servers** — **CouchDB** (file sync, required) and a **realtime server (Hocuspocus)**
+(realtime co-editing, optional). The realtime server is also a CouchDB client (per-file authorization + document
+snapshots). They can share one box or run on different providers; the hard requirements are that **every client
+(manager + all members) reaches each one over HTTPS/WSS** and the realtime server reaches the CouchDB URL.
 
 Full setup lives in **[`server/README.md`](server/README.md)** — Docker commands, hosting options
 (NAS / Raspberry Pi / VPS / PaaS / Cloudant), the architecture and constraints, and the realtime server's security
-(reverse proxy `wss://`, `YJS_SECRET`, access-log masking). The realtime server's runtime files are in
-[`server/yjs/`](server/yjs/).
+(reverse proxy `wss://`, `YJS_SECRET`, CouchDB service account). The realtime server's runtime files are in
+[`server/hocuspocus/`](server/hocuspocus/).
 
 ---
 
@@ -180,38 +180,40 @@ operational badge (not deployed / deployed / members changed — redeploy needed
 > **Optional / advanced.** The core of CoVault is CouchDB **file sync**, which works fully without realtime.
 > Get file sync working first, then enable realtime only when needed.
 
-Co-edit shared-folder notes character-by-character (Yjs). A separate **Yjs WebSocket server** (independent of CouchDB
-file sync) is required; once the manager enters the server URL and space secret in settings and deploys a shared space,
-it propagates to members automatically. Opening a shared-folder note in edit mode connects a realtime session and shows
-each other's cursors/names. While editing, Yjs is authoritative; when the note closes, a snapshot is saved to CouchDB so
-offline members get it (someone who joins the session later also receives the latest shared content immediately).
-Enabling **In-session snapshot interval (sec)** in settings also persists the body to CouchDB periodically before
-closing, so non-realtime/offline members get the latest sooner (only one leader writes, preventing conflicts). A
-**participant chip** (name + color) is always shown at the bottom-right of the editing area so you can see who's
-co-editing even without a mouse (same for markdown and Excalidraw); on touch devices you can double-tap to enter text
-and the pointer follows your swipe immediately.
+Co-edit shared-folder notes character-by-character (Yjs). A separate **Hocuspocus realtime server** is required; once
+the manager enters the server URL and space secret in settings and deploys a shared space, it propagates to members
+automatically. Opening a shared-folder note in edit mode connects a realtime session (all documents share **one
+WebSocket connection**) and shows each other's cursors/names. While editing, Yjs is authoritative; **the server
+automatically snapshots edits to CouchDB** (debounced, with retry), so non-realtime/offline members get the latest
+soon — when the note closes, the client also writes the vault file and uploads once more as a guarantee. Someone who
+joins the session later receives the latest shared content immediately, and document state survives server restarts
+(SQLite). A **participant chip** (name + color) is always shown at the bottom-right of the editing area so you can see
+who's co-editing even without a mouse (same for markdown and Excalidraw); on touch devices you can double-tap to enter
+text and the pointer follows your swipe immediately.
 
 **Realtime control & access (Realtime tab).** The manager controls live editing from the **Realtime tab**: the on/off
-toggle and **in-session snapshot interval** are grouped at the top, followed by an optional **shared-files read-only**
+toggle at the top, followed by an optional **shared-files read-only**
 policy and the **active-sessions list**. With read-only on, members can't freely edit shared notes — a note becomes
 editable only while it's an active realtime session **for that member**. You choose who co-edits **per file**: open a
 note, and in its highlighted session card pick the participating members (default depends on the read-only policy —
 *nobody* when read-only is on, *everyone* when off). Only the chosen members join the live session; the rest stay on plain
-file sync. Each card also lists who's co-editing **by name**, and assigned files stay in the list even when closed so you
-can reopen them with one click. Removing a member from a file **ends their live session immediately** (and re-locks the
-note under the read-only policy). Excalidraw drawings are locked/unlocked the same way (view mode). Troubleshooting
-actions (reissue/redeploy tokens, check realtime status) live in a separate section of the tab. Members get a slim
-Realtime tab that shows only the sessions they're assigned to.
+file sync. This access control is **enforced by the server** — members not on the list are refused entry, and removing
+a member from a file makes the server **drop their live connection immediately** (and re-locks the note under the
+read-only policy). Excalidraw drawings are locked/unlocked the same way (view mode). Each card also lists who's
+co-editing **by name**, and assigned files stay in the list even when closed so you can reopen them with one click.
+Troubleshooting actions (reissue/redeploy tokens, check realtime status) live in a separate section of the tab.
+Members get a slim Realtime tab that shows only the sessions they're assigned to.
 
-To run the Yjs server, see **[`server/README.md` → Yjs realtime server](server/README.md#yjs-realtime-server-optional)** (runtime files in [`server/yjs/`](server/yjs/)).
+To run the realtime server, see **[`server/README.md` → Realtime server](server/README.md#realtime-server--hocuspocus-optional)** (runtime files in [`server/hocuspocus/`](server/hocuspocus/)).
 
 **Realtime token security** — set `YJS_SECRET` on the server and the same value in the plugin's **'Yjs space secret (HMAC)'**;
-then each time the manager deploys a space, a **per-shared-space signed token** is issued and delivered to members. The
-token payload carries `workspaceId`·`spaceId` (+ optional expiry) and the server verifies that the connecting room starts with
-`<workspaceId>/share/<spaceId>/`, so a leaked token only grants access to **that space's room** (not the whole workspace). Changing the
-secret/members and redeploying refreshes tokens, and **'Space token expiry (days)'** sets a TTL. The manager's tokens/secret
-are stored in Obsidian Secret Storage. Realtime auth is **HMAC-only** — every token is scoped to a single shared space.
-The token is sent over WSS (not exposed in transit); keep it out of reverse-proxy/CDN/monitoring access logs by masking query strings (see [`server/README.md`](server/README.md)).
+then each time the manager deploys a space, **per-member signed tokens** are issued and delivered to members. The
+token payload carries `workspaceId`·`spaceId`·DB name·member id·role (+ optional expiry); the server verifies the room
+prefix (`<workspaceId>/share/<spaceId>/`) **and the per-file participant assignment**, so a leaked token only grants
+**that space with that member's permissions**. Tokens are sent in an authentication message after the WebSocket is
+established — they never appear in proxy access logs. Changing the secret/members and redeploying refreshes tokens,
+and **'Space token expiry (days)'** sets a TTL. The manager's tokens/secret are stored in Obsidian Secret Storage.
+Realtime auth is **HMAC-only** — every token is scoped to a single shared space.
 
 **Excalidraw drawings** also support **element-level realtime co-editing** in shared folders (add/move/delete, named/colored
 cursors, image sync). The [Excalidraw plugin](https://github.com/zsviczian/obsidian-excalidraw-plugin) must be installed
@@ -275,7 +277,7 @@ src/
 │  │  ├─ obsidianFetch.ts      # requestUrl-based fetch shim (mobile CORS bypass)
 │  │  └─ CouchAdmin.ts         # Member account/DB/_security provisioning (admin)
 │  ├─ invite/invite.ts         # Invite payload encoding + obsidian:// deep link
-│  ├─ realtime/                # Yjs realtime (RealtimeManager · editorBinding · excalidrawBinding · presenceChips · spaceToken = per-space HMAC token)
+│  ├─ realtime/                # Yjs realtime — Hocuspocus client (RealtimeManager · editorBinding · excalidrawBinding · presenceChips · spaceToken = per-member HMAC token)
 │  ├─ feedback/FeedbackStore.ts # Feedback layer (anchored comments) store/query/sync
 │  ├─ classroom/               # Classroom dashboard core (ClassroomStore · notices · assignments · templates · week · homeroom)
 │  ├─ guard/RemoteApplyGuard.ts# Sync-loop guard

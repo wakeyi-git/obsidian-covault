@@ -8,12 +8,12 @@ copy-paste a few commands (or click through a NAS UI), you can do this. **You on
 CoVault needs **two independent servers**:
 
 - **CouchDB** — the central database for file sync. **Required.**
-- **Yjs WebSocket server** — for realtime character-level co-editing. **Optional** — set it up later, only if you want
-  realtime. File sync works completely without it.
+- **Realtime server (Hocuspocus)** — for realtime character-level co-editing. **Optional** — set it up later, only if
+  you want realtime. File sync works completely without it.
 
-They **never talk to each other** (the plugin is the only client of both), so you can run them on the same machine or
-on entirely different providers. This folder documents both and ships the Yjs server's runtime files under
-[`yjs/`](yjs/).
+The realtime server is also a CouchDB client (it reads per-file authorization docs and stores document snapshots). You
+can run them on the same machine or on different providers — the realtime server just needs to reach the CouchDB URL.
+This folder documents both and ships the realtime server's runtime files under [`hocuspocus/`](hocuspocus/).
 
 ---
 
@@ -43,24 +43,25 @@ every path below ends with a real certificate.
 
 ## Architecture & constraints
 
-The plugin talks to two independent endpoints and is the only thing that bridges them:
+The plugin talks to two independent endpoints; the realtime server is also a CouchDB client:
 
 ```
             ┌──────────────── CouchDB   (PouchDB HTTP/HTTPS replication)
-plugin      │
-(manager/   ├──────────────── Yjs server (WebSocket / WSS)
- members)  │
-            └─ realtime snapshots are written by the plugin → CouchDB
+plugin      │                     ▲
+(manager/   ├──────────────── realtime server (Hocuspocus, WebSocket/WSS)
+ members)  │                     └─ per-file authorization lookups (rtpart/rtcontrol) + note snapshots
 ```
 
-- **The Yjs server never connects to CouchDB.** It only uses `ws`/`y-websocket` + HMAC and persists locally to LevelDB.
-  Realtime edits reach CouchDB only because the *plugin* periodically snapshots the live doc back through the sync
-  layer — not via any server-to-server link.
-- So **CouchDB and the Yjs server have no co-location requirement**: different hosts, providers, or regions are fine.
-  Bundling them on one box is purely an operational convenience (one machine, one reverse proxy).
+- **The realtime server connects to CouchDB** (a dedicated service account is recommended). It reads per-file
+  participant docs (rtpart) to enforce room entry server-side, and stores edits back to CouchDB note docs on a
+  debounce — the client-side single-writer election and periodic snapshots are gone. The Yjs state itself is
+  persisted locally to SQLite (`/data`).
+- **CouchDB and the realtime server have no co-location requirement** — the realtime server just needs to reach
+  `COUCHDB_URL`. Bundling them on one box is the simplest operationally (one machine, one reverse proxy).
 - The hard constraints are **reachability** (every client must reach both over the internet — neither can sit on a
-  LAN-only address if remote members need it), **HTTPS/WSS** (mobile requires secure transport), and **`YJS_SECRET`
-  parity** between the Yjs server and the plugin setting.
+  LAN-only address if remote members need it), **HTTPS/WSS** (mobile requires secure transport), **`YJS_SECRET`
+  parity** between the realtime server and the plugin setting, and a **CouchDB service account**
+  (`COUCHDB_USER`/`COUCHDB_PASSWORD`) for the realtime server.
 
 ---
 
@@ -218,93 +219,103 @@ CouchDB is standard software — the plugin only needs an HTTPS URL + admin acco
 
 ---
 
-# Yjs realtime server (optional)
+# Realtime server — Hocuspocus (optional)
 
-Only for **realtime co-editing** — independent of CouchDB file sync; **skip this entirely if you only need file sync.**
-Set it up *after* CouchDB is working. The runtime files live in [`yjs/`](yjs/):
+Only for **realtime co-editing** — **skip this entirely if you only need file sync.** Set it up *after* CouchDB is
+working (the realtime server connects to CouchDB for authorization lookups and snapshots). The runtime files live in
+[`hocuspocus/`](hocuspocus/):
 
-- [`yjs/server.js`](yjs/server.js) — y-websocket server using **per-space HMAC `YJS_SECRET`** auth. (A legacy global
-  `YJS_TOKEN` mode still exists in the code but is **deprecated** — the current plugin issues per-space HMAC tokens only;
-  set `YJS_SECRET`.)
-- [`yjs/Dockerfile`](yjs/Dockerfile) / [`yjs/docker-compose.yml`](yjs/docker-compose.yml) /
-  [`yjs/package.json`](yjs/package.json) — container build + run (LevelDB persistence in `./data`).
-- [`yjs/disable-yjs-accesslog.sh`](yjs/disable-yjs-accesslog.sh) — Synology DSM helper to keep `?token=` out of
-  reverse-proxy access logs.
+- [`hocuspocus/server.js`](hocuspocus/server.js) — Hocuspocus v4 server: **per-member HMAC tokens** (`YJS_SECRET`) +
+  CouchDB-backed **per-file authorization** (rtpart docs; removed participants are kicked live) + **server-side
+  seeding/snapshots** (onLoadDocument/onStoreDocument).
+- [`hocuspocus/auth.js`](hocuspocus/auth.js) / [`hocuspocus/couch.js`](hocuspocus/couch.js) — token verification and
+  the CouchDB client.
+- [`hocuspocus/Dockerfile`](hocuspocus/Dockerfile) / [`hocuspocus/docker-compose.yml`](hocuspocus/docker-compose.yml) /
+  [`hocuspocus/package.json`](hocuspocus/package.json) — container build + run (Yjs state persisted to a single SQLite
+  file in `./data`).
 
-## Walkthrough — Yjs on the same host as CouchDB
+> Tokens are sent in an **authentication message** after the WebSocket is established (not as a URL query) — the
+> reverse-proxy access-log masking the old y-websocket server needed (`disable-yjs-accesslog.sh`) is gone.
 
-**1. Get the files onto the server** (clone the repo, or copy the `server/yjs/` folder):
+## Walkthrough — realtime server on the same host as CouchDB
+
+**1. Get the files onto the server** (clone the repo, or copy the `server/hocuspocus/` folder):
 ```bash
 git clone https://github.com/wakeyi-git/obsidian-covault.git
-cd obsidian-covault/server/yjs
+cd obsidian-covault/server/hocuspocus
 ```
 
-**2. Set a secret and start it.** Generate a long random `YJS_SECRET` (this is the HMAC key; you'll paste the same
-value into the plugin):
+**2. Configure and start it.** Generate a long random `YJS_SECRET` (the HMAC key; you'll paste the same value into the
+plugin) and fill in the CouchDB connection in `docker-compose.yml`:
 ```bash
-echo "YJS_SECRET=$(openssl rand -hex 32)" >> .env
+openssl rand -hex 32            # → use as YJS_SECRET
+# docker-compose.yml: set YJS_SECRET / COUCHDB_URL / COUCHDB_USER / COUCHDB_PASSWORD
 docker compose up -d --build
-docker compose logs -f          # startup line should read: auth: hmac (per-space)
+docker compose logs -f          # startup should read: auth: hmac per-member (file-level: on (CouchDB))
 ```
-Sanity check on the LAN: `http://<host>:1234` → `Yjs WebSocket server OK`. (The server refuses to start if
-`YJS_SECRET` is a placeholder like `CHANGE_ME` or shorter than 16 chars — that's intentional.)
+Sanity check on the LAN: `http://<host>:1234` → `CoVault realtime server OK`. (The server refuses to start if
+`YJS_SECRET` is missing, a placeholder like `CHANGE_ME`, or shorter than 16 chars — that's intentional.)
 
-**3. Expose it over `wss://`.** Add a second reverse-proxy route for `yjs.example.com` → `localhost:1234`:
+Keep `COUCHDB_USER` identical to the plugin's **Realtime server account** setting (recommended `covault-rt`) — on
+deploy the plugin creates the account and grants it access to the share/mirror DBs, so the server never needs the
+CouchDB admin password.
+
+**3. Expose it over `wss://`.** Add a second reverse-proxy route for `rt.example.com` → `localhost:1234`:
 - **Caddy:** add a block to your Caddyfile and reload (WebSockets work automatically):
   ```caddyfile
-  yjs.example.com {
+  rt.example.com {
       reverse_proxy localhost:1234
-      log { output discard }      # keep ?token= out of access logs
   }
   ```
-- **Synology:** create a second Reverse Proxy entry (`yjs.yourname.synology.me` → `localhost:1234`) **and** enable the
+- **Synology:** create a second Reverse Proxy entry (`rt.yourname.synology.me` → `localhost:1234`) **and** enable the
   WebSocket header — see [Synology + WebSocket](#exposing-it-over-httpswss).
 
-**4. Configure the plugin.** Settings → **Yjs server URL** = `wss://yjs.example.com`, **Yjs space secret (HMAC)** = the
-exact `YJS_SECRET` value. Enable realtime, then **deploy** a shared space — per-space signed tokens are issued to
-members automatically.
+**4. Configure the plugin.** Settings → **Yjs server URL** = `wss://rt.example.com`, **Yjs space secret (HMAC)** = the
+exact `YJS_SECRET` value, **Realtime server account/password** = the same `COUCHDB_USER`/`COUCHDB_PASSWORD`. Enable
+realtime, then **deploy** a shared space — per-member signed tokens are issued to members automatically and the
+service account is granted DB access.
 
 ## Make it safe (required for real use)
 
 1. **Never expose port 1234 directly.** Always behind an **HTTPS reverse proxy (`wss://`)**, forwarding the WebSocket
    `Upgrade`/`Connection` headers.
-2. **`YJS_SECRET` parity.** The server env var and the plugin's *Yjs space secret (HMAC)* must be the **same value**. A
-   leaked per-space token then only grants that one space's room (the server checks the room starts with
-   `<workspaceId>/share/<spaceId>/`).
-3. **Keep tokens out of logs.** The token rides as a `?token=` query, so mask/disable query logging on the proxy / CDN /
-   monitoring (Synology DSM: [`yjs/disable-yjs-accesslog.sh`](yjs/disable-yjs-accesslog.sh); Caddy: `log { output
-   discard }`; nginx: `access_log off` or a `$args`-stripping format). Tokens travel over WSS so they aren't exposed in
-   transit — the risk is plaintext tokens piling up in logs.
+2. **`YJS_SECRET` parity.** The server env var and the plugin's *Yjs space secret (HMAC)* must be the **same value**.
+   Tokens are signed with per-member claims (space, DB, member, role), so a leaked token only grants that one space
+   with that one member's permissions (the server checks the room prefix and per-file participants).
+3. **Use a dedicated CouchDB service account.** An admin account works, but if the realtime server is compromised the
+   whole CouchDB is exposed — the account created via the plugin's *Realtime server account* setting can only reach
+   the share/mirror DBs.
 
-## What every Yjs host needs
+## What every realtime-server host needs
 
-This is **your own server (`yjs/`)**, not a generic Yjs service. Wherever you run it:
+This is **your own server (`hocuspocus/`)**, not a generic Yjs service. Wherever you run it:
 
 - **An always-on, long-lived process.** WebSocket sessions are persistent; a platform that scales the instance to zero
   when idle will drop live co-editing. Pick an always-on instance.
-- **A persistent volume for LevelDB** (`/data` in the container) so a restart doesn't lose un-snapshotted state. (The
-  authoritative copy still lands in CouchDB via the plugin's snapshots; the LevelDB cache just smooths restarts.)
+- **A persistent volume for SQLite** (`/data` in the container) so a restart doesn't lose live-session state. (The
+  authoritative markdown copy still lands in CouchDB via the server's snapshots; SQLite smooths restarts/rejoins.)
+- **CouchDB reachability** — per-file authorization, seeding, and snapshots all need `COUCHDB_URL` to be reachable
+  from the server.
 - **WSS termination + WebSocket pass-through** — the proxy must forward `Upgrade`/`Connection` and allow long-lived
   connections (raise read timeouts).
-- **Tiny specs.** y-websocket keeps active docs in memory; **1 vCPU / 512 MB–1 GB** is plenty for a organization.
+- **Tiny specs.** Only active docs stay in memory (idle docs are unloaded); **1 vCPU / 512 MB–1 GB** is plenty for an
+  organization.
 
-## Yjs hosting options
+## Realtime server hosting options
 
 **① Same box as CouchDB** — *simplest to operate.* One machine, one reverse proxy with two routes (a `couch.`
-subdomain → `5984`, a `yjs.` subdomain → `1234`). Realtime traffic is bursty WebSocket while CouchDB is plain HTTP; at
-organization load they coexist comfortably on a 1–2 GB box.
+subdomain → `5984`, an `rt.` subdomain → `1234`), and `COUCHDB_URL` points at the internal address.
 
 **② Cloud VPS / home server (separate from CouchDB)** — same steps as the walkthrough, on its own host. A
-512 MB–1 GB instance is enough. Good when you want realtime isolated from file sync, or in a region closer to members.
+512 MB–1 GB instance is enough. `COUCHDB_URL` becomes the public HTTPS address, so that hop is encrypted too.
 
-**③ PaaS (Railway / Render / Fly.io)** — deploy the `yjs/` image with a **persistent volume** for `/data`. Confirm the
-plan is **always-on (no scale-to-zero)** and passes WebSockets through; otherwise idle sessions get dropped. TLS and a
-domain are automatic.
+**③ PaaS (Railway / Render / Fly.io)** — deploy the `hocuspocus/` image with a **persistent volume** for `/data`.
+Confirm the plan is **always-on (no scale-to-zero)** and passes WebSockets through; otherwise idle sessions get
+dropped. TLS and a domain are automatic.
 
-**④ ⚠️ Managed Yjs SaaS (PartyKit, Liveblocks, Hocuspocus Cloud, y-sweet) — not a drop-in.** These don't implement this
-server's per-space HMAC `?token=` verification or the `<workspaceId>/share/<spaceId>/` room check, so the plugin's
-space-isolation security model wouldn't apply (a token would grant more than intended). Stick to running this server —
-porting the auth scheme onto another backend is possible but it's manual work, not configuration.
+**④ ⚠️ Managed Yjs SaaS (PartyKit, Liveblocks, Hocuspocus Cloud, y-sweet) — not a drop-in.** These don't implement
+this server's per-member HMAC token verification, room-prefix checks, or the CouchDB-backed per-file
+authorization/snapshots, so CoVault's security and storage model wouldn't apply. Stick to running this server.
 
 ---
 

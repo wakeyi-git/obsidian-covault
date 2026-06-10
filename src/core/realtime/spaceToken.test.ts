@@ -1,39 +1,50 @@
 import { describe, it, expect } from "vitest";
-import { mintSpaceToken, verifySpaceToken } from "./spaceToken";
+import { mintSpaceToken, verifySpaceToken, SpaceTokenClaims } from "./spaceToken";
 import { clientColor } from "./clientColor";
 
 const SECRET = "test-secret-key";
 const NOW = 1_700_000_000;
 
+/** 기본 클레임(멤버용). 테스트별로 일부만 덮어쓴다. */
+function claims(over: Partial<SpaceTokenClaims> = {}): SpaceTokenClaims {
+	return { workspaceId: "c1", spaceId: "s1", remoteDb: "share_s1", memberId: "a", role: "member", ...over };
+}
+
 describe("spaceToken", () => {
 	it("발급한 토큰은 같은 secret·workspaceId·spaceId로 검증된다", async () => {
-		const tok = await mintSpaceToken(SECRET, { workspaceId: "c1", spaceId: "s1" });
+		const tok = await mintSpaceToken(SECRET, claims());
 		expect(await verifySpaceToken(SECRET, tok, "c1", "s1", NOW)).toBe(true);
 	});
 
+	it("payload에 d/m/r 클레임이 들어간다(서버 인가용)", async () => {
+		const tok = await mintSpaceToken(SECRET, claims({ role: "manager", memberId: "teacher" }));
+		const payload = JSON.parse(Buffer.from(tok.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+		expect(payload).toMatchObject({ c: "c1", s: "s1", d: "share_s1", m: "teacher", r: "manager" });
+	});
+
 	it("다른 spaceId면 거부(공간 간 격리)", async () => {
-		const tok = await mintSpaceToken(SECRET, { workspaceId: "c1", spaceId: "s1" });
+		const tok = await mintSpaceToken(SECRET, claims());
 		expect(await verifySpaceToken(SECRET, tok, "c1", "s2", NOW)).toBe(false);
 	});
 
 	it("다른 workspaceId면 거부", async () => {
-		const tok = await mintSpaceToken(SECRET, { workspaceId: "c1", spaceId: "s1" });
+		const tok = await mintSpaceToken(SECRET, claims());
 		expect(await verifySpaceToken(SECRET, tok, "c2", "s1", NOW)).toBe(false);
 	});
 
 	it("다른 secret이면 거부", async () => {
-		const tok = await mintSpaceToken(SECRET, { workspaceId: "c1", spaceId: "s1" });
+		const tok = await mintSpaceToken(SECRET, claims());
 		expect(await verifySpaceToken("wrong-secret", tok, "c1", "s1", NOW)).toBe(false);
 	});
 
 	it("서명/payload 변조 시 거부", async () => {
-		const tok = await mintSpaceToken(SECRET, { workspaceId: "c1", spaceId: "s1" });
+		const tok = await mintSpaceToken(SECRET, claims());
 		const tampered = tok.slice(0, -2) + (tok.endsWith("aa") ? "bb" : "aa");
 		expect(await verifySpaceToken(SECRET, tampered, "c1", "s1", NOW)).toBe(false);
 	});
 
 	it("exp 지난 토큰은 거부, 유효 기간 내면 통과", async () => {
-		const tok = await mintSpaceToken(SECRET, { workspaceId: "c1", spaceId: "s1", exp: NOW + 100 });
+		const tok = await mintSpaceToken(SECRET, claims({ exp: NOW + 100 }));
 		expect(await verifySpaceToken(SECRET, tok, "c1", "s1", NOW + 50)).toBe(true);
 		expect(await verifySpaceToken(SECRET, tok, "c1", "s1", NOW + 200)).toBe(false);
 	});

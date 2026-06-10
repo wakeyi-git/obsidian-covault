@@ -1,0 +1,13 @@
+{
+	"name": "covault-realtime-server",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "node server.js"
+	},
+	"dependencies": {
+		"@hocuspocus/server": "~4.1.1",
+		"better-sqlite3": "^12.6.2",
+		"yjs": "^13.6.10"
+	}
+}

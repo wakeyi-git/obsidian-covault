@@ -1,7 +1,8 @@
 import { App, MarkdownView, TFile, View } from "obsidian";
 import { errMessage } from "../util/err";
 import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
+import { HocuspocusProvider, HocuspocusProviderWebsocket } from "@hocuspocus/provider";
+import { Awareness } from "y-protocols/awareness";
 import { EditorView } from "@codemirror/view";
 import { CoreServices } from "../CoreServices";
 import { bindView, unbindView, setEditorReadOnly } from "./editorBinding";
@@ -18,13 +19,13 @@ interface Session {
 	ytext?: Y.Text; // md
 	yElements?: Y.Array<Y.Map<any>>; // excalidraw 요소
 	yAssets?: Y.Map<any>; // excalidraw 이미지 asset
-	provider: WebsocketProvider;
-	ready: boolean; // 서버 동기화 + 시드 완료 → 바인딩 가능
+	provider: HocuspocusProvider;
+	/** 직접 생성해 provider에 주입한 awareness — provider.awareness의 null 타입을 피하고 바인딩에 그대로 쓴다. */
+	awareness: Awareness;
+	ready: boolean; // 서버 동기화 완료(시드는 서버 onLoadDocument 담당) → 바인딩 가능
 	bound: Set<EditorView>; // md: 바인딩된 CM6
 	mdPresence?: Map<EditorView, PresenceChips>; // md: 뷰별 참가자 칩 오버레이
 	exBinding?: ExcalidrawBinding; // excalidraw 바인딩
-	snapTimer?: number; // 주기적 CouchDB 스냅샷 타이머(§19.2)
-	lastSnapshot?: string; // 마지막으로 스냅샷한 내용(중복 쓰기 방지)
 }
 
 /** Excalidraw 뷰(타입 느슨). file과 imperative API 접근만 사용. */
@@ -41,14 +42,18 @@ export interface SnapshotTarget {
 const COLORS = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
 
 /**
- * Yjs 실시간 공동 편집 관리. 기술문서 §19. 공유 폴더의 markdown(글자 단위) + Excalidraw(요소 단위) 적용.
+ * Yjs 실시간 공동 편집 관리(Hocuspocus). 기술문서 §19. 공유 폴더의 markdown(글자 단위) + Excalidraw(요소 단위) 적용.
  *
- * 열린 에디터를 훑어 공유 파일이면 세션(WebSocket provider + Y.Doc)을 띄우고
+ * 열린 에디터를 훑어 공유 파일이면 세션(HocuspocusProvider + Y.Doc)을 띄우고
  * markdown은 CM6(Y.Text), Excalidraw는 imperative API(Y.Map 요소)에 바인딩한다.
- * 파일이 모두 닫히면 세션을 종료하며 vault/CouchDB에 스냅샷을 저장(→ 비실시간 멤버에 영속).
+ * 모든 세션은 **WebSocket 연결 하나**를 공유한다(HocuspocusProviderWebsocket 멀티플렉싱).
+ * 문서 시드·주기 스냅샷은 서버(onLoadDocument/onStoreDocument)가 담당하고, 세션 종료 시
+ * vault 쓰기 + CouchDB 업로드(서버 미연동 환경 폴백)만 클라이언트가 수행한다.
  */
 export class RealtimeManager {
 	private sessions = new Map<string, Session>();
+	/** 공유 WebSocket(모든 문서 멀티플렉싱). 첫 세션에서 생성, 마지막 세션 종료 시 닫는다. */
+	private socket: HocuspocusProviderWebsocket | null = null;
 	/** 지원하지 않는 excalidraw 형식 경고를 경로당 1회만 내기 위한 집합. */
 	private warnedUnsupportedExcalidraw = new Set<string>();
 
@@ -72,6 +77,23 @@ export class RealtimeManager {
 
 	private get settings() {
 		return this.core.settings;
+	}
+
+	/**
+	 * 공유 WebSocket 획득(lazy). 빈 소켓(연결된 문서 0개)은 서버 메시지가 없어 재연결 루프를 돌고
+	 * 유휴 연결을 낭비하므로, 마지막 세션이 끝나면 endSession이 닫는다(yjsServerUrl 변경도 그때 반영).
+	 */
+	private getSocket(): HocuspocusProviderWebsocket {
+		if (!this.socket) this.socket = new HocuspocusProviderWebsocket({ url: this.settings.yjsServerUrl });
+		return this.socket;
+	}
+
+	/** 마지막 세션 종료 후 공유 소켓 정리. */
+	private teardownSocketIfIdle(): void {
+		if (this.sessions.size === 0 && this.socket) {
+			this.socket.destroy();
+			this.socket = null;
+		}
 	}
 
 	/** 파일별 참여자 변경 시 재평가(교사 지정 후, 또는 수신 후). */
@@ -122,7 +144,7 @@ export class RealtimeManager {
 		const session = this.sessions.get(localPath);
 		if (!session || !session.ready) return 0;
 		try {
-			return session.provider.awareness.getStates().size;
+			return session.awareness.getStates().size;
 		} catch {
 			return 0;
 		}
@@ -265,23 +287,55 @@ export class RealtimeManager {
 		if (!room) return undefined;
 		const dbPath = this.relUnder(path, space.folder) ?? path;
 
-		// 공간별 HMAC 토큰만 사용한다(room-scoped). 레거시 전역 토큰 폴백은 제거 —
-		// 전역 토큰은 모든 room 접근을 허용해 공간 격리를 깨므로 더는 쓰지 않는다.
+		// 공간별 HMAC 토큰만 사용한다(room-scoped, 멤버별 m/r 클레임 포함). 서버가 파일 단위 인가를 강제한다.
 		const token = space.token;
 		if (!token) return undefined; // 공간 토큰 없으면 이 공간 실시간 비활성(HMAC 시크릿 필요)
 
 		const ydoc = new Y.Doc();
-		const provider = new WebsocketProvider(this.settings.yjsServerUrl, room, ydoc, {
-			params: { token },
+		// awareness는 직접 생성해 주입한다 — provider.awareness가 null일 수 있는 타입을 피하고,
+		// y-codemirror.next / y-excalidraw / PresenceChips에 그대로 넘긴다.
+		const awareness = new Awareness(ydoc);
+		// 'synced'는 재연결마다 재발화하므로 1회 가드(기존 once("sync") 의미 유지).
+		let syncedOnce = false;
+		const provider = new HocuspocusProvider({
+			websocketProvider: this.getSocket(),
+			name: room,
+			document: ydoc,
+			awareness,
+			// 토큰은 연결 후 인증 메시지로 전달된다(URL 쿼리 아님) → 리버스 프록시 로그에 남지 않는다.
+			token,
+			onAuthenticated: () => {
+				this.core.logger.info(t("realtime.realtime_connected", { path: dbPath }));
+			},
+			onAuthenticationFailed: ({ reason }) => {
+				// 시크릿 불일치/토큰 만료/참가자 제외(서버 강퇴 후 재인가 거부) — 세션을 정리하고 재평가한다.
+				this.core.logger.warn(t("realtime.realtime_auth_failed", { path: dbPath, reason: String(reason ?? "") }), true);
+				void this.endSession(path).then(() => this.invalidateParticipants(path));
+			},
+			onClose: ({ event }) => {
+				// 서버 강퇴: 참가자(rtpart)/정책(rtcontrol) 변경 시 서버가 문서 연결을 닫는다(reason="Reset Connection").
+				// 세션을 정리하고 재평가 — 여전히 허용이면 새 세션이 즉시 다시 열리며 재인가된다.
+				// 일반 네트워크 끊김은 소켓이 자동 재연결·재인증하므로 여기서 처리하지 않는다.
+				if (event?.reason !== "Reset Connection") return;
+				void this.endSession(path).then(() => this.invalidateParticipants(path));
+			},
+			onSynced: () => {
+				if (syncedOnce) return;
+				syncedOnce = true;
+				this.onSynced(session);
+			},
 		});
+		// 외부 websocketProvider를 주입하면 provider가 소켓에 자동 attach하지 않는다(v4) → 명시 호출 필수.
+		provider.attach();
 
 		// 커서·이름 색을 Excalidraw와 동일한 clientColor(clientId) 공식으로 통일(칩과도 일치).
-		const color = clientColor(String(provider.awareness.clientID));
-		provider.awareness.setLocalStateField("user", { name: this.settings.displayName || t("common.user"), color });
+		const color = clientColor(String(awareness.clientID));
+		awareness.setLocalStateField("user", { name: this.settings.displayName || t("common.user"), color });
 
 		const session: Session =
 			kind === "md"
-				? { file: path, kind, ydoc, ytext: ydoc.getText("content"), provider, ready: false, bound: new Set(), mdPresence: new Map() }
+				? // Y.Text 키 "content"는 서버(server/hocuspocus/server.js)의 시드/스냅샷 키와 일치해야 한다.
+					{ file: path, kind, ydoc, ytext: ydoc.getText("content"), provider, awareness, ready: false, bound: new Set(), mdPresence: new Map() }
 				: {
 						file: path,
 						kind,
@@ -289,99 +343,22 @@ export class RealtimeManager {
 						yElements: ydoc.getArray("elements"),
 						yAssets: ydoc.getMap("assets"),
 						provider,
+						awareness,
 						ready: false,
 						bound: new Set(),
 					};
 		this.sessions.set(path, session);
-
-		provider.on("status", (e: { status: string }) => {
-			if (e.status === "connected") this.core.logger.info(t("realtime.realtime_connected", { path: dbPath }));
-		});
-		provider.once("sync", (synced: boolean) => {
-			if (!synced) return;
-			// 잠깐 기다려 다른 접속자/서버 상태가 반영된 뒤 시드 판단(시드 충돌 방지)
-			window.setTimeout(() => void this.onSynced(session, file), 400);
-		});
 		this.core.logger.info(t("realtime.realtime_session_started_room", { path: dbPath, room }));
 		return session;
 	}
 
-	private async onSynced(session: Session, file: TFile): Promise<void> {
-		// 이미 교체/종료된 세션이면(setTimeout 대기 중 endSession 발생) 무시 — 좀비 타이머/바인딩 방지.
+	private onSynced(session: Session): void {
+		// 이미 교체/종료된 세션이면 무시 — 좀비 바인딩 방지.
 		if (this.sessions.get(session.file) !== session) return;
-
-		if (session.kind === "excalidraw") {
-			// 시드는 바인딩(ExcalidrawBinding)이 첫 진입자일 때 처리한다.
-			session.ready = true;
-			this.syncOpenEditors();
-			return;
-		}
-
-		try {
-			if (session.ytext && session.ytext.length === 0) {
-				// 단일 시드: 나 혼자일 때만 파일 내용으로 시드. 다른 참여자가 있으면 그들의 공유 내용을 받는다.
-				// (여러 명이 서로 다른 파일 내용을 시드하면 문서가 뒤섞여 깨진다.)
-				const others = session.provider.awareness.getStates().size; // 본인 포함
-				if (others <= 1) {
-					const content = await this.app.vault.read(file);
-					if (content.length > 0) {
-						session.ytext.insert(0, content);
-						this.core.logger.info(t("realtime.realtime_seed_first_join", { file: session.file }));
-					}
-				} else {
-					this.core.logger.info(
-						t("realtime.realtime_other_participants_present_skipping_see", { file: session.file }),
-					);
-				}
-			}
-		} catch {
-			/* 읽기 실패 무시 */
-		}
+		// 문서 시드는 서버(onLoadDocument)가 CouchDB note 문서로 수행한다 — 클라이언트 시드 없음
+		// (여러 클라이언트가 서로 다른 내용을 시드해 문서가 섞이는 문제가 원천 제거됨).
 		session.ready = true;
-		session.lastSnapshot = session.ytext?.toString() ?? "";
-		this.maybeStartSnapshot(session);
 		this.syncOpenEditors(); // 이제 바인딩
-	}
-
-	/** 주기적 CouchDB 스냅샷 타이머 시작(§19.2). snapshotSec>0일 때만. */
-	private maybeStartSnapshot(session: Session): void {
-		const sec = this.settings.realtimeSnapshotSec;
-		if (!sec || sec <= 0 || session.snapTimer != null) return;
-		session.snapTimer = window.setInterval(() => void this.snapshotTick(session), Math.max(5, sec) * 1000);
-		this.core.logger.info(t("realtime.realtime_periodic_snapshot_enabled_s", { file: session.file, sec }));
-	}
-
-	private async snapshotTick(session: Session): Promise<void> {
-		try {
-			if (!session.ready || !session.ytext || !this.isSnapshotLeader(session)) return;
-			const content = session.ytext.toString();
-			if (content === session.lastSnapshot || content.length === 0) return; // 변화 없음/빈 내용 방지
-			const target = this.getSyncForPath(session.file);
-			if (!target) return;
-			const res = await target.snapshotNote(session.file, content);
-			session.lastSnapshot = content;
-			this.core.logger.info(t("realtime.periodic_snapshot_to_couchdb", { file: session.file, res: String(res) }));
-		} catch (e) {
-			this.core.logger.warn(
-				t("realtime.periodic_snapshot_failed", {
-					file: session.file,
-					error: errMessage(e),
-				}),
-			);
-		}
-	}
-
-	/** 단일 작성자 선출: 내 clientID가 현재 awareness 최소면 내가 쓴다(동시 작성 → 충돌 방지). */
-	private isSnapshotLeader(session: Session): boolean {
-		try {
-			const states = session.provider.awareness.getStates();
-			const myId = session.provider.awareness.clientID;
-			let min = myId;
-			for (const id of states.keys()) if (id < min) min = id;
-			return myId === min;
-		} catch {
-			return false;
-		}
 	}
 
 	/** 실시간 상태 점검(명령). 왜 세션이 안 뜨는지 진단용. */
@@ -419,7 +396,8 @@ export class RealtimeManager {
 		log.info(
 			t("realtime.session_connected_participants", {
 				state: session ? (session.ready ? t("realtime.ready") : t("realtime.connecting")) : t("common.none"),
-				connected: session ? String((session.provider as any).wsconnected) : "-",
+				// 소켓 연결(공유) + 문서 인증(개별) — 인증까지 끝나야 동기화가 시작된다.
+				connected: session ? `${this.socket?.status ?? "-"}/${session.provider.isAuthenticated ? "auth" : "unauth"}` : "-",
 				presence: f ? this.presenceFor(f.path) : 0,
 			}),
 		);
@@ -462,12 +440,12 @@ export class RealtimeManager {
 			}
 			if (session.bound.has(cm)) continue;
 			try {
-				bindView(cm, ytext, session.provider.awareness);
+				bindView(cm, ytext, session.awareness);
 				session.bound.add(cm);
 				// 뷰 우하단에 참가자 칩(Excalidraw와 동일) — 포인터 없이도 편집자 이름 상시 표시.
 				const host = (view as unknown as { contentEl?: HTMLElement }).contentEl;
 				if (host && session.mdPresence && !session.mdPresence.has(cm)) {
-					session.mdPresence.set(cm, new PresenceChips(host, session.provider.awareness));
+					session.mdPresence.set(cm, new PresenceChips(host, session.awareness));
 				}
 			} catch (e) {
 				this.core.logger.error(
@@ -494,13 +472,13 @@ export class RealtimeManager {
 			?? (view as unknown as { containerEl?: HTMLElement }).containerEl;
 		// Excalidraw collaborator color는 {background, stroke} 객체를 기대(마크다운 yCollab는 문자열) → 여기서 객체로 재설정.
 		const hex = COLORS[Math.abs(hash(this.settings.deviceId)) % COLORS.length];
-		session.provider.awareness.setLocalStateField("user", {
+		session.awareness.setLocalStateField("user", {
 			name: this.settings.displayName || t("common.user"),
 			color: { background: hex, stroke: hex },
 		});
 		try {
 			session.exBinding = new ExcalidrawBinding(session.yElements, session.yAssets, api, {
-				awareness: session.provider.awareness,
+				awareness: session.awareness,
 				containerEl,
 			});
 			this.core.logger.ok(t("realtime.realtime_excalidraw_bound", { file: session.file }));
@@ -548,12 +526,10 @@ export class RealtimeManager {
 		if (!session) return;
 		this.sessions.delete(path);
 
-		if (session.snapTimer != null) window.clearInterval(session.snapTimer);
-
 		// 내 awareness를 명시적으로 제거(null) → 모든 피어가 즉시 커서/이름을 지운다.
-		// (provider.destroy()는 소켓만 닫아 서버 정리에 의존 → 서버가 정리 안 하면 유령 커서가 남음.)
+		// (provider.destroy()도 removeAwarenessStates를 브로드캐스트하지만, 명시 제거로 의도를 보존한다.)
 		try {
-			session.provider.awareness.setLocalState(null);
+			session.awareness.setLocalState(null);
 		} catch {
 			/* noop */
 		}
@@ -574,7 +550,7 @@ export class RealtimeManager {
 
 		if (session.kind === "excalidraw") {
 			// Excalidraw 파일은 플러그인이 onChange 때 디스크에 저장한다. 세션 종료 후 그 파일을
-			// CouchDB로 한 번 올려 비실시간 멤버에게 전파(세션 중엔 isRealtimeActive로 업로드 보류됨).
+			// CouchDB로 한 번 올려 비실시간 멤버에게 전파(서버는 excalidraw를 CouchDB 스냅샷하지 않는다).
 			try {
 				const file = this.app.vault.getAbstractFileByPath(path);
 				if (file instanceof TFile) {
@@ -600,10 +576,10 @@ export class RealtimeManager {
 				);
 			}
 		} else {
-			// 스냅샷 영속: Y.Text → vault(변경 시) + CouchDB에 직접 업로드.
-			// 실시간 중에는 LocalWatcher가 업로드를 보류하므로(Obsidian 자동저장 포함), Excalidraw와 동일하게
-			// 종료 시 명시적으로 올린다. Obsidian 자동저장으로 vault가 이미 최신이면 vault 쓰기는 생략되지만,
-			// CouchDB는 세션 중 갱신되지 않았으므로 반드시 업로드해야 비실시간 멤버가 최신본을 받는다.
+			// 종료 영속: Y.Text → vault(변경 시) + CouchDB 업로드.
+			// 서버(onStoreDocument)가 세션 중에도 CouchDB 스냅샷을 저장하지만, vault 파일은 서버가 쓸 수 없고
+			// 서버가 CouchDB 미연동(폴백 모드)일 수도 있으므로 종료 시 클라이언트가 한 번 더 보장한다
+			// (서버가 이미 같은 내용을 저장했으면 contentHash 동일 → skipped-same).
 			try {
 				const file = this.app.vault.getAbstractFileByPath(path);
 				if (file instanceof TFile) {
@@ -637,8 +613,11 @@ export class RealtimeManager {
 			}
 		}
 
+		// provider.destroy()는 awareness 정리 + 공유 소켓에서 이 문서만 detach한다(소켓은 유지).
 		session.provider.destroy();
 		session.ydoc.destroy();
+		// 마지막 세션이었다면 빈 소켓을 닫는다(재연결 루프/유휴 연결 방지, URL 변경 반영).
+		this.teardownSocketIfIdle();
 	}
 
 	/** folder 기준 상대경로(dbPath). 순수 로직은 room.ts. */
@@ -689,6 +668,7 @@ export class RealtimeManager {
 
 	async dispose(): Promise<void> {
 		for (const path of [...this.sessions.keys()]) await this.endSession(path);
+		this.teardownSocketIfIdle();
 	}
 }
 

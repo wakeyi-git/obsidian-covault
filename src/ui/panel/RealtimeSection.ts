@@ -46,7 +46,7 @@ export class RealtimeSection implements PanelSection {
 	}
 
 	private drawManager(c: HTMLElement, s: PanelHost["settings"]): void {
-		// 실시간 그룹: 사용 토글 + 세션 스냅샷 주기.
+		// 실시간 그룹: 사용 토글. 세션 스냅샷은 서버(onStoreDocument 디바운스)가 담당해 주기 설정이 없다.
 		new Setting(c)
 			.setName(t("settings.enable_realtime_editing"))
 			.setDesc(t("settings.enable_realtime_editing_desc"))
@@ -64,15 +64,6 @@ export class RealtimeSection implements PanelSection {
 			c.createDiv({ cls: "covault-cr-muted", text: t("realtime.configure_in_settings") });
 			return;
 		}
-
-		new Setting(c).setName(t("settings.in_session_snapshot_interval_sec")).addText((txt) => {
-			txt.inputEl.type = "number";
-			txt.setPlaceholder("0").setValue(String(s.realtimeSnapshotSec)).onChange(async (v) => {
-				const n = Number(v);
-				s.realtimeSnapshotSec = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-				await this.host.saveSettings();
-			});
-		});
 
 		if (!s.yjsServerUrl) c.createDiv({ cls: "covault-issue is-warn", text: t("realtime.no_server_hint") });
 

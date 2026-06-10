@@ -4,7 +4,8 @@ import { CoVaultSettings, SharedSpace, MemberConfig } from "../settings/types";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
 import { isValidCouchName } from "../core/path/path";
 import { setHomeroom } from "../core/classroom/homeroom";
-import { getYjsSecret } from "../core/secret";
+import { getYjsSecret, getRtServicePassword } from "../core/secret";
+import { RTCONTROL_DOC_ID } from "../core/model/types";
 import { t } from "../i18n";
 
 /**
@@ -32,6 +33,47 @@ export interface DeploymentDeps {
 export class DeploymentController {
 	constructor(private d: DeploymentDeps) {}
 
+	/**
+	 * 실시간 서버 서비스 계정 보장(설정 시). 계정을 생성/갱신하고 username을 반환한다 —
+	 * 호출측이 _security 멤버 목록에 추가해 Hocuspocus 서버가 admin 없이 DB를 읽고 쓰게 한다.
+	 * 비밀번호 미설정이면 계정 생성은 건너뛰고 username만 반환(이미 만들어 둔 계정 재사용 허용).
+	 */
+	private async ensureRtServiceAccount(admin: CouchAdmin): Promise<string | undefined> {
+		const s = this.d.settings();
+		const username = s.rtServiceUsername?.trim();
+		if (!username) return undefined;
+		const pw = getRtServicePassword(this.d.app);
+		if (pw) {
+			const res = await admin.ensureUser(username, pw);
+			if (!res.ok) this.d.logger.warn(t("command.rt_service_account_failed", { err: res.error ?? "" }), true);
+		}
+		return username;
+	}
+
+	/**
+	 * 실시간 인가 기본값(rtcontrol)을 모든 프로비저닝된 공유 공간 DB에 기록.
+	 * Hocuspocus 서버가 rtpart(파일별 지정) 없는 파일의 기본 허용을 판단하고, _changes로 변경을 감지해
+	 * 활성 연결을 재인가한다. 읽기전용 정책·실시간 토글이 바뀔 때마다 호출된다.
+	 */
+	async writeRtControl(): Promise<void> {
+		const s = this.d.settings();
+		if (s.role !== "manager") return;
+		const adminPw = this.d.couchPassword();
+		if (!s.couchdbUrl || !s.username || !adminPw) return;
+		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
+		for (const sp of s.sharedSpaces) {
+			if (!sp.provisioned || !sp.remoteDb) continue;
+			const r = await admin.putDoc(sp.remoteDb, {
+				_id: RTCONTROL_DOC_ID,
+				type: "rtcontrol",
+				enabled: s.realtimeEnabled,
+				sharedReadOnly: !!s.sharedReadOnly,
+				updatedAtMs: Date.now(),
+			});
+			if (!r.ok) this.d.logger.error(t("command.failed_to_write_rtcontrol", { db: sp.remoteDb, err: r.error ?? "" }));
+		}
+	}
+
 	/** 공유 공간 프로비저닝 + 전원 shares 갱신 + 토큰 재발급 + 모드 재시작(교사). */
 	async deployShared(space: SharedSpace): Promise<void> {
 		await this.d.openLog();
@@ -55,6 +97,9 @@ export class DeploymentController {
 		const memberUsers = space.members
 			.map((sid) => s.members.find((st) => st.memberId === sid)?.username)
 			.filter((u): u is string => !!u);
+		// 실시간 서버 서비스 계정을 _security에 포함 → Hocuspocus가 rtpart 조회·note 스냅샷을 admin 없이 수행.
+		const svc = await this.ensureRtServiceAccount(admin);
+		if (svc) memberUsers.push(svc);
 
 		this.d.logger.info(t("command.deploying_shared_space_members", { name: space.name, db: space.remoteDb, count: memberUsers.length }));
 		const res = await admin.provisionSharedSpace(space.remoteDb, memberUsers);
@@ -70,6 +115,9 @@ export class DeploymentController {
 		// 이 배포에서 모든 학생의 shares가 다시 기록되므로, 시크릿/멤버/플래그 변경 시 구 토큰 재유출을 막는다.
 		await this.d.mintRealtimeTokens();
 		await this.d.saveSettings();
+
+		// 실시간 인가 기본값(rtcontrol)을 이 공간 DB에 기록(Hocuspocus 서버가 읽음).
+		await this.writeRtControl();
 
 		// 모든 학생의 shares + rtconfig 문서 갱신(추가/제거 학생 모두 반영)
 		for (const st of s.members) await this.d.writeMemberSync(admin, st);
@@ -152,6 +200,22 @@ export class DeploymentController {
 		await this.d.mintRealtimeTokens();
 		await this.d.saveSettings();
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
+		// 서비스 계정이 설정돼 있으면 기존 share/mirror DB의 _security에 반영(배포 이후 계정을 만든 경우 포함).
+		const svc = await this.ensureRtServiceAccount(admin);
+		if (svc) {
+			for (const sp of s.sharedSpaces) {
+				if (!sp.provisioned || !sp.remoteDb) continue;
+				const memberUsers = sp.members
+					.map((sid) => s.members.find((st) => st.memberId === sid)?.username)
+					.filter((u): u is string => !!u);
+				await admin.setSecurity(sp.remoteDb, [...memberUsers, svc]);
+			}
+			for (const st of s.members) {
+				if (st.provisioned && st.remoteDb && st.username) await admin.setSecurity(st.remoteDb, [st.username, svc]);
+			}
+		}
+		// 실시간 인가 기본값(rtcontrol) 전파 — 서버가 즉시 재인가한다.
+		await this.writeRtControl();
 		for (const st of s.members) {
 			if (st.provisioned && st.remoteDb) await this.d.writeMemberSync(admin, st);
 		}

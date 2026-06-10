@@ -1,5 +1,5 @@
 import { App } from "obsidian";
-import { CoVaultSettings, MemberConfig } from "../settings/types";
+import { CoVaultSettings, MemberConfig, SharedSpace } from "../settings/types";
 import { Logger } from "../core/log/Logger";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
 import { InviteModal } from "../ui/InviteModal";
@@ -23,6 +23,8 @@ export interface MemberDeps {
 	requestApply(): void;
 	openLog(): Promise<void>;
 	mintMirror(member: MemberConfig): Promise<void>;
+	/** 공유 공간의 구성원용 실시간 토큰 발급(RealtimeController.mintMemberToken). 발급 불가면 undefined. */
+	mintMemberToken(space: SharedSpace, memberId: string): Promise<string | undefined>;
 }
 
 /**
@@ -90,10 +92,13 @@ export class MemberController {
 
 		this.d.logger.info(t("command.provisioning_member", { id: member.memberId, db: member.remoteDb }));
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
+		// 실시간 서비스 계정이 설정돼 있으면 mirror DB _security에 함께 넣는다(미러 룸 시드/스냅샷용).
+		const svc = s.rtServiceUsername?.trim();
 		const res = await admin.provisionMember({
 			username: member.username,
 			password: memberPw,
 			remoteDb: member.remoteDb,
+			extraMembers: svc ? [svc] : [],
 		});
 		if (!res.ok) {
 			this.d.logger.error(t("command.provisioning_failed", { err: res.error ?? "" }), true);
@@ -147,29 +152,32 @@ export class MemberController {
 		const s = this.d.settings();
 		// 이 구성원에게 실시간을 켤지(전역 on + 개별 차단 아님). 차단이면 토큰 미전달·realtime:false → 파일 동기화만.
 		const rtOn = s.realtimeEnabled && !st.realtimeBlocked;
-		const spaces: SharesDoc["spaces"] = s.sharedSpaces
-			.filter((sp) => sp.members.includes(st.memberId))
-			.map((sp) => ({
+		const spaces: SharesDoc["spaces"] = [];
+		for (const sp of s.sharedSpaces) {
+			if (!sp.members.includes(st.memberId)) continue;
+			// 토큰은 멤버별 발급(m/r 클레임) — 교사용 sp.token을 그대로 내려보내면 구성원이 manager 권한이 된다.
+			spaces.push({
 				id: sp.id,
 				name: sp.name,
 				remoteDb: sp.remoteDb,
 				folder: sp.folder,
-				token: rtOn ? sp.token : undefined,
+				token: rtOn ? await this.d.mintMemberToken(sp, st.memberId) : undefined,
 				kind: sp.kind === "homeroom" ? ("homeroom" as const) : ("share" as const),
 				realtime: rtOn,
-			}));
+			});
+		}
 		if (rtOn && st.realtimeToken) {
 			spaces.push({ id: `mirror-${st.memberId}`, name: st.memberName, remoteDb: st.remoteDb, folder: "", token: st.realtimeToken, kind: "mirror", realtime: true });
 		}
 		const r = await admin.putDoc(st.remoteDb, { _id: SHARES_DOC_ID, type: "shares", spaces });
 		if (!r.ok) this.d.logger.error(t("command.failed_to_write_shares", { id: st.memberId, err: r.error ?? "" }));
 		// 레거시 전역 토큰은 더 이상 배포하지 않는다(실시간 인증은 공간별 HMAC 토큰만).
+		// snapshotSec은 더 이상 배포하지 않는다 — 세션 중 스냅샷은 Hocuspocus 서버(디바운스)가 담당.
 		const rc = await admin.putDoc(st.remoteDb, {
 			_id: RTCONFIG_DOC_ID,
 			type: "rtconfig",
 			enabled: s.realtimeEnabled,
 			url: s.yjsServerUrl,
-			snapshotSec: s.realtimeSnapshotSec,
 			sharedReadOnly: !!s.sharedReadOnly,
 		});
 		if (!rc.ok) this.d.logger.error(t("command.failed_to_write_rtconfig", { id: st.memberId, err: rc.error ?? "" }));

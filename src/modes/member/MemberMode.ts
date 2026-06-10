@@ -147,12 +147,11 @@ export class MemberMode implements CoVaultMode {
 			const doc = await pouch.get<RtConfigDoc>(RTCONFIG_DOC_ID);
 			if (!doc) return;
 			const s = this.core.settings;
-			const snapshotSec = doc.snapshotSec ?? 0;
 			const readOnly = !!doc.sharedReadOnly;
-			if (s.realtimeEnabled !== doc.enabled || s.yjsServerUrl !== doc.url || s.realtimeSnapshotSec !== snapshotSec || !!s.sharedReadOnly !== readOnly) {
+			// snapshotSec은 무시한다 — 세션 중 스냅샷은 Hocuspocus 서버가 담당(클라이언트 주기 스냅샷 제거).
+			if (s.realtimeEnabled !== doc.enabled || s.yjsServerUrl !== doc.url || !!s.sharedReadOnly !== readOnly) {
 				s.realtimeEnabled = doc.enabled;
 				s.yjsServerUrl = doc.url;
-				s.realtimeSnapshotSec = snapshotSec;
 				s.sharedReadOnly = readOnly;
 				await this.core.save();
 			}

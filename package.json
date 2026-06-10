@@ -1,6 +1,6 @@
 {
 	"name": "covault",
-	"version": "0.103.0",
+	"version": "0.104.0",
 	"description": "운영자의 구성원별 폴더와 각 구성원 개인 vault를 CouchDB mirror DB로 양방향 동기화하고 공동 공간·실시간 공동 편집을 제공하는 Obsidian 플러그인(CoVault)",
 	"main": "main.js",
 	"scripts": {
@@ -19,11 +19,12 @@
 	"author": "wakeyi",
 	"license": "MIT",
 	"dependencies": {
+		"@hocuspocus/provider": "~4.1.1",
 		"pouchdb-browser": "^9.0.0",
 		"qrcode-generator": "^1.5.2",
 		"y-codemirror.next": "^0.3.5",
 		"y-excalidraw": "^2.0.12",
-		"y-websocket": "^1.5.4",
+		"y-protocols": "^1.0.7",
 		"yjs": "^13.6.31"
 	},
 	"devDependencies": {

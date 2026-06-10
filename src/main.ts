@@ -114,6 +114,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			requestApply: () => this.requestApply(),
 			openLog: () => this.openLog(),
 			mintMirror: (m) => this.realtimeCtl.mintMirror(m),
+			mintMemberToken: (sp, memberId) => this.realtimeCtl.mintMemberToken(sp, memberId),
 		});
 		this.registerEditorExtension(realtimeEditorExtension());
 
@@ -159,6 +160,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			sharedSpaces: () => this.core.sharedSpaces,
 			saveSettings: () => this.saveSettings(),
 			refreshMemberShares: () => this.refreshMemberShares(),
+			writeRtControl: () => this.deploymentCtl.writeRtControl(),
 		});
 		this.deploymentCtl = new DeploymentController({
 			app: this.app,

@@ -14,10 +14,10 @@ const OVERRIDES = {
 	// main.ts: god object 분해 완료(1424→939, -34%). 모든 인라인 로직을 컨트롤러로 추출.
 	// 남은 ~939는 DI 배선 + 얇은 위임(특히 PanelHost 학급 위임 ~147줄). 600 도달은 PanelHost
 	// 인터페이스 컴포지션(UI 배선 변경)이 필요 — 별도 후속. 이 값은 회귀 방지 영구 가드.
-	"src/main.ts": 1033,
-	"src/settings/SettingsTab.ts": 1077, // 범위 밖(+그룹 관리)
+	"src/main.ts": 1035, // +Hocuspocus 전환 DI 배선 2줄(mintMemberToken·writeRtControl)
+	"src/settings/SettingsTab.ts": 1092, // 범위 밖(+그룹 관리, +실시간 서버 서비스 계정 설정)
 	"src/modes/ClassroomController.ts": 1040, // 범위 밖(+그룹 대화·대화 기능)
-	"src/core/realtime/RealtimeManager.ts": 699, // 범위 밖(게이트 로직은 main에 있음)
+	"src/core/realtime/RealtimeManager.ts": 699, // 범위 밖(게이트 로직은 main에 있음) — Hocuspocus 전환으로 679줄(-20)
 };
 
 function walk(dir) {
