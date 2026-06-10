@@ -71,6 +71,9 @@ export class RealtimeManager {
 	// 파일별 참여 허용 캐시(비동기 조회 결과). 파일이 닫히면 비워 재오픈 시 재평가.
 	private participantOk = new Map<string, boolean>();
 	private participantPending = new Set<string>();
+	// 서버 거부(인증 실패·재인가 종료) 재시도 백오프(2s→60s 지수). 동기화 성공 시 해제.
+	// 서버가 지속 거부(예: CouchDB 미연동으로 시드 실패)할 때 즉시 재접속 루프 + 알림 폭주를 막는다.
+	private retryState = new Map<string, { failures: number; until: number }>();
 	// CoVault가 읽기 전용으로 잠근 에디터/그림(정책 해제 시 우리가 잠근 것만 푼다 — 타 플러그인 보호).
 	private lockedViews = new WeakSet<EditorView>();
 	private lockedExcalidraw = new WeakSet<ExcalidrawLikeView>();
@@ -217,6 +220,8 @@ export class RealtimeManager {
 				if (cached === undefined) this.allowedToStart(path);
 			} else {
 				if (!this.allowedToStart(path)) continue; // 파일별 참여자에 없으면 라이브 미접속(파일 동기화만)
+				const st = this.retryState.get(path);
+				if (st && Date.now() < st.until) continue; // 서버 거부 백오프 중 — noteServerRefusal의 타이머가 재평가한다
 				session = this.startSession(path, tgt.kind);
 			}
 			if (!session?.ready) continue;
@@ -308,16 +313,15 @@ export class RealtimeManager {
 				this.core.logger.info(t("realtime.realtime_connected", { path: dbPath }));
 			},
 			onAuthenticationFailed: ({ reason }) => {
-				// 시크릿 불일치/토큰 만료/참가자 제외(서버 강퇴 후 재인가 거부) — 세션을 정리하고 재평가한다.
-				this.core.logger.warn(t("realtime.realtime_auth_failed", { path: dbPath, reason: String(reason ?? "") }), true);
-				void this.endSession(path).then(() => this.invalidateParticipants(path));
+				// 시크릿 불일치/토큰 만료/참가자 제외(서버 강퇴 후 재인가 거부) — 백오프 후 재평가한다.
+				this.noteServerRefusal(path, dbPath, String(reason ?? ""));
 			},
 			onClose: ({ event }) => {
-				// 서버 강퇴: 참가자(rtpart)/정책(rtcontrol) 변경 시 서버가 문서 연결을 닫는다(reason="Reset Connection").
-				// 세션을 정리하고 재평가 — 여전히 허용이면 새 세션이 즉시 다시 열리며 재인가된다.
+				// 서버 종료 신호: 참가자(rtpart)/정책(rtcontrol) 변경 재인가 또는 서버측 오류(시드 실패 등)로
+				// 문서 연결을 닫는다(reason="Reset Connection"). 백오프 후 재평가 — 여전히 허용이면 다시 연결된다.
 				// 일반 네트워크 끊김은 소켓이 자동 재연결·재인증하므로 여기서 처리하지 않는다.
 				if (event?.reason !== "Reset Connection") return;
-				void this.endSession(path).then(() => this.invalidateParticipants(path));
+				this.noteServerRefusal(path, dbPath, "server closed (re-auth or server error)");
 			},
 			onSynced: () => {
 				if (syncedOnce) return;
@@ -355,10 +359,28 @@ export class RealtimeManager {
 	private onSynced(session: Session): void {
 		// 이미 교체/종료된 세션이면 무시 — 좀비 바인딩 방지.
 		if (this.sessions.get(session.file) !== session) return;
+		this.retryState.delete(session.file); // 정상 동기화 → 거부 백오프 해제
 		// 문서 시드는 서버(onLoadDocument)가 CouchDB note 문서로 수행한다 — 클라이언트 시드 없음
 		// (여러 클라이언트가 서로 다른 내용을 시드해 문서가 섞이는 문제가 원천 제거됨).
 		session.ready = true;
 		this.syncOpenEditors(); // 이제 바인딩
+	}
+
+	/**
+	 * 서버가 이 문서의 연결을 거부/종료했을 때: 세션을 정리하고 지수 백오프(2s→최대 60s) 후 재평가한다.
+	 * 알림(Notice)은 첫 실패만 — 서버가 지속 거부(시크릿 불일치, CouchDB 미연동 등)할 때 알림 폭주로
+	 * 설정 변경조차 못 하게 되는 것을 막는다. 이후 실패는 로그 패널에만 남는다.
+	 */
+	private noteServerRefusal(path: string, dbPath: string, reason: string): void {
+		const st = this.retryState.get(path) ?? { failures: 0, until: 0 };
+		st.failures++;
+		const delay = Math.min(60_000, 2_000 * 2 ** (st.failures - 1));
+		st.until = Date.now() + delay;
+		this.retryState.set(path, st);
+		this.core.logger.warn(t("realtime.realtime_auth_failed", { path: dbPath, reason }), st.failures === 1);
+		void this.endSession(path).then(() => {
+			window.setTimeout(() => this.invalidateParticipants(path), delay);
+		});
 	}
 
 	/** 실시간 상태 점검(명령). 왜 세션이 안 뜨는지 진단용. */
