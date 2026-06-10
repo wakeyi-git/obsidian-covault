@@ -5,6 +5,9 @@ import { LiveHandle } from "../couch/PouchService";
 import { NoteDoc } from "../model/types";
 import { t } from "../../i18n";
 
+/** 수신 시 학급 패널(대시보드·학급 채널)을 갱신해야 하는 문서 타입 — core.onClassroomChange로 알린다. */
+const CLASSROOM_NOTIFY_TYPES = new Set(["notice", "timetable", "response", "routine", "routine-state", "assignment", "assignment-state", "message", "chatgroup"]);
+
 /**
  * 로컬 PouchDB changes 구독 → vault 반영. 기술문서 §10 / §17.2.
  *
@@ -53,6 +56,10 @@ export class LocalApplier {
 					} else if (change.doc && (change.doc as any).type === "grouprequest") {
 						// 그룹 신청 변경 → 교사: 대기 신청 처리, 구성원: 신청 상태 갱신
 						this.ctx.core.onGroupRequestChange();
+					} else if (change.doc && CLASSROOM_NOTIFY_TYPES.has((change.doc as any).type)) {
+						// 학급 운영 문서(알림장·응답·루틴·메시지 등) 수신 → 대시보드 허브/학급 채널 갱신.
+						// (이전엔 onClassroomChange가 어디서도 호출되지 않아 원격 변경에 패널이 멈춰 있었다.)
+						this.ctx.core.onClassroomChange();
 					} else if (change.doc && (change.doc as any).type === "feedback") {
 						// 피드백(§19.5)은 파일이 아니라 메타데이터 → vault에 쓰지 않고 패널만 갱신
 						this.ctx.core.onFeedbackChange();

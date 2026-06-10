@@ -455,6 +455,12 @@
 	},
 	"panel": {
 		"covault": "CoVault",
+		"edit_tabs": "탭 편집",
+		"edit_tabs_hint": "표시할 탭을 고르고 화살표로 순서를 바꿉니다.",
+		"move_up": "위로",
+		"move_down": "아래로",
+		"tabs_reset": "기본 구성으로",
+		"tabs_min": "최소 1개 탭은 남겨야 합니다.",
 		"feedback": "피드백",
 		"sync_status": "동기화 상태",
 		"manager_setup": "운영자 시작하기",

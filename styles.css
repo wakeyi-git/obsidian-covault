@@ -106,6 +106,24 @@
 	border-bottom-color: var(--interactive-accent);
 }
 
+/* 탭 편집 버튼(탭 바 끝) — 라벨 없이 아이콘만, 평소엔 옅게 */
+.covault-panel-tab-edit {
+	margin-left: auto;
+	opacity: 0.55;
+}
+.covault-panel-tab-edit:hover {
+	opacity: 1;
+}
+
+/* 탭 편집 모달 행 — 체크박스·아이콘·이름·이동 버튼 한 줄 */
+.covault-tab-row .covault-cr-card-head {
+	align-items: center;
+	gap: 8px;
+}
+.covault-tab-row .covault-cr-card-title {
+	flex: 1;
+}
+
 /* 시스템 탭의 서브탭 바(동기화/복구/이력/로그) */
 .covault-system-subtabs {
 	display: flex;

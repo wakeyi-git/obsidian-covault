@@ -200,6 +200,12 @@ export interface CoVaultSettings {
 	/** 버전 최대 보존 일수(기본 30). 최근 N개 또는 N일 합집합으로 유지. */
 	versionMaxAgeDays?: number;
 
+	/**
+	 * 패널 탭 사용자화 — 표시할 탭 id를 순서대로. 미설정=역할 기본 구성.
+	 * 역할에 허용되지 않는 탭은 무시되고, 비워지면 기본 구성으로 복귀한다.
+	 */
+	panelTabs?: string[];
+
 	/** 학급 대시보드: 알림장/과제 한 화면 표시 개수(이후 "더 보기"). 기본 10. */
 	dashboardPageSize?: number;
 	/** 학급 대시보드: 모듈 카드 표시 순서(모듈 키 배열). 비면 기본 순서. */

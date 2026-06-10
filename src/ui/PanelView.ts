@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf, setIcon } from "obsidian";
 import { PanelHost, PanelSection, PanelTab } from "./panel/PanelSection";
+import { PanelTabsModal } from "./PanelTabsModal";
 import { DashboardSection } from "./panel/DashboardSection";
 import { ChatSection } from "./panel/ChatSection";
 import { GroupsSection } from "./panel/GroupsSection";
@@ -74,11 +75,21 @@ export class CoVaultPanelView extends ItemView {
 		return "graduation-cap";
 	}
 
-	private tabs(): PanelTab[] {
+	/** 역할에 허용된 전체 탭(기본 순서). 탭 사용자화의 후보 목록. */
+	private allTabs(): PanelTab[] {
 		const manager = this.host.settings.role === "manager";
 		return manager
 			? ["dashboard", "chat", "feedback", "realtime", "groups", "deploy", "system"]
 			: ["dashboard", "chat", "feedback", "realtime", "groups", "system"];
+	}
+
+	/** 표시할 탭(사용자화 반영). settings.panelTabs가 있으면 그 순서·구성, 없으면 역할 기본. */
+	private tabs(): PanelTab[] {
+		const all = this.allTabs();
+		const custom = this.host.settings.panelTabs;
+		if (!custom?.length) return all;
+		const picked = custom.filter((id): id is PanelTab => (all as string[]).includes(id));
+		return picked.length > 0 ? picked : all;
 	}
 
 	async onOpen(): Promise<void> {
@@ -88,7 +99,7 @@ export class CoVaultPanelView extends ItemView {
 		this.tabBar = c.createDiv({ cls: "covault-panel-tabs" });
 		this.body = c.createDiv({ cls: "covault-panel-body" });
 		this.attachEdgeScroll(this.tabBar);
-		if (!this.tabs().includes(this.activeTab)) this.activeTab = "dashboard";
+		if (!this.tabs().includes(this.activeTab)) this.activeTab = this.tabs()[0] ?? "dashboard";
 		this.renderTabBar();
 		this.renderSection();
 	}
@@ -136,9 +147,9 @@ export class CoVaultPanelView extends ItemView {
 		this.renderSection();
 	}
 
-	/** 외부(명령/리본)에서 특정 탭을 연다. */
+	/** 외부(명령/리본)에서 특정 탭을 연다. 숨겨진 탭도 역할에 허용되면 임시로 표시해 연다(그룹 대화 진입 등). */
 	setTab(tab: PanelTab): void {
-		if (!this.tabs().includes(tab)) return;
+		if (!this.allTabs().includes(tab)) return;
 		this.activeTab = tab;
 		this.renderTabBar();
 		this.renderSection();
@@ -147,7 +158,10 @@ export class CoVaultPanelView extends ItemView {
 	private renderTabBar(): void {
 		if (!this.tabBar) return;
 		this.tabBar.empty();
-		for (const tab of this.tabs()) {
+		// 숨겨진 탭이 외부 진입(setTab)으로 활성화됐으면 임시로 뒤에 붙여 일관된 탭 표시를 유지.
+		const list = [...this.tabs()];
+		if (!list.includes(this.activeTab) && this.allTabs().includes(this.activeTab)) list.push(this.activeTab);
+		for (const tab of list) {
 			const el = this.tabBar.createDiv({
 				cls: `covault-panel-tab${tab === this.activeTab ? " is-active" : ""}`,
 			});
@@ -165,6 +179,30 @@ export class CoVaultPanelView extends ItemView {
 				this.renderSection();
 			};
 		}
+		// 탭 편집(추가/제거/순서) — 탭 바 끝의 작은 버튼.
+		const edit = this.tabBar.createDiv({ cls: "covault-panel-tab covault-panel-tab-edit" });
+		setIcon(edit.createSpan({ cls: "covault-panel-tab-icon" }), "sliders-horizontal");
+		edit.setAttr("aria-label", t("panel.edit_tabs"));
+		edit.onclick = () => this.openTabsEditor();
+	}
+
+	/** 탭 편집 모달 — 현재 표시 순서 우선, 숨김 탭은 기본 순서대로 뒤에. */
+	private openTabsEditor(): void {
+		const visible = this.tabs();
+		const hidden = this.allTabs().filter((tab) => !visible.includes(tab));
+		const rows = [
+			...visible.map((tab) => ({ id: tab, label: tabLabel(tab), icon: tabIcon(tab), visible: true })),
+			...hidden.map((tab) => ({ id: tab, label: tabLabel(tab), icon: tabIcon(tab), visible: false })),
+		];
+		new PanelTabsModal(this.host.app, rows, (visibleIds) => {
+			// null=기본 구성으로 복귀. 기본과 동일한 선택도 미설정으로 저장해 이후 기본 변경을 따라가게 한다.
+			const all = this.allTabs();
+			const isDefault = visibleIds != null && visibleIds.length === all.length && visibleIds.every((id, i) => id === all[i]);
+			this.host.settings.panelTabs = visibleIds == null || isDefault ? undefined : visibleIds;
+			void this.host.saveSettings();
+			if (!this.tabs().includes(this.activeTab)) this.activeTab = this.tabs()[0] ?? "dashboard";
+			this.refresh();
+		}).open();
 	}
 
 	private renderSection(): void {

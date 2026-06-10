@@ -455,6 +455,12 @@
 	},
 	"panel": {
 		"covault": "CoVault",
+		"edit_tabs": "Edit tabs",
+		"edit_tabs_hint": "Choose which tabs to show and reorder them with the arrows.",
+		"move_up": "Move up",
+		"move_down": "Move down",
+		"tabs_reset": "Reset to default",
+		"tabs_min": "Keep at least one tab.",
 		"feedback": "Feedback",
 		"sync_status": "Sync status",
 		"manager_setup": "Manager setup",
