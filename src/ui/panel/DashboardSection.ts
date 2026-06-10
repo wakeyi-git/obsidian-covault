@@ -88,12 +88,18 @@ export class DashboardSection implements PanelSection {
 		c.createDiv({ cls: "covault-cr-title", text: t("dashboard.classroom_dashboard") });
 
 		if (!ready) {
-			const box = c.createDiv({ cls: "covault-cr-notice" });
-			box.createDiv({
-				cls: "covault-cr-notice-text",
-				text: manager ? t("dashboard.homeroom_not_set_manager") : t("dashboard.homeroom_not_set_member"),
-			});
-			if (manager) panelButton(box, t("dashboard.open_settings_homeroom"), () => this.host.openSettings(), { cta: true });
+			// 지정은 되어 있는데 동기화 링크가 아직 없는 경우(볼트 시작 직후 등) — "지정하세요" 안내가
+			// 깜빡이지 않게 연결 중 문구만 표시. 모드 시작 완료 시 classroom.refresh()가 다시 그린다.
+			if (this.host.homeroomConfigured()) {
+				c.createDiv({ cls: "covault-cr-muted", text: t("dashboard.homeroom_connecting") });
+			} else {
+				const box = c.createDiv({ cls: "covault-cr-notice" });
+				box.createDiv({
+					cls: "covault-cr-notice-text",
+					text: manager ? t("dashboard.homeroom_not_set_manager") : t("dashboard.homeroom_not_set_member"),
+				});
+				if (manager) panelButton(box, t("dashboard.open_settings_homeroom"), () => this.host.openSettings(), { cta: true });
+			}
 		}
 
 		const grid = c.createDiv({ cls: "covault-cr-grid" });

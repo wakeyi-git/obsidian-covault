@@ -80,6 +80,7 @@
 		"dashboard": "Dashboard",
 		"classroom_dashboard": "Classroom dashboard",
 		"homeroom_not_set_manager": "No homeroom space yet. In settings, toggle a shared space as the homeroom to use notices, timetable, and routines.",
+		"homeroom_connecting": "Connecting to the homeroom shared space…",
 		"homeroom_not_set_member": "Waiting for the homeroom space from your manager.",
 		"open_settings_homeroom": "Set homeroom in settings",
 		"refresh": "Refresh",

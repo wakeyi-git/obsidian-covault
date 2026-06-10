@@ -42,6 +42,8 @@ export interface CoreHost {
 	classroomStore: ClassroomStore;
 	/** 학급 공동 공간이 지정·배포·수신되어 사용 가능한지. */
 	homeroomReady(): boolean;
+	/** 학급 공동 공간이 '지정'되어 있는지(연결 준비와 무관 — 시작 직후 깜빡임 방지용). */
+	homeroomConfigured(): boolean;
 	/** 노트 경로의 피드백 목록(대화 피드백 참조 picker용). */
 	listFeedback(path: string): Promise<Array<{ uid: string; label: string; path: string }>>;
 	/** 피드백 참조 클릭 → 해당 앵커 위치로 이동. */

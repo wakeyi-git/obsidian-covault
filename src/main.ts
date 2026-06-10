@@ -451,6 +451,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return !!this.homeroomPouch();
 	}
 
+	/**
+	 * PanelHost: 학급 공동 공간이 '지정'되어 있는지(연결 준비와 무관). 교사=설정 기준이라 모드 시작 전에도
+	 * 즉시 판단된다 — 볼트 재시작 직후 패널이 모드보다 먼저 그려질 때 "지정하세요" 안내가 깜빡이는 것 방지.
+	 */
+	homeroomConfigured(): boolean {
+		if (this.settings.role === "manager") return this.settings.sharedSpaces.some((sp) => sp.kind === "homeroom");
+		return !!this.core.homeroom;
+	}
+
 	// --- 실시간 참여 게이트/파일별 참여자/읽기전용 → ParticipantController 위임 ---
 	realtimeTokenReceived(): boolean {
 		return this.participantCtl.realtimeTokenReceived();
