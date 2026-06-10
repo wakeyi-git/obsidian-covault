@@ -909,6 +909,8 @@
 		"name": "Group name",
 		"members": "Members",
 		"none": "No groups yet. Bundle members into a group.",
+		"none_member": "You're not in any group yet.",
+		"member_hint": "Group chats you belong to.",
 		"open_chat": "Group chat",
 		"open_temp_chat": "Temporary group chat",
 		"temp_suffix": "(temp)",

@@ -125,6 +125,8 @@ export class RealtimeSection implements PanelSection {
 		if (!el) return;
 		const open = this.host.realtimeSessions(); // [{path, participants}] 이 기기에서 열린 세션
 		const configured = await this.host.listRealtimeFiles(); // 지정된 파일(닫혀도) — 역할별 필터됨
+		// 구성원: 설정 그룹이 없으므로 동기화로 받은 그룹 대화방(자신 소속분)으로 세션 참여자를 매칭.
+		const chatGroups = this.manager ? [] : await this.host.listChatGroups().catch(() => []);
 		if (this.sessionEl !== el) return; // 비동기 대기 중 재드로우되었으면 중단
 
 		type Row = { path: string; open: boolean; participants: number; memberIds: string[] | null; memberNames?: Record<string, string> };
@@ -150,7 +152,11 @@ export class RealtimeSection implements PanelSection {
 		// 열린 파일은 참가자 수만, 닫힌 지정 파일은 지정 명단만 본다 — 참여자 칩 토글이 목록을
 		// 재구성하지 않게(활성 파일은 열려 있어 토글해도 시그니처 불변) → 칩 클릭 안정성.
 		const sig =
-			rows.map((r) => (r.open ? `${r.path}:o${r.participants}` : `${r.path}:a${(r.memberIds ?? []).join(",")}`)).join("|") + "#" + activePath;
+			rows.map((r) => (r.open ? `${r.path}:o${r.participants}` : `${r.path}:a${(r.memberIds ?? []).join(",")}`)).join("|") +
+			"#" +
+			activePath +
+			"#" +
+			chatGroups.map((g) => g.channel).join(","); // 그룹 문서 수신/삭제 시 버튼 갱신(구성원)
 		if (sig === this.sessSig && el.childElementCount > 0) return;
 		this.sessSig = sig;
 		el.empty();
@@ -172,20 +178,30 @@ export class RealtimeSection implements PanelSection {
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
-			// 그룹 대화: 참여자가 지정된 세션이면 항상 표시(교사). 일치하는 명명 그룹이 있으면 그 그룹 대화,
-			// 없으면 임시 그룹을 만들어(같은 명단의 임시 그룹은 재사용) 연다. 카드 열기와 분리.
-			if (this.manager && r.memberIds?.length) {
+			// 그룹 대화: 참여자가 지정된 세션이면 표시. 교사는 일치하는 명명 그룹이 있으면 그 그룹 대화,
+			// 없으면 임시 그룹을 만들어(같은 명단의 임시 그룹은 재사용) 연다. 구성원은 그룹을 만들 수
+			// 없으므로 일치하는 그룹 대화방(동기화 수신분)이 이미 있을 때만 표시. 카드 열기와 분리.
+			if (r.memberIds?.length) {
 				const ids = r.memberIds;
-				const g = this.matchingGroup(ids);
-				const label = g && !g.temp ? t("group.open_chat") : t("group.open_temp_chat");
-				const gc = head.createEl("button", { cls: "clickable-icon covault-rt-groupbtn" });
-				setIcon(gc, "messages-square");
-				gc.setAttr("aria-label", label);
-				gc.title = label;
-				gc.onclick = (e) => {
-					e.stopPropagation();
-					void this.host.openSessionGroupChat(ids);
-				};
+				if (this.manager) {
+					const g = this.matchingGroup(ids);
+					const label = g && !g.temp ? t("group.open_chat") : t("group.open_temp_chat");
+					const gc = this.groupChatButton(head, label);
+					gc.onclick = (e) => {
+						e.stopPropagation();
+						void this.host.openSessionGroupChat(ids);
+					};
+				} else {
+					const want = new Set(ids);
+					const g = chatGroups.find((x) => x.memberIds.length === want.size && x.memberIds.every((id) => want.has(id)));
+					if (g) {
+						const gc = this.groupChatButton(head, g.temp ? t("group.open_temp_chat") : t("group.open_chat"));
+						gc.onclick = (e) => {
+							e.stopPropagation();
+							void this.host.openChat(g.channel);
+						};
+					}
+				}
 			}
 			box.createDiv({ cls: "covault-cr-muted", text: r.path });
 			// 참가자/지정 배지를 경로 아래(이전 '함께' 줄 위치)에 배치. 지정 배지 옆에는 지정된 구성원 이름.
@@ -207,6 +223,15 @@ export class RealtimeSection implements PanelSection {
 		}
 		// 참여자 칩 박스(안정 노드)를 활성 카드 안으로 펼친다 — 재구성하지 않고 이동만 해 클릭 안정.
 		if (this.partEl) (activeCard ?? el).appendChild(this.partEl);
+	}
+
+	/** 세션 카드의 그룹 대화 아이콘 버튼(공통 마크업). onclick은 호출부에서 단다. */
+	private groupChatButton(head: HTMLElement, label: string): HTMLButtonElement {
+		const gc = head.createEl("button", { cls: "clickable-icon covault-rt-groupbtn" });
+		setIcon(gc, "messages-square");
+		gc.setAttr("aria-label", label);
+		gc.title = label;
+		return gc;
 	}
 
 	/** 참여자 명단과 구성원이 정확히 일치하는 그룹(명명·임시 — 이 세션에 적용된 그룹). 없으면 null. */

@@ -78,7 +78,7 @@ export class CoVaultPanelView extends ItemView {
 		const manager = this.host.settings.role === "manager";
 		return manager
 			? ["dashboard", "chat", "feedback", "realtime", "groups", "deploy", "system"]
-			: ["dashboard", "chat", "feedback", "realtime", "system"];
+			: ["dashboard", "chat", "feedback", "realtime", "groups", "system"];
 	}
 
 	async onOpen(): Promise<void> {
