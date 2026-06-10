@@ -99,6 +99,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			(p) => this.participantCtl.canEditRealtime(p), // 파일별 참여자 게이팅
 		);
 		this.core.isRealtimeActive = (p) => this.realtime.isActive(p);
+		this.core.endRealtimeSession = (p) => this.realtime.endSessionForDelete(p);
 		this.realtimeCtl = new RealtimeController({
 			app: this.app,
 			settings: () => this.settings,

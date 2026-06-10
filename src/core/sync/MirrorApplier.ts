@@ -10,6 +10,7 @@ type DeletableDoc = {
 	path: string;
 	deleted: boolean;
 	lastModifiedDeviceId: string;
+	deletedByRole?: "member" | "manager";
 	deleteMode?: "archive" | "propagate-delete" | "ignore-delete";
 };
 
@@ -256,9 +257,18 @@ export class MirrorApplier {
 		if (policy === "ignore-delete") return "skipped-deleted";
 
 		const localPath = ctx.toLocalPath(doc.path);
-		// 실시간 세션 중인 파일은 삭제/보관을 보류 — 공동 편집 중인 라이브 파일을 _삭제됨으로 끌고 가지 않는다.
-		// (세션 종료 스냅샷이 내용을 다시 올려 삭제를 무효화한다.)
-		if (ctx.core.isRealtimeActive(localPath)) return "skipped-pending";
+		// 실시간 세션 중인 파일: 교사 삭제는 세션보다 우선 — 세션을 스냅샷 없이 종료하고 삭제를 적용한다
+		// (이전엔 무조건 보류해 세션 종료 스냅샷이 삭제를 무효화·부활시켰다). 구성원의 실수 삭제는
+		// 현행대로 세션 보호가 우선 — 보류하고 세션 종료 스냅샷이 내용을 복원한다.
+		if (ctx.core.isRealtimeActive(localPath)) {
+			if (doc.deletedByRole === "manager") {
+				await ctx.core.endRealtimeSession(localPath);
+				ctx.logger.info(t("sync.realtime_session_closed_by_deletion", { path: localPath }));
+			} else {
+				ctx.logger.info(t("sync.deletion_held_session_active", { path: localPath }));
+				return "skipped-pending";
+			}
+		}
 
 		// 삭제를 적용하는 vault에선 더 이상 의미 없는 _충돌/ 보류본·내편집 백업을 정리(고아 사본 방지).
 		await this.conflicts.cleanupOnDelete(doc.path);

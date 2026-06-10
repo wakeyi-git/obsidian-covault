@@ -729,6 +729,8 @@
 		"no_attachment_data_waiting_for_propagation": "첨부 데이터 없음(전파 대기?): {path}",
 		"applied_remote_local_attachment": "원격→로컬 적용(첨부): {path}",
 		"applied_remote_deletion_permanent_delete": "원격 삭제 반영(완전 삭제): {path}",
+		"realtime_session_closed_by_deletion": "관리자 삭제로 실시간 세션을 종료하고 삭제를 적용합니다: {path}",
+		"deletion_held_session_active": "실시간 세션 중이라 삭제를 보류합니다(세션 종료 시 내용 복원): {path}",
 		"applied_remote_deletion_archived_to_deleted": "원격 삭제 반영(.deleted 보관): {from} → {to}",
 		"autosync_off_automatic_sync_disabled_manual": "autoSync 꺼짐 — 자동 동기화 비활성. 수동 동기화만 가능.",
 		"no_couchdb_url_enter_it_in": "CouchDB URL이 없습니다. 설정에서 입력하면 자동 적용됩니다.",

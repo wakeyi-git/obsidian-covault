@@ -20,6 +20,9 @@ export class CoreServices {
 	/** 실시간 세션 중인 파일 판단(RealtimeManager 주입). 공존: 라이브 에디터를 덮지 않게. */
 	isRealtimeActive: (localPath: string) => boolean = () => false;
 
+	/** 실시간 세션을 종료 스냅샷 없이 닫는다(RealtimeManager 주입). 교사 삭제 적용 시 — 스냅샷이 tombstone을 되살리지 않게. */
+	endRealtimeSession: (localPath: string) => Promise<void> = async () => {};
+
 	/** 현재 사용자의 공유 공간(교사=설정, 학생=shares 문서). 모드가 런타임에 채운다. RealtimeManager가 참조.
 	 * kind="mirror"는 학생 개인 mirror의 1:1 실시간 공간(folder=""=학생 vault 전체일 수 있음). */
 	sharedSpaces: Array<{ id: string; folder: string; token?: string; kind?: "share" | "homeroom" | "mirror" }> = [];

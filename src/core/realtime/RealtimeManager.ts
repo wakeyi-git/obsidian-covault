@@ -545,7 +545,15 @@ export class RealtimeManager {
 		return null;
 	}
 
-	private async endSession(path: string): Promise<void> {
+	/**
+	 * 세션을 종료 영속(스냅샷) 없이 닫는다 — 원격(교사) 삭제 적용 직전에 호출.
+	 * 종료 스냅샷이 tombstone 위에 내용을 다시 올려 삭제를 무효화하는 것을 막는다.
+	 */
+	async endSessionForDelete(path: string): Promise<void> {
+		await this.endSession(path, false);
+	}
+
+	private async endSession(path: string, persist = true): Promise<void> {
 		const session = this.sessions.get(path);
 		if (!session) return;
 		this.sessions.delete(path);
@@ -572,7 +580,9 @@ export class RealtimeManager {
 		}
 		session.exBinding?.destroy();
 
-		if (session.kind === "excalidraw") {
+		if (!persist) {
+			// 삭제 적용을 위한 종료 — 스냅샷·vault 쓰기 생략(아래 정리만 수행).
+		} else if (session.kind === "excalidraw") {
 			// Excalidraw 파일은 플러그인이 onChange 때 디스크에 저장한다. 세션 종료 후 그 파일을
 			// CouchDB로 한 번 올려 비실시간 멤버에게 전파(서버는 excalidraw를 CouchDB 스냅샷하지 않는다).
 			try {

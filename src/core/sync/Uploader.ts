@@ -11,7 +11,8 @@ export type UploadResult =
 	| "skipped-excluded"
 	| "skipped-asset-off"
 	| "skipped-toolarge"
-	| "skipped-missing";
+	| "skipped-missing"
+	| "skipped-deleted";
 
 /**
  * 로컬 vault 파일 → 로컬 PouchDB upsert. 기술문서 §11.2 / §18.2 / §8.2.
@@ -44,6 +45,8 @@ export class Uploader {
 
 		const newHash = await sha256(content);
 		const existing = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
+		// 교사 삭제 tombstone은 실시간 스냅샷으로 되살리지 않는다(교사 삭제가 세션보다 우선 — 부활 방지).
+		if (existing?.deleted && existing.deletedByRole === "manager") return "skipped-deleted";
 		if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
 		const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
@@ -59,8 +62,10 @@ export class Uploader {
 		if (content == null) return "skipped-missing";
 		const newHash = await sha256(content);
 
-		// 동일하면 생략. 단 tombstone이면 같은 해시여도 부활.
+		// 동일하면 생략. tombstone 위 업로드(부활)는 의도적 재생성/편집(파일이 삭제 시점보다 새로 수정됨)만 —
+		// 잔존 사본(삭제 적용 보류·실패로 남은 옛 파일)이 전체 동기화에서 삭제를 전역 무효화하지 않게.
 		const existing = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
+		if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing)) return "skipped-deleted";
 		if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
 		const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
@@ -102,12 +107,24 @@ export class Uploader {
 
 		const newHash = await sha256(data);
 		const existing = await ctx.pouch.get<AssetDoc>(assetId(dbPath));
+		// 노트와 동일한 부활 규칙 — 잔존 사본은 tombstone을 되살리지 않는다.
+		if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing)) return "skipped-deleted";
 		if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
 		const doc = await ctx.buildAssetDoc(dbPath, data, existing?.version ?? 0);
 		await ctx.pouch.putAsset(doc, data);
 		this.markUploaded(dbPath);
 		return "uploaded";
+	}
+
+	/**
+	 * tombstone 이후 로컬 파일이 실제로 수정/재생성됐는지(mtime 비교).
+	 * 잔존 사본의 mtime은 삭제 이전 쓰기 시점이라 tombstone mtime보다 항상 과거다. 시계가 어긋나
+	 * 동시 편집·삭제가 겹친 경우라면 삭제/수정 충돌이므로 보존(부활) 쪽이 안전해 슬랙 없이 strict 비교.
+	 */
+	private modifiedAfterTombstone(localPath: string, tomb: { mtime?: number }): boolean {
+		const fileMtime = this.ctx.getFile(localPath)?.stat.mtime ?? 0;
+		return fileMtime > (tomb.mtime ?? 0);
 	}
 
 	private markUploaded(dbPath: string): void {

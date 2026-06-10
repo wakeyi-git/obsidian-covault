@@ -729,6 +729,8 @@
 		"no_attachment_data_waiting_for_propagation": "No attachment data (waiting for propagation?): {path}",
 		"applied_remote_local_attachment": "Applied remote→local (attachment): {path}",
 		"applied_remote_deletion_permanent_delete": "Applied remote deletion (permanent delete): {path}",
+		"realtime_session_closed_by_deletion": "Closing the realtime session and applying the manager's deletion: {path}",
+		"deletion_held_session_active": "Deletion held — a realtime session is active (content restored at session end): {path}",
 		"applied_remote_deletion_archived_to_deleted": "Applied remote deletion (archived to .deleted): {from} → {to}",
 		"autosync_off_automatic_sync_disabled_manual": "autoSync off — automatic sync disabled. Manual sync only.",
 		"no_couchdb_url_enter_it_in": "No CouchDB URL. Enter it in settings and it will be applied automatically.",

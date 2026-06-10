@@ -144,10 +144,28 @@ export class FullSync {
 		for (const file of files) {
 			const res = await this.uploader.uploadPath(file.path);
 			if (res === "uploaded") uploaded++;
+			// tombstone이 있는데 사본이 남은 파일(삭제 적용 보류·실패 잔재) — 부활시키지 않고 삭제를 재적용.
+			else if (res === "skipped-deleted") await this.applyPendingDeletion(file.path);
 		}
 		ctx.logger.info(
 			t("sync.upload_reconcile_uploaded_of_files", { files: files.length, uploaded }),
 		);
+	}
+
+	/** 보류된 원격 삭제를 정책(archive/즉시삭제)대로 재적용해 잔존 사본을 정리. 실패는 다음 동기화에서 재시도. */
+	private async applyPendingDeletion(localPath: string): Promise<void> {
+		const ctx = this.ctx;
+		const dbPath = ctx.toDbPath(localPath);
+		if (dbPath == null) return;
+		const isMd = ctx.isMarkdown(dbPath);
+		const doc = await ctx.pouch.get<NoteDoc | AssetDoc>(isMd ? noteId(dbPath) : assetId(dbPath));
+		if (!doc?.deleted) return;
+		try {
+			if (isMd) await this.applier.applyDoc(doc as NoteDoc);
+			else await this.applier.applyAsset(doc as AssetDoc & { _conflicts?: string[] });
+		} catch (e) {
+			ctx.logger.warn(t("sync.failed_to_apply_local_change", { id: doc._id, err: errMessage(e) }));
+		}
 	}
 
 	/**

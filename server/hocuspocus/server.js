@@ -58,6 +58,12 @@ db.pragma("journal_mode = WAL");
 db.exec('CREATE TABLE IF NOT EXISTS "documents" ("name" varchar(255) NOT NULL, "data" blob NOT NULL, UNIQUE(name))');
 const selectDoc = db.prepare('SELECT data FROM "documents" WHERE name = $name ORDER BY rowid DESC');
 const upsertDoc = db.prepare('INSERT INTO "documents" ("name", "data") VALUES ($name, $data) ON CONFLICT(name) DO UPDATE SET data = $data');
+const deleteDocRow = db.prepare('DELETE FROM "documents" WHERE name = $name');
+
+/** 교사 삭제 tombstone 여부 — 교사 삭제는 실시간 세션·스냅샷보다 우선한다(부활 방지). 구성원 삭제는 세션 보호가 우선. */
+function isManagerTombstone(note) {
+	return !!note?.deleted && note.deletedByRole === "manager";
+}
 
 function sha256Hex(s) {
 	return crypto.createHash("sha256").update(s, "utf8").digest("hex");
@@ -174,25 +180,35 @@ const server = new Server({
 		return { claims, room }; // → context (onStoreDocument lastContext, 강퇴 재인가에 사용)
 	},
 
-	/** 문서 로드: SQLite 복원 → 없으면 CouchDB note 문서로 시드(마크다운 전용). */
+	/** 문서 로드: SQLite 복원 → 없으면 CouchDB note 문서로 시드(마크다운 전용). 교사 삭제 tombstone이면 로드 거부. */
 	async onLoadDocument({ document, documentName, context }) {
-		const row = selectDoc.get({ name: documentName });
-		if (row?.data) {
-			Y.applyUpdate(document, row.data);
-			return;
-		}
 		const room = context?.room ?? parseRoom(documentName);
 		const claims = context?.claims;
-		if (!couch || !room || !claims || !isSnapshotTarget(room.dbPath)) return;
+		const row = selectDoc.get({ name: documentName });
+		if (!couch || !room || !claims || !isSnapshotTarget(room.dbPath)) {
+			if (row?.data) Y.applyUpdate(document, row.data);
+			return;
+		}
 		try {
 			const note = await couch.getDoc(claims.d, `note:${room.dbPath}`);
+			// 교사 삭제 tombstone: SQLite 잔존 Y-doc까지 지우고 로드 거부 — 삭제된 파일의 방을 다시 열어
+			// 옛 상태가 부활하는 것을 막는다(시드 경로의 !deleted 검사는 SQLite 복원 경로를 못 막았다).
+			if (isManagerTombstone(note)) {
+				deleteDocRow.run({ name: documentName });
+				console.log(`[seed] "${documentName}" load refused — note tombstoned by manager`);
+				throw new Error("document deleted");
+			}
+			if (row?.data) {
+				Y.applyUpdate(document, row.data);
+				return;
+			}
 			if (note && !note.deleted && typeof note.content === "string" && note.content.length > 0) {
 				// Y.Text 키 "content"는 클라이언트 RealtimeManager.startSession()의 ydoc.getText("content")와 일치해야 한다.
 				document.getText("content").insert(0, note.content);
 				console.log(`[seed] "${documentName}" seeded from CouchDB note (${note.content.length} chars)`);
 			}
 		} catch (e) {
-			// 시드 실패 시 빈 문서로 열면 스냅샷이 기존 내용을 비울 수 있다 → fail-closed로 연결 거부.
+			// 시드/검증 실패 시 빈 문서로 열면 스냅샷이 기존 내용을 비울 수 있다 → fail-closed로 연결 거부.
 			console.error(`[seed] failed for "${documentName}": ${e?.message ?? e}`);
 			throw new Error("document seed failed");
 		}
@@ -223,7 +239,15 @@ const server = new Server({
 		if (content.length === 0) return; // 빈 내용으로 기존 문서를 덮어쓰지 않음(데이터 손실 방지)
 		const contentHash = sha256Hex(content);
 		const id = `note:${room.dbPath}`;
-		const existing = await couch.getDoc(claims.d, id).catch(() => null);
+		// 조회 실패는 throw → 디바운서가 재시도. (이전엔 null로 폴백해 tombstone 위에 새 문서를 쓸 수 있었다.)
+		const existing = await couch.getDoc(claims.d, id);
+		// 교사 삭제 tombstone: 스냅샷으로 되살리지 않는다 — SQLite 잔존 상태를 지우고 연결을 닫아 세션 종료.
+		if (isManagerTombstone(existing)) {
+			deleteDocRow.run({ name: documentName });
+			hocuspocusInstance?.closeConnections(documentName);
+			console.log(`[snapshot] "${documentName}" skipped — note tombstoned by manager; session closed`);
+			return;
+		}
 		if (existing && !existing.deleted && existing.contentHash === contentHash) return; // 변화 없음
 
 		const now = Date.now();
