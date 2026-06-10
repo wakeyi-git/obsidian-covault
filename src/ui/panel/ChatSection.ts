@@ -1,5 +1,6 @@
 import { Menu, Notice, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
+import { ConfirmModal } from "../ConfirmModal";
 import { ChatSuggest, FilePickModal, FeedbackPickModal } from "./chatSuggest";
 import { MessageDoc, CLASS_CHANNEL, dmChannel } from "../../core/model/types";
 import { parseMessageBody } from "../../core/classroom/messages";
@@ -9,6 +10,8 @@ import { t, formatDate } from "../../i18n";
 interface Channel {
 	id: string;
 	label: string;
+	temp?: boolean; // 임시 그룹 대화방(세션 카드에서 즉석 생성) — 교사가 목록에서 삭제 가능
+	groupId?: string; // 그룹 채널의 그룹 uid(삭제용)
 }
 
 /**
@@ -79,7 +82,12 @@ export class ChatSection implements PanelSection {
 			this.groupMembers = new Map(g.map((x) => [x.channel, x.memberNames ?? {}]));
 			if (sig === this.groupSig) return;
 			this.groupSig = sig;
-			this.groups = g.map((x) => ({ id: x.channel, label: x.name }));
+			this.groups = g.map((x) => ({
+				id: x.channel,
+				label: x.temp ? `${x.name} ${t("group.temp_suffix")}` : x.name,
+				temp: x.temp,
+				groupId: x.groupId,
+			}));
 			if (this.root) this.draw();
 		} catch {
 			/* 무시 */
@@ -118,6 +126,16 @@ export class ChatSection implements PanelSection {
 			}
 			menu.showAtMouseEvent(e);
 		};
+		// 임시 그룹 대화방은 목록(현재 채널)에서 삭제 가능(교사). 채널 선택 버튼 옆 휴지통.
+		if (this.manager && cur?.temp && cur.groupId) {
+			const gid = cur.groupId;
+			const name = cur.label;
+			const del = head.createEl("button", { cls: "clickable-icon covault-chat-roomdel" });
+			setIcon(del, "trash-2");
+			del.setAttr("aria-label", t("chat.delete_temp_room"));
+			del.title = t("chat.delete_temp_room");
+			del.onclick = () => this.confirmDeleteRoom(gid, name);
+		}
 
 		this.listEl = c.createDiv({ cls: "covault-chat-list" });
 
@@ -158,6 +176,22 @@ export class ChatSection implements PanelSection {
 		this.renderReplyBanner(); // 재드로우 후 답글 상태 복원
 		this.lastSig = "";
 		void this.reload();
+	}
+
+	/** 임시 그룹 대화방 삭제(교사) — 그룹·대화방 soft-delete 후 학급 채널로 복귀. */
+	private confirmDeleteRoom(groupId: string, name: string): void {
+		new ConfirmModal(this.host.app, {
+			title: t("chat.delete_temp_room"),
+			message: t("chat.delete_temp_confirm", { name }),
+			confirmText: t("common.delete"),
+			warning: true,
+			onConfirm: async () => {
+				await this.host.deleteGroup(groupId);
+				this.channel = CLASS_CHANNEL;
+				await this.refreshGroups();
+				this.draw();
+			},
+		}).open();
 	}
 
 	private insertActiveNoteLink(): void {

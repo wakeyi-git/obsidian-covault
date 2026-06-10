@@ -20,7 +20,9 @@
 		"feedback_not_found": "Feedback not found.",
 		"attach_feedback": "Reference feedback",
 		"no_feedback_here": "No feedback on the current note.",
-		"group_needs_homeroom": "Group chat needs a homeroom shared space."
+		"group_needs_homeroom": "Group chat needs a homeroom shared space.",
+		"delete_temp_room": "Delete temporary chat",
+		"delete_temp_confirm": "Delete temporary chat '{name}'? It will disappear from the list."
 	},
 	"realtime": {
 		"tab": "Realtime",
@@ -908,6 +910,8 @@
 		"members": "Members",
 		"none": "No groups yet. Bundle members into a group.",
 		"open_chat": "Group chat",
+		"open_temp_chat": "Temporary group chat",
+		"temp_suffix": "(temp)",
 		"delete_confirm": "Delete group '{name}'? Its chat will be removed too.",
 		"n_members": "{n}",
 		"name_required": "Enter a group name.",

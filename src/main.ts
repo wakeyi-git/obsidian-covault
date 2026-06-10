@@ -593,7 +593,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	attachFileToChannel(channel: string, srcPath: string): Promise<string | null> {
 		return this.classroomCtl.attachFileToChannel(channel, srcPath);
 	}
-	listChatGroups(): Promise<Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
+	listChatGroups(): Promise<Array<{ channel: string; groupId: string; name: string; memberIds: string[]; memberNames?: Record<string, string>; temp?: boolean }>> {
 		return this.classroomCtl.listChatGroups();
 	}
 	/** PanelHost: 노트의 피드백 목록(대화 피드백 참조 picker용). */
@@ -646,6 +646,26 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	async openGroupChat(groupId: string): Promise<void> {
 		const ch = this.classroomCtl.groupChannelFor(groupId);
 		if (ch) await this.openChat(ch);
+	}
+	/**
+	 * 세션 참여자 명단으로 그룹 대화 열기(교사). 구성원이 정확히 일치하는 기존 그룹(명명·임시)이 있으면
+	 * 재사용하고, 없으면 임시 그룹을 만들어 연다. 임시 그룹은 대화방 목록에서 삭제할 수 있다.
+	 */
+	async openSessionGroupChat(memberIds: string[]): Promise<void> {
+		if (this.settings.role !== "manager" || !memberIds.length) return;
+		const want = new Set(memberIds);
+		let g = this.settings.groups.find((x) => x.memberIds.length === want.size && x.memberIds.every((id) => want.has(id)));
+		if (!g) {
+			const names = memberIds.map((id) => this.settings.members.find((m) => m.memberId === id)?.memberName || id);
+			g = {
+				id: `tmp${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
+				name: names.join(", "),
+				memberIds: [...memberIds],
+				temp: true,
+			};
+			await this.saveGroup(g);
+		}
+		await this.openGroupChat(g.id);
 	}
 	/** 대화 탭을 특정 채널로 연다. ChatSection이 render 시 consumePendingChatChannel로 받는다. */
 	async openChat(channel: string): Promise<void> {

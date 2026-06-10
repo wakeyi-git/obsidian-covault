@@ -322,10 +322,11 @@ export class CoVaultSettingTab extends PluginSettingTab {
 			),
 		);
 
-		// 명명 그룹 (대화방 + 라이브 세션 참여자 지정)
+		// 명명 그룹 (대화방 + 라이브 세션 참여자 지정). 임시 그룹은 대화방 목록에서 관리하므로 제외.
 		const grp = this.group(t("group.groups"), t("group.manage_hint"));
-		if (s.groups.length === 0) grp.addSetting((set) => set.setName(t("group.none")).setDisabled(true));
-		for (const g of s.groups) {
+		const namedGroups = s.groups.filter((g) => !g.temp);
+		if (namedGroups.length === 0) grp.addSetting((set) => set.setName(t("group.none")).setDisabled(true));
+		for (const g of namedGroups) {
 			grp.addSetting((set) => {
 				set.setName(g.name).setDesc(resolveMemberNames(g.memberIds, s.members).join(", ") || "—");
 				set.addExtraButton((b) => b.setIcon("messages-square").setTooltip(t("group.open_chat")).onClick(() => void this.host.openGroupChat(g.id)));

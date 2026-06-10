@@ -30,6 +30,8 @@ export interface GroupConfig {
 	id: string; // uid
 	name: string;
 	memberIds: string[];
+	/** 임시 그룹(세션 카드에서 즉석 생성) — 그룹 관리 UI에는 숨기고 대화방 목록에서 삭제. */
+	temp?: boolean;
 }
 
 /** 교사가 관리하는 학생 1명. 기술문서 §12.1. */

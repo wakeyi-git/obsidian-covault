@@ -971,6 +971,7 @@ export class ClassroomController {
 			name: group.name,
 			memberIds: group.memberIds,
 			memberNames,
+			temp: !!group.temp,
 			createdAtMs: existing?.createdAtMs ?? Date.now(),
 			createdBy: existing?.createdBy ?? s.userId,
 			deleted: false,
@@ -985,16 +986,16 @@ export class ClassroomController {
 	}
 
 	/** 접근 가능한 그룹 대화방 목록(homeroom). 교사=전부, 구성원=자신이 속한 것만. */
-	async listChatGroups(): Promise<Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
+	async listChatGroups(): Promise<Array<{ channel: string; groupId: string; name: string; memberIds: string[]; memberNames?: Record<string, string>; temp?: boolean }>> {
 		const s = this.d.settings();
 		const db = this.d.homeroomDb();
 		if (!db) return [];
 		const docs = await this.d.classroom.listByPrefix<GroupDoc>(CHATGROUP_ID_PREFIX);
-		const out: Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }> = [];
+		const out: Array<{ channel: string; groupId: string; name: string; memberIds: string[]; memberNames?: Record<string, string>; temp?: boolean }> = [];
 		for (const g of docs) {
 			if (!g || g.deleted || !g.groupId || !Array.isArray(g.memberIds)) continue; // groupId 없으면 레거시(파일별) → 제외
 			if (s.role !== "manager" && !g.memberIds.includes(s.userId)) continue;
-			out.push({ channel: groupChannel(db, g.groupId), name: g.name, memberIds: g.memberIds, memberNames: g.memberNames });
+			out.push({ channel: groupChannel(db, g.groupId), groupId: g.groupId, name: g.name, memberIds: g.memberIds, memberNames: g.memberNames, temp: g.temp });
 		}
 		return out;
 	}

@@ -1,6 +1,7 @@
 import { EventRef, Setting, TFile, setIcon } from "obsidian";
 import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { getYjsSecret } from "../../core/secret";
+import { GroupConfig } from "../../settings/types";
 import { t } from "../../i18n";
 
 /**
@@ -171,16 +172,19 @@ export class RealtimeSection implements PanelSection {
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
-			// 그룹 대화: 이 세션 참여자와 일치하는 명명 그룹이 있으면 그 그룹 대화를 연다(교사). 카드 열기와 분리.
-			const gid = this.manager && r.memberIds ? this.matchingGroupId(r.memberIds) : null;
-			if (gid) {
+			// 그룹 대화: 참여자가 지정된 세션이면 항상 표시(교사). 일치하는 명명 그룹이 있으면 그 그룹 대화,
+			// 없으면 임시 그룹을 만들어(같은 명단의 임시 그룹은 재사용) 연다. 카드 열기와 분리.
+			if (this.manager && r.memberIds?.length) {
+				const ids = r.memberIds;
+				const g = this.matchingGroup(ids);
+				const label = g && !g.temp ? t("group.open_chat") : t("group.open_temp_chat");
 				const gc = head.createEl("button", { cls: "clickable-icon covault-rt-groupbtn" });
 				setIcon(gc, "messages-square");
-				gc.setAttr("aria-label", t("group.open_chat"));
-				gc.title = t("group.open_chat");
+				gc.setAttr("aria-label", label);
+				gc.title = label;
 				gc.onclick = (e) => {
 					e.stopPropagation();
-					void this.host.openGroupChat(gid);
+					void this.host.openSessionGroupChat(ids);
 				};
 			}
 			box.createDiv({ cls: "covault-cr-muted", text: r.path });
@@ -205,12 +209,11 @@ export class RealtimeSection implements PanelSection {
 		if (this.partEl) (activeCard ?? el).appendChild(this.partEl);
 	}
 
-	/** 참여자 명단과 구성원이 정확히 일치하는 명명 그룹 id(이 세션에 적용된 그룹). 없으면 null. */
-	private matchingGroupId(memberIds: string[]): string | null {
+	/** 참여자 명단과 구성원이 정확히 일치하는 그룹(명명·임시 — 이 세션에 적용된 그룹). 없으면 null. */
+	private matchingGroup(memberIds: string[]): GroupConfig | null {
 		if (!memberIds.length) return null;
 		const want = new Set(memberIds);
-		const g = this.host.listGroups().find((x) => x.memberIds.length === want.size && x.memberIds.every((id) => want.has(id)));
-		return g ? g.id : null;
+		return this.host.listGroups().find((x) => x.memberIds.length === want.size && x.memberIds.every((id) => want.has(id))) ?? null;
 	}
 
 	private openFile(path: string): void {
@@ -236,8 +239,8 @@ export class RealtimeSection implements PanelSection {
 		const current = await this.host.getFileRealtimeParticipants(f.path); // null=기본값
 		if (this.host.app.workspace.getActiveFile()?.path !== f.path) return;
 		el.empty();
-		// 그룹 적용: 명명 그룹을 고르면 그 구성원이 이 파일의 참여자로 설정된다(교사).
-		const groups = this.host.listGroups();
+		// 그룹 적용: 명명 그룹을 고르면 그 구성원이 이 파일의 참여자로 설정된다(교사). 임시 그룹은 제외.
+		const groups = this.host.listGroups().filter((g) => !g.temp);
 		if (this.manager && groups.length) {
 			const row = el.createDiv({ cls: "covault-rt-groupapply" });
 			const selEl = row.createEl("select", { cls: "dropdown" });

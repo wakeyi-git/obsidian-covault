@@ -342,6 +342,8 @@ export interface GroupDoc extends PouchDocBase {
 	name: string; // 표시 이름
 	memberIds: string[];
 	memberNames?: Record<string, string>;
+	/** 임시 그룹(세션 카드에서 즉석 생성) — 대화방 목록에 (임시) 표시·삭제 허용. */
+	temp?: boolean;
 	createdAtMs: number;
 	createdBy: string;
 	deleted?: boolean;

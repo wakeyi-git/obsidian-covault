@@ -89,7 +89,7 @@ export interface MessageHost {
 	/** vault 파일을 채널 첨부 폴더로 복사하고 임베드/링크 마크다운 반환(실패 시 null). */
 	attachFileToChannel(channel: string, srcPath: string): Promise<string | null>;
 	/** 접근 가능한 그룹 대화방 목록(교사=전부, 구성원=자신 소속분). 채널 드롭다운용. */
-	listChatGroups(): Promise<Array<{ channel: string; name: string; memberIds: string[]; memberNames?: Record<string, string> }>>;
+	listChatGroups(): Promise<Array<{ channel: string; groupId: string; name: string; memberIds: string[]; memberNames?: Record<string, string>; temp?: boolean }>>;
 	/** 명명 그룹 목록(관리 UI). */
 	listGroups(): GroupConfig[];
 	/** 그룹 생성/수정(교사). */
@@ -100,6 +100,8 @@ export interface MessageHost {
 	applyGroupToFile(filePath: string, groupId: string): Promise<void>;
 	/** 그룹 대화방을 대화 탭에서 연다. */
 	openGroupChat(groupId: string): Promise<void>;
+	/** 세션 참여자 명단으로 그룹 대화 열기(교사) — 일치 그룹 재사용, 없으면 임시 그룹 생성. */
+	openSessionGroupChat(memberIds: string[]): Promise<void>;
 	/** 대화 탭을 특정 채널로 연다(그룹 대화 진입). */
 	openChat(channel: string): Promise<void>;
 	/** 보류 중 초기 대화 채널을 받아 비운다(ChatSection render 시). */

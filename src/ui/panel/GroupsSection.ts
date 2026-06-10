@@ -28,7 +28,7 @@ export class GroupsSection implements PanelSection {
 		const actions = c.createDiv({ cls: "covault-panel-actions" });
 		panelButton(actions, t("group.new"), () => this.edit(null), { cta: true });
 
-		const groups = this.host.listGroups();
+		const groups = this.host.listGroups().filter((g) => !g.temp); // 임시 그룹은 대화방 목록에서 관리
 		if (groups.length === 0) {
 			c.createDiv({ cls: "covault-cr-muted", text: t("group.none") });
 			return;
