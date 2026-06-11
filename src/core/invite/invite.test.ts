@@ -32,6 +32,13 @@ describe("invite encode/parse round-trip", () => {
 		expect(parseInvite("not-a-valid-code")).toBeNull();
 		expect(parseInvite("")).toBeNull();
 	});
+
+	it("couchdbUrl이 http(s) URL이 아니면 거부(딥링크 주입 차단)", () => {
+		expect(parseInvite(encodeInvite({ ...base, couchdbUrl: "javascript:alert(1)" }))).toBeNull();
+		expect(parseInvite(encodeInvite({ ...base, couchdbUrl: "file:///etc/passwd" }))).toBeNull();
+		expect(parseInvite(encodeInvite({ ...base, couchdbUrl: "not a url" }))).toBeNull();
+		expect(parseInvite(encodeInvite({ ...base, couchdbUrl: "http://192.168.0.2:5984" }))).not.toBeNull();
+	});
 });
 
 describe("isInviteExpired", () => {

@@ -27,5 +27,8 @@ jobs:
       - name: Check i18n (en/ko parity)
         run: npm run i18n:check
 
+      - name: Check file size caps (loc-check)
+        run: npm run loc-check
+
       - name: Build
         run: npm run build

@@ -77,7 +77,9 @@ export class FullSync {
 		if (direction === "down" || direction === "both") await this.download();
 
 		// 6) 정합된 현재 상태를 새 기준선으로 기록(다음 동기화의 삭제 판정 근거).
-		await this.writeManifestSnapshot();
+		//    down은 삭제 정합 없이 받기만 하므로 기준선을 건드리지 않는다 — 오프라인 중 로컬 삭제의
+		//    증거(기준선 항목)를 down이 지워버리면 그 삭제가 영영 전파되지 못한다.
+		if (direction !== "down") await this.writeManifestSnapshot();
 
 		await ctx.core.flushPersist();
 		ctx.logger.ok(t("sync.full_sync_complete", { direction }), true);
@@ -112,10 +114,11 @@ export class FullSync {
 	private async download(): Promise<void> {
 		const ctx = this.ctx;
 		let applied = 0;
+		// 전체 다운로드는 복구 의도 — 내 기기 문서라도 로컬 파일이 없으면 복원한다(restoreMissing).
 		const notes = await ctx.pouch.allNotes();
 		for (const doc of notes) {
 			const fresh = await ctx.pouch.getWithConflicts<typeof doc>(doc._id);
-			const res = await this.applier.applyDoc(fresh ?? doc);
+			const res = await this.applier.applyDoc(fresh ?? doc, { restoreMissing: true });
 			if (res === "applied") applied++;
 		}
 		// 첨부파일
@@ -124,7 +127,7 @@ export class FullSync {
 			const assets = await ctx.pouch.allAssets();
 			assetCount = assets.length;
 			for (const doc of assets) {
-				const res = await this.applier.applyAsset(doc as any);
+				const res = await this.applier.applyAsset(doc, { restoreMissing: true });
 				if (res === "applied") applied++;
 			}
 		}
@@ -250,8 +253,8 @@ export class FullSync {
 				map.set(d.path, { rev: d._rev, hash: d.contentHash });
 			}
 		};
-		collect((await ctx.pouch.allNotes()) as any);
-		if (ctx.settings.syncAssets) collect((await ctx.pouch.allAssets()) as any);
+		collect(await ctx.pouch.allNotes());
+		if (ctx.settings.syncAssets) collect(await ctx.pouch.allAssets());
 		return map;
 	}
 

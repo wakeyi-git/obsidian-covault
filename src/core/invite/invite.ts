@@ -35,6 +35,16 @@ export function encodeInvite(payload: InvitePayload): string {
 	return toBase64Url(JSON.stringify(payload));
 }
 
+/** couchdbUrl이 http(s) URL인지. 딥링크는 클릭 한 번으로 도달하므로 임의 스킴/형식 주입을 차단한다. */
+function isHttpUrl(s: string): boolean {
+	try {
+		const u = new URL(s);
+		return u.protocol === "https:" || u.protocol === "http:";
+	} catch {
+		return false;
+	}
+}
+
 /** 코드 또는 obsidian:// URI → 페이로드(검증). 실패 시 null. */
 export function parseInvite(input: string): InvitePayload | null {
 	let code = input.trim();
@@ -44,6 +54,7 @@ export function parseInvite(input: string): InvitePayload | null {
 	try {
 		const obj = JSON.parse(fromBase64Url(code)) as InvitePayload;
 		if (obj?.v !== 1 || !obj.couchdbUrl || !obj.remoteDb || !obj.username || !obj.password) return null;
+		if (!isHttpUrl(obj.couchdbUrl)) return null;
 		return obj;
 	} catch {
 		return null;

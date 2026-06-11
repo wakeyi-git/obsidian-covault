@@ -93,7 +93,7 @@ export class AssignmentCreateModal extends Modal {
 			.setName(t("dashboard.template_path"))
 			.setDesc(t("dashboard.template_path_desc"))
 			.addText((tx) => {
-				tx.setPlaceholder("템플릿/과제.md").setValue(this.templatePath).onChange((v) => (this.templatePath = v));
+				tx.setPlaceholder(t("dashboard.template_path_placeholder")).setValue(this.templatePath).onChange((v) => (this.templatePath = v));
 				new PathSuggest(this.app, tx.inputEl, { extensions: ["md", "excalidraw"] });
 			});
 

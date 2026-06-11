@@ -26,7 +26,7 @@ export interface CommandActions {
 	openVersionHistory(path: string): void;
 }
 
-/** CoVault 명령 등록(통합 패널은 🎓 리본; 각 명령은 특정 탭/동작으로). */
+/** CoVault 명령 등록(통합 패널은 금고(vault) 리본; 각 명령은 특정 탭/동작으로). */
 export function registerCommands(plugin: Plugin, a: CommandActions): void {
 	plugin.addCommand({ id: "covault-open-panel", name: t("command.open_panel"), callback: () => a.openPanel() });
 	plugin.addCommand({ id: "covault-open-dashboard", name: t("command.open_dashboard"), callback: () => a.openTab("dashboard") });

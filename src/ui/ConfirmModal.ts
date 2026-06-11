@@ -10,11 +10,14 @@ export interface ConfirmOptions {
 	/** 선택 체크박스(예: "서버 데이터도 삭제"). 값은 onConfirm 인자로 전달. */
 	checkbox?: { label: string; desc?: string; default?: boolean };
 	onConfirm: (checked: boolean) => void | Promise<void>;
+	/** 확인 없이 닫힐 때(취소 버튼·ESC·바깥 클릭 포함) 한 번 호출. Promise<boolean> 래핑용. */
+	onCancel?: () => void;
 }
 
 /** 간단한 확인 모달(파괴적 동작 실수 방지). 서버 초기화처럼 단어 입력까지는 필요 없는 경우에 쓴다. */
 export class ConfirmModal extends Modal {
 	private checked: boolean;
+	private confirmed = false;
 
 	constructor(app: App, private opts: ConfirmOptions) {
 		super(app);
@@ -39,6 +42,7 @@ export class ConfirmModal extends Modal {
 				b.setButtonText(this.opts.confirmText ?? t("common.delete"));
 				if (this.opts.warning) b.setWarning();
 				b.onClick(async () => {
+					this.confirmed = true;
 					this.close();
 					await this.opts.onConfirm(this.checked);
 				});
@@ -47,5 +51,6 @@ export class ConfirmModal extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
+		if (!this.confirmed) this.opts.onCancel?.();
 	}
 }

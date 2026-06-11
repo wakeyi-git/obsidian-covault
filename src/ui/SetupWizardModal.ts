@@ -12,6 +12,8 @@ export interface SetupWizardHost {
 	fullSync(dir: "both" | "up" | "down"): Promise<void>;
 	completeOnboarding(): Promise<void>;
 	activatePanel(tab?: PanelTab): Promise<void>;
+	/** 플러그인 설정 탭 열기. 마법사는 역할 선택 직후 자동 실행되기도 하므로 닫기만으론 설정이 보이지 않는다. */
+	openSettings(): void;
 }
 
 interface Step {
@@ -22,8 +24,8 @@ interface Step {
 }
 
 /**
- * 교사 온보딩 마법사(모달). 설정에서 실행하며, 각 단계 완료 여부를 설정에서 파생 계산하고 다음 행동을 안내한다.
- * "설정 열기" 동작은 모달을 닫아(설정 화면이 보이도록) 사용자가 값을 입력하게 한다.
+ * 교사 온보딩 마법사(모달). 설정 또는 역할 선택 직후 자동 실행되며, 각 단계 완료 여부를 설정에서
+ * 파생 계산하고 다음 행동을 안내한다. "설정 열기" 동작은 모달을 닫고 플러그인 설정 탭을 연다.
  */
 export class SetupWizardModal extends Modal {
 	constructor(app: App, private host: SetupWizardHost) {
@@ -40,7 +42,14 @@ export class SetupWizardModal extends Modal {
 		const provisioned = s.members.filter((st) => st.provisioned).length;
 		const synced = Object.keys(s.lastSeqByDb ?? {}).length > 0;
 		const hasPassword = !!getCouchPassword(this.host.app, s.password);
-		const openSettings = { label: t("panel.open_settings"), run: () => this.close() };
+		// 닫기만 하면 역할 선택 직후의 자동 실행 경로에선 메인 창만 보인다 — 실제로 설정 탭을 연다.
+		const openSettings = {
+			label: t("panel.open_settings"),
+			run: () => {
+				this.close();
+				this.host.openSettings();
+			},
+		};
 		return [
 			{
 				title: t("panel.1_server_connection"),

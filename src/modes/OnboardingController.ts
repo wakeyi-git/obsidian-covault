@@ -1,7 +1,7 @@
 import { App, Notice } from "obsidian";
 import { Logger } from "../core/log/Logger";
 import { CoVaultSettings } from "../settings/types";
-import { parseInvite, isInviteExpired } from "../core/invite/invite";
+import { InvitePayload, parseInvite, isInviteExpired } from "../core/invite/invite";
 import { persistCouchPassword } from "../core/secret";
 import { t } from "../i18n";
 
@@ -22,6 +22,12 @@ export interface OnboardingDeps {
 	promptRoleSetup(): void;
 	/** remoteDb 인증/도달 상태(HTTP status). 도달 실패면 null. */
 	probeStatus(db: string): Promise<number | null>;
+	/**
+	 * 초대 적용 전 사용자 확인(UI라 main이 구현). 딥링크는 링크 클릭 한 번으로 도달하므로,
+	 * 적용 대상 서버·계정을 보여주고 — 특히 이미 설정된 기기(운영자 포함)의 역할·자격증명을
+	 * 조용히 덮어쓰지 않도록 — 명시적 동의를 받는다. false면 설정을 건드리지 않는다.
+	 */
+	confirmInvite(payload: InvitePayload): Promise<boolean>;
 }
 
 export class OnboardingController {
@@ -39,6 +45,12 @@ export class OnboardingController {
 		if (isInviteExpired(payload, Math.floor(Date.now() / 1000))) {
 			new Notice(t("command.invite_expired_request_new"));
 			this.d.logger.error(t("command.invite_expired_request_new"));
+			return;
+		}
+		// 적용 전 명시적 확인 — 역할·서버·자격증명(Secret Storage의 활성 비밀번호 포함)을 덮어쓰는
+		// 파괴적 동작이다. 악성 딥링크가 운영자 설정을 클릭 한 번으로 갈아치우는 것을 막는다.
+		if (!(await this.d.confirmInvite(payload))) {
+			this.d.logger.info(t("command.invite_apply_canceled"));
 			return;
 		}
 		await this.d.stopMode();

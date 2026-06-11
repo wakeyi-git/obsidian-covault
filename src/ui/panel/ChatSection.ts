@@ -5,6 +5,7 @@ import { ChatSuggest, FilePickModal, FeedbackPickModal } from "./chatSuggest";
 import { MessageDoc, CLASS_CHANNEL, dmChannel } from "../../core/model/types";
 import { parseMessageBody } from "../../core/classroom/messages";
 import { resolveSenderName } from "../../core/classroom/people";
+import { errMessage } from "../../core/util/err";
 import { t, formatDate } from "../../i18n";
 
 interface Channel {
@@ -32,6 +33,7 @@ export class ChatSection implements PanelSection {
 	private msgs: MessageDoc[] = []; // 현재 채널 메시지(답글 부모 조회용)
 	private replyTo: MessageDoc | null = null; // 작성 중 답글 대상
 	private replyBanner: HTMLElement | null = null;
+	private loggedGroupError = false; // 그룹 목록 로드 실패 로그는 1회만(폴링 반복 방지)
 
 	constructor(private host: PanelHost) {}
 
@@ -89,8 +91,12 @@ export class ChatSection implements PanelSection {
 				groupId: x.groupId,
 			}));
 			if (this.root) this.draw();
-		} catch {
-			/* 무시 */
+		} catch (e) {
+			// 폴링 주기마다 반복되므로 1회만 기록 — 무음이면 그룹 목록이 비는 이유를 진단할 수 없다.
+			if (!this.loggedGroupError) {
+				this.loggedGroupError = true;
+				this.host.logger.warn(t("group.failed_to_load_groups", { err: errMessage(e) }));
+			}
 		}
 	}
 

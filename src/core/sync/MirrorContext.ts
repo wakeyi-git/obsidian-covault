@@ -105,13 +105,18 @@ export class MirrorContext {
 
 	// --- 업로드 대기 중인 로컬 경로 (적용 레이스 방지) ---
 	// 사용자가 방금 편집해 업로드 대기 중인 파일은 원격 적용으로 덮지 않는다.
-	private pending = new Set<string>();
+	// 참조 카운트: 업로드 의무(디바운스 타이머 1개 또는 진행 중 업로드 1건)마다 1씩 잡는다.
+	// 단순 Set이면 편집1의 업로드 완료가 편집2의 대기 표식까지 지워, 그 틈에 도착한 원격 갱신이
+	// 아직 업로드되지 않은 편집2를 보존 없이 덮을 수 있다.
+	private pending = new Map<string, number>();
 
 	markPending(dbPath: string): void {
-		this.pending.add(dbPath);
+		this.pending.set(dbPath, (this.pending.get(dbPath) ?? 0) + 1);
 	}
 	clearPending(dbPath: string): void {
-		this.pending.delete(dbPath);
+		const n = this.pending.get(dbPath) ?? 0;
+		if (n <= 1) this.pending.delete(dbPath);
+		else this.pending.set(dbPath, n - 1);
 	}
 	isPending(dbPath: string): boolean {
 		return this.pending.has(dbPath);

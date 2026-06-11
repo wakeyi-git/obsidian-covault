@@ -65,7 +65,7 @@ export class Uploader {
 		// 동일하면 생략. tombstone 위 업로드(부활)는 의도적 재생성/편집(파일이 삭제 시점보다 새로 수정됨)만 —
 		// 잔존 사본(삭제 적용 보류·실패로 남은 옛 파일)이 전체 동기화에서 삭제를 전역 무효화하지 않게.
 		const existing = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
-		if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing)) return "skipped-deleted";
+		if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
 		if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
 		const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
@@ -108,7 +108,7 @@ export class Uploader {
 		const newHash = await sha256(data);
 		const existing = await ctx.pouch.get<AssetDoc>(assetId(dbPath));
 		// 노트와 동일한 부활 규칙 — 잔존 사본은 tombstone을 되살리지 않는다.
-		if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing)) return "skipped-deleted";
+		if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
 		if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
 		const doc = await ctx.buildAssetDoc(dbPath, data, existing?.version ?? 0);
@@ -118,11 +118,14 @@ export class Uploader {
 	}
 
 	/**
-	 * tombstone 이후 로컬 파일이 실제로 수정/재생성됐는지(mtime 비교).
-	 * 잔존 사본의 mtime은 삭제 이전 쓰기 시점이라 tombstone mtime보다 항상 과거다. 시계가 어긋나
-	 * 동시 편집·삭제가 겹친 경우라면 삭제/수정 충돌이므로 보존(부활) 쪽이 안전해 슬랙 없이 strict 비교.
+	 * tombstone 이후 로컬 파일이 실제로 수정/재생성됐는지.
+	 * 1) 내용 해시가 tombstone 시점과 다르면 재생성/편집 — 기기 간 시계가 어긋나도 안전한 판정.
+	 * 2) 해시가 같으면(잔존 사본 또는 동일 내용 복원) mtime 비교 — 잔존 사본의 mtime은 삭제 이전
+	 *    쓰기 시점이라 tombstone mtime보다 항상 과거다. 동시 편집·삭제가 겹친 경우라면 삭제/수정
+	 *    충돌이므로 보존(부활) 쪽이 안전해 슬랙 없이 strict 비교.
 	 */
-	private modifiedAfterTombstone(localPath: string, tomb: { mtime?: number }): boolean {
+	private modifiedAfterTombstone(localPath: string, tomb: { mtime?: number; contentHash?: string }, localHash?: string): boolean {
+		if (localHash && tomb.contentHash && localHash !== tomb.contentHash) return true;
 		const fileMtime = this.ctx.getFile(localPath)?.stat.mtime ?? 0;
 		return fileMtime > (tomb.mtime ?? 0);
 	}
@@ -137,6 +140,10 @@ export class Uploader {
 	async tombstonePath(dbPath: string): Promise<"tombstoned" | "skipped"> {
 		const ctx = this.ctx;
 		const s = ctx.settings;
+		// 첨부 동기화 off 기기는 asset 변경을 발신하지 않는다(수신 측 applyAsset과 동일 원칙).
+		// off 기기의 stale 사본 삭제/이름변경이 최신 원격 첨부를 tombstone하는 비대칭을 막고,
+		// rename 시 "옛 경로 tombstone만 전파되고 새 경로는 업로드되지 않는" 첨부 소실도 막는다.
+		if (!ctx.isMarkdown(dbPath) && !s.syncAssets) return "skipped";
 		const id = ctx.isMarkdown(dbPath) ? noteId(dbPath) : assetId(dbPath);
 		const existing = await ctx.pouch.get<NoteDoc | AssetDoc>(id);
 		if (!existing || existing.deleted) return "skipped";
@@ -170,6 +177,8 @@ export class Uploader {
 	/** DB 문서 영구 제거(purge, note/asset 공통). .deleted/에서 지웠을 때. */
 	async purgePath(dbPath: string): Promise<"purged" | "skipped"> {
 		const ctx = this.ctx;
+		// tombstone과 동일 — 첨부 동기화 off 기기는 asset purge를 발신하지 않는다.
+		if (!ctx.isMarkdown(dbPath) && !ctx.settings.syncAssets) return "skipped";
 		const id = ctx.isMarkdown(dbPath) ? noteId(dbPath) : assetId(dbPath);
 		const existing = await ctx.pouch.get<NoteDoc | AssetDoc>(id);
 		if (!existing || !existing._rev) return "skipped";

@@ -30,6 +30,11 @@ export class InviteModal extends Modal {
 			text: t("invite.when_the_member_scans_the_qr",
 			),
 		});
+		// QR 딥링크는 구성원 기기에 Obsidian+CoVault가 있어야 동작 — 실패 모드 안내(초대 코드 폴백).
+		contentEl.createEl("p", {
+			cls: "setting-item-description",
+			text: t("invite.qr_prerequisites"),
+		});
 
 		// QR (obsidian:// 딥링크)
 		const qrWrap = contentEl.createDiv({ cls: "covault-qr" });

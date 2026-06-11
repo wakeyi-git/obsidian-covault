@@ -9,6 +9,7 @@ export type IssueCode =
 	| "bad-username"
 	| "bad-remoteDb"
 	| "bad-shareDb"
+	| "bad-shareId"
 	| "folder-overlap"
 	| "couch-url"
 	| "yjs-wss"
@@ -62,9 +63,14 @@ export function validateSettings(s: CoVaultSettings, opts?: ValidateOptions): Se
 			if (x.remoteDb && !isValidCouchName(x.remoteDb))
 				issues.push({ level: "error", code: "bad-remoteDb", params: { value: x.remoteDb } });
 		}
-		for (const sp of s.sharedSpaces)
+		for (const sp of s.sharedSpaces) {
 			if (sp.remoteDb && !isValidCouchName(sp.remoteDb))
 				issues.push({ level: "error", code: "bad-shareDb", params: { value: sp.remoteDb } });
+			// 실시간 서버가 "mirror-" 프리픽스 공간을 1:1 개인 공간으로 보고 파일 단위 인가를 생략한다 —
+			// 공유 공간 id가 이 프리픽스를 쓰면 참여자 제어가 무력화되므로 금지(자동 생성 id는 g* 형식).
+			if (sp.id.startsWith("mirror-"))
+				issues.push({ level: "error", code: "bad-shareId", params: { value: sp.id } });
+		}
 
 		// 학생 폴더 간 + 학생↔공유 폴더 겹침(이중 동기화 혼란 방지)
 		const folders = [

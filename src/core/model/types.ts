@@ -61,6 +61,25 @@ export function assetId(dbPath: string): string {
 	return `asset:${dbPath}`;
 }
 
+// --- 문서 타입 판별 (changes feed 등 미지의 문서를 다루는 경로용) ---
+// 동기화 엔진은 사용자 데이터를 파괴할 수 있는 가장 위험한 영역이라 `as any` 캐스팅 대신
+// 여기서 한 번만 좁힌다(strict 우회 금지 — 평가 H-8).
+
+/** 문서의 type 필드(문자열일 때만). 형태가 다르면 null. */
+export function docType(doc: unknown): string | null {
+	if (typeof doc !== "object" || doc === null) return null;
+	const t = (doc as { type?: unknown }).type;
+	return typeof t === "string" ? t : null;
+}
+
+export function isNoteDoc(doc: unknown): doc is NoteDoc {
+	return docType(doc) === "note";
+}
+
+export function isAssetDoc(doc: unknown): doc is AssetDoc {
+	return docType(doc) === "asset";
+}
+
 /** 사용자용 버전 히스토리 스냅샷(마크다운 전용). 보고서 §1 P1. 링크 DB에 저장되어 복제된다. */
 export type VersionKind = "modify" | "delete" | "conflict" | "restore" | "submit";
 

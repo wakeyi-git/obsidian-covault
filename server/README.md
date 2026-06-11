@@ -354,7 +354,7 @@ CouchDB sync works but **realtime won't connect**.
 
 **Cloudflare Tunnel** — run `cloudflared` next to the server to map a public hostname → `localhost:1234` **without
 port-forwarding or a static IP**; TLS terminates at Cloudflare's edge and WebSockets are supported. Ideal behind CGNAT.
-Keep query strings out of edge logging/analytics so `?token=` isn't retained.
+Keeping query strings out of edge logging/analytics is optional defense-in-depth — CoVault sends realtime tokens in an authentication message, never in the URL.
 
 **Tailscale Funnel** — publicly expose a tailnet node over TLS via its `*.ts.net` hostname, again with no
 port-forwarding. Note Funnel only serves a fixed set of ports (443 / 8443 / 10000) and has bandwidth limits — fine for
@@ -364,6 +364,19 @@ a workspace, not heavy public traffic.
 labels over hand-written vhosts.
 
 ---
+
+## Scaling to dozens of members
+
+A manager vault keeps **one live `_changes` longpoll per member DB** (plus one per shared space). With 30–40 members
+that exceeds the HTTP/1.1 per-host connection limit (typically 6), so requests queue and sync lags. Two mitigations:
+
+- Put CouchDB behind a reverse proxy that speaks **HTTP/2** to clients (Caddy and recent nginx do this automatically
+  over HTTPS) — multiplexing removes the per-host connection cap.
+- On the manager device, prefer running large workspaces on the desktop app and keep mobile to member vaults
+  (a member vault uses only 1–2 connections).
+
+Startup also walks every file under each member folder once (hash check); on very large vaults give the first
+sync after install a few minutes.
 
 ## Troubleshooting
 
@@ -388,7 +401,7 @@ Before a real organization:
 - [ ] CouchDB is **only** reachable over HTTPS; the raw `5984` port is not published to the internet.
 - [ ] The admin password is strong and lives **only on the manager's device** — members never receive it.
 - [ ] `YJS_SECRET` is a fresh random value (not the placeholder), identical on the server and in the plugin.
-- [ ] The reverse proxy/CDN **does not log `?token=`** query strings.
+- [ ] (Defense-in-depth) The reverse proxy/CDN does not retain query strings in logs — CoVault never puts tokens in URLs, but other apps might.
 - [ ] The CouchDB **data volume is backed up** on a schedule.
 - [ ] Secrets/tokens are never committed to a repository — the plugin keeps them in Obsidian Secret Storage and excludes
       them from settings export; keep your server's real secret only on the server.

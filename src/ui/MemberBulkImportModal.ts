@@ -27,7 +27,7 @@ export class MemberBulkImportModal extends Modal {
 
 		const ta = contentEl.createEl("textarea", { cls: "covault-backup-input" });
 		ta.rows = 8;
-		ta.placeholder = "홍길동,hong\n김학생,kim,학생/3반\n이영희";
+		ta.placeholder = t("settings.roster_placeholder");
 		ta.addEventListener("input", () => {
 			this.text = ta.value;
 			this.renderPreview();
@@ -38,7 +38,7 @@ export class MemberBulkImportModal extends Modal {
 			.setName(t("settings.base_folder_optional"))
 			.setDesc(t("settings.base_folder_desc"))
 			.addText((txt) => {
-				txt.setPlaceholder("학생").onChange((v) => {
+				txt.setPlaceholder(t("settings.base_folder_placeholder")).onChange((v) => {
 					this.baseFolder = v;
 					this.renderPreview();
 				});

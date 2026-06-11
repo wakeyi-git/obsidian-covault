@@ -1,6 +1,7 @@
 import { MirrorContext } from "./MirrorContext";
 import { errMessage } from "../util/err";
 import { ConflictManager } from "./ConflictManager";
+import { recordDeleteModify } from "./deleteModifyQueue";
 import { NoteDoc, AssetDoc, assetId } from "../model/types";
 import { sha256 } from "../hash/hash";
 import { t } from "../../i18n";
@@ -44,7 +45,8 @@ export class MirrorApplier {
 		private conflicts: ConflictManager,
 	) {}
 
-	async applyDoc(doc: DocWithConflicts): Promise<ApplyResult> {
+	/** opts.restoreMissing: 전체 다운로드(복구 의도)에서 내 기기 문서라도 로컬 파일이 없으면 복원. */
+	async applyDoc(doc: DocWithConflicts, opts?: { restoreMissing?: boolean }): Promise<ApplyResult> {
 		const ctx = this.ctx;
 
 		if (!ctx.isMarkdown(doc.path) || !ctx.isValidDbPath(doc.path)) return "skipped-nonmd";
@@ -104,9 +106,11 @@ export class MirrorApplier {
 			return "conflict";
 		}
 
-		// 내 기기가 만든 내용인데 vault가 다르면, vault에 더 최신 로컬 편집이 있는 것 → 덮지 않음
+		// 내 기기가 만든 내용인데 vault가 다르면, vault에 더 최신 로컬 편집이 있는 것 → 덮지 않음.
+		// 단, 전체 다운로드(restoreMissing)에서 파일 자체가 없으면 복구 의도 — DB 내용으로 복원한다
+		// (이전엔 마지막 수정자가 본인 기기인 파일은 "전체 다운로드"로도 복원할 수 없었다).
 		if (doc.lastModifiedDeviceId === ctx.settings.deviceId) {
-			return "skipped-self";
+			if (!(opts?.restoreMissing && local == null)) return "skipped-self";
 		}
 
 		// 충돌이 있던 경로인데 로컬이 원격과 다르면, 상대가 해소해 내 편집이 곧 덮일 차례.
@@ -153,7 +157,7 @@ export class MirrorApplier {
 	/**
 	 * asset(첨부파일) 적용. applyDoc의 바이너리 버전. 충돌은 보존(로컬 유지)만, 비교/해소 UI는 없음.
 	 */
-	async applyAsset(doc: AssetDoc & { _conflicts?: string[] }): Promise<ApplyResult> {
+	async applyAsset(doc: AssetDoc & { _conflicts?: string[] }, opts?: { restoreMissing?: boolean }): Promise<ApplyResult> {
 		const ctx = this.ctx;
 		if (!ctx.isValidDbPath(doc.path)) return "skipped-nonmd";
 
@@ -184,7 +188,8 @@ export class MirrorApplier {
 		}
 
 		if (localHash === doc.contentHash) return "skipped-same";
-		if (doc.lastModifiedDeviceId === ctx.settings.deviceId) return "skipped-self";
+		// 노트와 동일 — 전체 다운로드에서 파일이 없으면 내 기기 문서라도 복원한다.
+		if (doc.lastModifiedDeviceId === ctx.settings.deviceId && !(opts?.restoreMissing && local == null)) return "skipped-self";
 
 		const data = await ctx.pouch.getAssetBinary(assetId(doc.path));
 		if (data == null) {
@@ -250,6 +255,17 @@ export class MirrorApplier {
 
 		// 내가 만든 tombstone의 에코 → 무시 (내 vault는 이미 처리됨)
 		if (doc.lastModifiedDeviceId === ctx.settings.deviceId) return "skipped-self";
+
+		// 업로드 대기 중인 로컬 편집이 있는 파일의 원격 삭제 = 삭제/수정 충돌. 곧장 적용하면
+		// propagate-delete 정책에서 마지막 편집이 .trash로 사라진다 — 보류하고 복구 큐에 등록해
+		// 사용자가 선택하게 한다(전체 동기화의 잔존 사본 정리도 mtime/해시 부활 규칙이 보호).
+		if (ctx.isPending(doc.path)) {
+			await recordDeleteModify(ctx.pouch, [
+				{ dbPath: doc.path, kind: ctx.isMarkdown(doc.path) ? "note" : "asset", recordedAt: Date.now() },
+			]).catch(() => undefined);
+			ctx.logger.warn(t("sync.deletion_held_pending_edit", { path: doc.path }), true);
+			return "skipped-pending";
+		}
 
 		// 받는 쪽(이 vault)의 정책을 따른다 — 각자 자기 vault의 삭제 처리(보관/즉시삭제/무시)를 제어한다.
 		// (이전엔 tombstone의 deleteMode=삭제자 정책이 우선이라, 받는 쪽 설정이 무시되는 문제가 있었다.)

@@ -42,7 +42,8 @@ import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "
 import { testConnection } from "./core/sync/connectionTest";
 import { runDiagnostics } from "./core/sync/diagnostics";
 import { CouchAdmin } from "./core/couch/CouchAdmin";
-import { INVITE_ACTION } from "./core/invite/invite";
+import { INVITE_ACTION, InvitePayload } from "./core/invite/invite";
+import { ConfirmModal } from "./ui/ConfirmModal";
 import { exportSettings, importSettings } from "./settings/portable";
 import { ResetModal } from "./ui/ResetModal";
 import { initI18n, t } from "./i18n";
@@ -237,6 +238,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 					await probe.close();
 				}
 			},
+			confirmInvite: (payload) => this.confirmInvite(payload),
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
 		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
@@ -294,6 +296,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	async onunload(): Promise<void> {
 		if (this.applyTimer) window.clearTimeout(this.applyTimer);
+		if (this.groupRequestTimer) window.clearTimeout(this.groupRequestTimer);
 		await this.realtime?.dispose();
 		await this.mode?.stop();
 		await this.core?.flushPersist();
@@ -394,8 +397,19 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		}
 	}
 
-	/** 로컬 캐시 초기화 후 서버에서 다시 받기. 명령에서 호출. */
+	/** 로컬 캐시 초기화(확인 후). 아직 업로드되지 않은 로컬 변경이 유실될 수 있는 파괴적 동작이라 확인을 받는다. */
 	async resetLocalCache(): Promise<void> {
+		new ConfirmModal(this.app, {
+			title: t("command.reset_cache_confirm_title"),
+			message: t("command.reset_cache_confirm_body"),
+			confirmText: t("common.reset"),
+			warning: true,
+			onConfirm: () => this.doResetLocalCache(),
+		}).open();
+	}
+
+	/** 로컬 캐시 초기화 후 서버에서 다시 받기. */
+	private async doResetLocalCache(): Promise<void> {
 		await this.openLog();
 		await this.mode?.stop();
 		this.mode = null;
@@ -800,6 +814,33 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	// --- 학생 온보딩: 초대 코드/딥링크로 자동 설정 ---
 	ingestInvite(input: string): Promise<void> {
 		return this.onboardingCtl.ingestInvite(input);
+	}
+
+	/**
+	 * 초대 적용 전 확인(평가 H-3). 대상 서버·계정을 보여주고, 이미 설정된 기기는 역할·자격증명이
+	 * 덮어써짐을(운영자는 더 강하게) 경고한다. 닫기만 해도 취소로 처리해 설정을 건드리지 않는다.
+	 */
+	private confirmInvite(payload: InvitePayload): Promise<boolean> {
+		const lines = [
+			t("command.invite_confirm_member_line", { name: payload.memberName || payload.memberId, id: payload.username }),
+			t("command.invite_confirm_server_line", { url: payload.couchdbUrl }),
+		];
+		if (payload.couchdbUrl.startsWith("http://")) lines.push(t("command.invite_confirm_http_warning"));
+		const configured = this.settings.setupComplete;
+		if (configured) {
+			const role = this.settings.role === "manager" ? t("common.manager") : t("common.member");
+			lines.push(t("command.invite_confirm_overwrite_warning", { role }));
+		}
+		return new Promise((resolve) => {
+			new ConfirmModal(this.app, {
+				title: t("command.invite_confirm_title"),
+				message: lines.join("\n"),
+				confirmText: t("common.apply"),
+				warning: configured,
+				onConfirm: () => resolve(true),
+				onCancel: () => resolve(false),
+			}).open();
+		});
 	}
 
 	// --- 연결 테스트 (설정 버튼) — 항상 최신 설정으로, 역할별 DB 전체 검사 ---

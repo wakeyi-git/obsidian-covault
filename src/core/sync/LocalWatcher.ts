@@ -15,7 +15,8 @@ import { t } from "../../i18n";
  */
 export class LocalWatcher {
 	private refs: EventRef[] = [];
-	private timers = new Map<string, ReturnType<typeof setTimeout>>();
+	/** 경로별 디바운스 타이머. 각 타이머는 pending 카운트 1을 보유한다(flushUpload 완료 시 해제). */
+	private timers = new Map<string, { timer: ReturnType<typeof setTimeout>; dbPath: string }>();
 	private started = false;
 
 	constructor(
@@ -44,7 +45,10 @@ export class LocalWatcher {
 		this.started = false;
 		for (const ref of this.refs) this.ctx.app.vault.offref(ref);
 		this.refs = [];
-		for (const t of this.timers.values()) clearTimeout(t);
+		for (const entry of this.timers.values()) {
+			clearTimeout(entry.timer);
+			this.ctx.clearPending(entry.dbPath); // 타이머가 보유한 pending 카운트 반환
+		}
 		this.timers.clear();
 	}
 
@@ -167,14 +171,19 @@ export class LocalWatcher {
 
 	private scheduleUpload(localPath: string, dbPath: string): void {
 		const existing = this.timers.get(localPath);
-		if (existing) clearTimeout(existing);
+		if (existing) {
+			clearTimeout(existing.timer);
+			// 교체된 타이머의 flush는 실행되지 않는다 — 그 타이머가 보유한 pending 카운트를 반환해
+			// 호출자(maybeSchedule)가 새로 잡은 카운트와 합쳐 정확히 1만 남게 한다.
+			this.ctx.clearPending(existing.dbPath);
+		}
 		// 모바일은 배터리/네트워크 절감을 위해 더 긴 디바운스 사용(기술문서 §24.6).
 		const delay = Platform.isMobile ? this.ctx.settings.mobileDebounceMs : this.ctx.settings.debounceMs;
 		const timer = setTimeout(() => {
 			this.timers.delete(localPath);
 			void this.flushUpload(localPath, dbPath);
 		}, delay);
-		this.timers.set(localPath, timer);
+		this.timers.set(localPath, { timer, dbPath });
 	}
 
 	private async flushUpload(localPath: string, dbPath: string): Promise<void> {

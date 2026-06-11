@@ -39,6 +39,8 @@ function issueMessage(i: SettingsIssue): string {
 			return t("panel.invalid_mirror_db_name", { value: String(i.params?.value) });
 		case "bad-shareDb":
 			return t("panel.invalid_share_db_name", { value: String(i.params?.value) });
+		case "bad-shareId":
+			return t("panel.invalid_share_id_mirror_prefix", { value: String(i.params?.value) });
 		case "folder-overlap":
 			return t("panel.folder_overlap_and_double_sync_confusion", { a: String(i.params?.a), b: String(i.params?.b) });
 		case "couch-url":

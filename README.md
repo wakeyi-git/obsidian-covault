@@ -124,7 +124,7 @@ On first run the role-selection screen appears. The role locks once chosen; to c
 3. Click **Invite** on a member card (or **Invite all** to provision every pending member at once) → the plugin auto-creates the account/DB/permissions and shows a **QR + invite code**.
 4. Run **Test connection** to verify access to all member DBs, then **Apply settings** to start syncing.
 
-> Managers can follow the **'Get started' tab (onboarding wizard)** in the panel: server connection → workspace info → add members → invite → first sync, in order.
+> Managers can follow the **onboarding wizard** (a modal that opens automatically after choosing the Manager role, and again anytime from settings): server connection → workspace info → add members → invite → first sync, in order.
 
 ### Member (Member Mode)
 - **Scan the manager's QR with the phone's default camera** → Obsidian opens and configures automatically, or
@@ -132,7 +132,7 @@ On first run the role-selection screen appears. The role locks once chosen; to c
 - The member connects with a dedicated account that can only access their own mirror DB.
 
 ### Commands (`Cmd/Ctrl+P` → `CoVault:`)
-The single **🎓 ribbon** opens the unified panel; the commands below open a specific tab or action.
+The single **CoVault ribbon (vault icon)** opens the unified panel; the commands below open a specific tab or action.
 
 | Command | Action |
 |---|---|
@@ -147,6 +147,8 @@ The single **🎓 ribbon** opens the unified panel; the commands below open a sp
 | Open sync status | Per-member sync status table — also hosts the **management tools** (test connection · diagnostics · realtime status · reset cache · reset server / refresh shares) |
 | Copy to members (open deploy tab) | Pick a path (file/folder) in the deploy tab and deploy to members — substitutes `{{memberName}}`, etc. |
 | Check realtime status / Open version history | Realtime diagnostics; per-note version snapshots |
+| Clean up classroom docs | Remove duplicate/orphan classroom documents (notices, assignments, timetable links) |
+| Refresh shared spaces | Re-read the shared-space config and reconcile shared folders |
 | Open log panel | View the sync log |
 
 Deleted files move to the **archive folder (`_삭제됨/`, configurable)**; deleting from that folder permanently purges from the DB.
@@ -199,7 +201,9 @@ note, and in its highlighted session card pick the participating members (defaul
 *nobody* when read-only is on, *everyone* when off). Only the chosen members join the live session; the rest stay on plain
 file sync. This access control is **enforced by the server** — members not on the list are refused entry, and removing
 a member from a file makes the server **drop their live connection immediately** (and re-locks the note under the
-read-only policy). Excalidraw drawings are locked/unlocked the same way (view mode). Each card also lists who's
+read-only policy). Note the scope: the server enforces **realtime session entry**; the read-only lock on plain file
+sync is applied by the plugin on each member's device, so treat it as a collaboration aid rather than a hard security
+boundary (per-member **data isolation** is what CouchDB `_security` enforces server-side). Excalidraw drawings are locked/unlocked the same way (view mode). Each card also lists who's
 co-editing **by name**, and assigned files stay in the list even when closed so you can reopen them with one click.
 Troubleshooting actions (reissue/redeploy tokens, check realtime status) live in a separate section of the tab.
 Members get a slim Realtime tab that shows only the sessions they're assigned to.
@@ -237,11 +241,16 @@ attachments** — an attached file is copied into the channel's attach folder so
 links/image previews render inline (click to open). Messages carry the author's display **name** so everyone sees names
 rather than raw member IDs.
 
+### Groups
+The **Groups** tab manages named member groups. The manager creates/edits/deletes groups; members can **request** to
+form a group, which the manager approves (approval can create a group chat channel and a realtime-enabled group folder
+automatically). Groups also serve as participant presets for realtime sessions.
+
 ### Classroom dashboard
 > **Optional.** Turns the manager↔member sync into a lightweight classroom workspace. Skip it if you only need file sync.
 
 Mark one shared space as the **homeroom** (settings → a shared space → "Set as homeroom"); it is auto-provisioned to all
-members and powers the **Dashboard** tab (open it from the 🎓 ribbon). Content lives as normal markdown files under the
+members and powers the **Dashboard** tab (open it from the CoVault ribbon). Content lives as normal markdown files under the
 homeroom folder, while lightweight state (read receipts, submissions, grades, checklist ticks) lives in the DB and syncs
 with everything else. Modules:
 
@@ -296,7 +305,7 @@ src/
 │  ├─ path/  hash/  log/       # Path mapping · contentHash · logger
 │  └─ model/types.ts           # Document model (note / asset / tombstone · classroom: notice/response/timetable/assignment/routine · message · rtpart [per-file participants] / rtconfig)
 ├─ modes/                      # CoVaultMode / MemberMode / ManagerMode / manager/BulkCopy + domain controllers (Classroom · Realtime · Member)
-└─ ui/                         # Unified panel (Dashboard · Chat · Feedback · Realtime · Deploy · Sync status [+ manage tools] · Recovery · History · Log) · panel/dashboard/* (notices/timetable/assignments/routines/statistics) · RoleSetupModal · InviteModal/BulkInviteModal · AssignmentCreateModal · GradingModal · RoutineEditModal · ConfirmModal · ResetModal · BackupModal · MemberBulkImportModal
+└─ ui/                         # Unified panel (Dashboard · Chat · Groups · Feedback · Realtime · Deploy · Sync status [+ manage tools] · Recovery · History · Log) · panel/dashboard/* (notices/timetable/assignments/routines/statistics) · RoleSetupModal · InviteModal/BulkInviteModal · AssignmentCreateModal · GradingModal · RoutineEditModal · ConfirmModal · ResetModal · BackupModal · MemberBulkImportModal
 ```
 
 **Sync structure (offline-first)**
@@ -309,12 +318,13 @@ The manager keeps one `MirrorSync` per member to sync many members at once.
 
 ## Security notes
 
-- **Invite codes** contain the member's private password (for a one-time organization onboarding, base64-encoded). They have
-  no built-in expiry, but if a leak is suspected the manager can rotate the password via **'Reissue password'** on the
-  member card, **immediately invalidating the old invite**.
+- **Invite codes** contain the member's private password (for a one-time organization onboarding, base64-encoded). Invites
+  **expire after a configurable TTL** (default 14 days), and if a leak is suspected the manager can rotate the password via
+  **'Reissue password'** on the member card, **immediately invalidating the old invite**. Applying an invite always asks for
+  confirmation first (showing the target server) and rejects non-http(s) server URLs.
 - **Realtime tokens** are issued as per-space **HMAC-signed tokens**, so a leak only grants access to that space's room
   (`workspaceId`·`spaceId` binding + optional expiry). The server refuses to start with a placeholder/too-short secret like
-  `CHANGE_ME`, and tokens travel over WSS so they aren't exposed in transit (mask query tokens in server/proxy logs).
+  `CHANGE_ME`, and tokens travel over WSS **in an authentication message, not the URL** — proxy access logs never see them (log masking is optional defense-in-depth; see `server/README.md`).
 - **The Yjs space secret** (manager) and **CouchDB admin password** are stored in **Obsidian Secret Storage** (a per-vault
   store), not left in plaintext in `data.json`.
 - **Settings export** excludes credentials — admin password, member passwords, `yjsSecret`, space tokens, and device-specific values.
