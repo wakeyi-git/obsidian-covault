@@ -191,7 +191,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			homeroomReady: () => this.homeroomReady(),
 			saveSettings: () => this.saveSettings(),
 			deployShared: (space, opts) => this.deploymentCtl.deployShared(space, opts),
-			saveGroup: (g) => this.saveGroup(g),
+			syncGroupDoc: (g, names) => this.classroomCtl.syncGroupDoc(g, names),
+			deleteGroupDoc: (id) => this.classroomCtl.deleteGroupDoc(id),
+			groupChannelFor: (id) => this.classroomCtl.groupChannelFor(id),
+			openChat: (ch) => this.openChat(ch),
+			deleteSharedServer: (space) => this.serverResetCtl.deleteSharedServer(space),
+			refreshMemberShares: () => this.refreshMemberShares(),
+			restartMode: () => this.restartMode(),
 		});
 		this.serverResetCtl = new ServerResetController({
 			logger: this.logger,
@@ -656,41 +662,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		}
 		await jumpToFeedback(this.app, doc, path);
 	}
-	/** 명명 그룹 목록(관리 UI). */
+	// --- 그룹 라이프사이클 → GroupRequestController 위임 ---
 	listGroups(): GroupConfig[] {
-		return this.settings.groups;
+		return this.groupRequestCtl.listGroups();
 	}
-	/** 그룹 생성/수정(교사). settings.groups upsert + homeroom 그룹 문서(대화방) 동기화. */
-	async saveGroup(group: GroupConfig): Promise<void> {
-		if (this.settings.role !== "manager") return;
-		const i = this.settings.groups.findIndex((g) => g.id === group.id);
-		if (i >= 0) this.settings.groups[i] = group;
-		else this.settings.groups.push(group);
-		await this.saveSettings();
-		const names: Record<string, string> = {};
-		for (const id of group.memberIds) {
-			const m = this.settings.members.find((x) => x.memberId === id);
-			if (m?.memberName) names[id] = m.memberName;
-		}
-		await this.classroomCtl.syncGroupDoc(group, names);
+	saveGroup(group: GroupConfig): Promise<void> {
+		return this.groupRequestCtl.saveGroup(group);
 	}
-	/** 그룹 삭제(교사). settings.groups 제거 + 그룹 대화방 삭제. 그룹 공간(신청-승인)이 있으면 공간도 해제. */
-	async deleteGroup(id: string): Promise<void> {
-		if (this.settings.role !== "manager") return;
-		const g = this.settings.groups.find((x) => x.id === id);
-		this.settings.groups = this.settings.groups.filter((x) => x.id !== id);
-		await this.saveSettings();
-		await this.classroomCtl.deleteGroupDoc(id);
-		// 그룹 공간 해제: 서버 DB 삭제 → 설정 제거 → 전 구성원 shares 재전파 → 모드 재구성.
-		// 각자 로컬 폴더의 파일은 남는다(데이터 보존 — 동기화·실시간만 끊긴다).
-		const space = g?.spaceId ? this.settings.sharedSpaces.find((sp) => sp.id === g.spaceId) : undefined;
-		if (space) {
-			await this.serverResetCtl.deleteSharedServer(space); // stopMode 포함
-			this.settings.sharedSpaces = this.settings.sharedSpaces.filter((sp) => sp.id !== space.id);
-			await this.saveSettings();
-			await this.refreshMemberShares();
-			await this.restartMode();
-		}
+	deleteGroup(id: string): Promise<void> {
+		return this.groupRequestCtl.deleteGroup(id);
 	}
 	/** 라이브 세션에 그룹 적용: 그 파일의 참여자를 그룹 구성원으로 설정(교사). */
 	async applyGroupToFile(filePath: string, groupId: string): Promise<void> {
@@ -698,30 +678,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		if (!g) return;
 		await this.participantCtl.setFileRealtimeParticipants(filePath, g.memberIds);
 	}
-	/** 그룹 대화방 열기(대화 탭). */
-	async openGroupChat(groupId: string): Promise<void> {
-		const ch = this.classroomCtl.groupChannelFor(groupId);
-		if (ch) await this.openChat(ch);
+	openGroupChat(groupId: string): Promise<void> {
+		return this.groupRequestCtl.openGroupChat(groupId);
 	}
-	/**
-	 * 세션 참여자 명단으로 그룹 대화 열기(교사). 구성원이 정확히 일치하는 기존 그룹(명명·임시)이 있으면
-	 * 재사용하고, 없으면 임시 그룹을 만들어 연다. 임시 그룹은 대화방 목록에서 삭제할 수 있다.
-	 */
-	async openSessionGroupChat(memberIds: string[]): Promise<void> {
-		if (this.settings.role !== "manager" || !memberIds.length) return;
-		const want = new Set(memberIds);
-		let g = this.settings.groups.find((x) => x.memberIds.length === want.size && x.memberIds.every((id) => want.has(id)));
-		if (!g) {
-			const names = memberIds.map((id) => this.settings.members.find((m) => m.memberId === id)?.memberName || id);
-			g = {
-				id: `tmp${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-				name: names.join(", "),
-				memberIds: [...memberIds],
-				temp: true,
-			};
-			await this.saveGroup(g);
-		}
-		await this.openGroupChat(g.id);
+	openSessionGroupChat(memberIds: string[]): Promise<void> {
+		return this.groupRequestCtl.openSessionGroupChat(memberIds);
 	}
 	/** PanelHost: 구성원 자율 그룹 신청-승인(GroupRequestController 위임). */
 	requestGroup(input: { name: string; folder: string; memberIds: string[] }): Promise<boolean> {

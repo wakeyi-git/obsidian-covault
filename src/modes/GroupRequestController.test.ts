@@ -50,9 +50,17 @@ function makeCtl(over: Partial<CoVaultSettings> = {}, deployOk = true) {
 		homeroomReady: () => true,
 		saveSettings: async () => {},
 		deployShared,
-		saveGroup: async (g) => {
+		// saveGroup이 컨트롤러 내부로 들어오면서(M-12) 그룹 생성 추적은 syncGroupDoc로 옮긴다
+		// (saveGroup 성공 시 항상 호출되는 후속 단계 — 단언 의미 동일).
+		syncGroupDoc: async (g) => {
 			savedGroups.push(g);
 		},
+		deleteGroupDoc: async () => {},
+		groupChannelFor: () => null,
+		openChat: async () => {},
+		deleteSharedServer: async () => {},
+		refreshMemberShares: async () => {},
+		restartMode: async () => {},
 	};
 	return { ctl: new GroupRequestController(deps), settings, classroom, logger, savedGroups, deployShared };
 }

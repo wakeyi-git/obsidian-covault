@@ -13,7 +13,8 @@ import { t } from "../i18n";
 
 /**
  * GroupRequestController 의존성. settings는 load/import에서 교체되므로 getter로 받는다.
- * 승인 배포는 DeploymentController.deployShared, 그룹 생성은 main.saveGroup에 위임.
+ * 승인 배포는 DeploymentController.deployShared에, 그룹 문서/대화방은 ClassroomController에 위임.
+ * 그룹 라이프사이클(생성·삭제·세션 대화)도 이 컨트롤러가 담당한다(M-12 — main에서 이동).
  */
 export interface GroupRequestDeps {
 	logger: Logger;
@@ -22,7 +23,18 @@ export interface GroupRequestDeps {
 	homeroomReady(): boolean;
 	saveSettings(): Promise<void>;
 	deployShared(space: SharedSpace, opts?: { quiet?: boolean }): Promise<void>;
-	saveGroup(group: GroupConfig): Promise<void>;
+	/** homeroom 그룹 문서(대화방) upsert(ClassroomController.syncGroupDoc). */
+	syncGroupDoc(group: GroupConfig, memberNames: Record<string, string>): Promise<void>;
+	/** homeroom 그룹 문서(대화방) 삭제(ClassroomController.deleteGroupDoc). */
+	deleteGroupDoc(groupId: string): Promise<void>;
+	/** 그룹 대화 채널 id(ClassroomController.groupChannelFor). */
+	groupChannelFor(groupId: string): string | null;
+	/** 대화 탭을 특정 채널로 연다(패널 내비게이션). */
+	openChat(channel: string): Promise<void>;
+	/** 그룹 공간 서버 DB 삭제(ServerResetController.deleteSharedServer — stopMode 포함). */
+	deleteSharedServer(space: SharedSpace): Promise<void>;
+	refreshMemberShares(): Promise<void>;
+	restartMode(): Promise<void>;
 }
 
 /**
@@ -35,6 +47,77 @@ export interface GroupRequestDeps {
  */
 export class GroupRequestController {
 	constructor(private d: GroupRequestDeps) {}
+
+	// --- 그룹 라이프사이클(교사) — main에서 이동(M-12) ---
+
+	/** 명명 그룹 목록(관리 UI). */
+	listGroups(): GroupConfig[] {
+		return this.d.settings().groups;
+	}
+
+	/** 그룹 생성/수정(교사). settings.groups upsert + homeroom 그룹 문서(대화방) 동기화. */
+	async saveGroup(group: GroupConfig): Promise<void> {
+		const s = this.d.settings();
+		if (s.role !== "manager") return;
+		const i = s.groups.findIndex((g) => g.id === group.id);
+		if (i >= 0) s.groups[i] = group;
+		else s.groups.push(group);
+		await this.d.saveSettings();
+		const names: Record<string, string> = {};
+		for (const id of group.memberIds) {
+			const m = s.members.find((x) => x.memberId === id);
+			if (m?.memberName) names[id] = m.memberName;
+		}
+		await this.d.syncGroupDoc(group, names);
+	}
+
+	/** 그룹 삭제(교사). settings.groups 제거 + 그룹 대화방 삭제. 그룹 공간(신청-승인)이 있으면 공간도 해제. */
+	async deleteGroup(id: string): Promise<void> {
+		const s = this.d.settings();
+		if (s.role !== "manager") return;
+		const g = s.groups.find((x) => x.id === id);
+		s.groups = s.groups.filter((x) => x.id !== id);
+		await this.d.saveSettings();
+		await this.d.deleteGroupDoc(id);
+		// 그룹 공간 해제: 서버 DB 삭제 → 설정 제거 → 전 구성원 shares 재전파 → 모드 재구성.
+		// 각자 로컬 폴더의 파일은 남는다(데이터 보존 — 동기화·실시간만 끊긴다).
+		const space = g?.spaceId ? s.sharedSpaces.find((sp) => sp.id === g.spaceId) : undefined;
+		if (space) {
+			await this.d.deleteSharedServer(space); // stopMode 포함
+			s.sharedSpaces = s.sharedSpaces.filter((sp) => sp.id !== space.id);
+			await this.d.saveSettings();
+			await this.d.refreshMemberShares();
+			await this.d.restartMode();
+		}
+	}
+
+	/** 그룹 대화방 열기(대화 탭). */
+	async openGroupChat(groupId: string): Promise<void> {
+		const ch = this.d.groupChannelFor(groupId);
+		if (ch) await this.d.openChat(ch);
+	}
+
+	/**
+	 * 세션 참여자 명단으로 그룹 대화 열기(교사). 구성원이 정확히 일치하는 기존 그룹(명명·임시)이 있으면
+	 * 재사용하고, 없으면 임시 그룹을 만들어 연다. 임시 그룹은 대화방 목록에서 삭제할 수 있다.
+	 */
+	async openSessionGroupChat(memberIds: string[]): Promise<void> {
+		const s = this.d.settings();
+		if (s.role !== "manager" || !memberIds.length) return;
+		const want = new Set(memberIds);
+		let g = s.groups.find((x) => x.memberIds.length === want.size && x.memberIds.every((id) => want.has(id)));
+		if (!g) {
+			const names = memberIds.map((id) => s.members.find((m) => m.memberId === id)?.memberName || id);
+			g = {
+				id: `tmp${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
+				name: names.join(", "),
+				memberIds: [...memberIds],
+				temp: true,
+			};
+			await this.saveGroup(g);
+		}
+		await this.openGroupChat(g.id);
+	}
 
 	// --- 명단(roster) — 교사 배포, 구성원 신청 UI 소스 ---
 
@@ -186,7 +269,7 @@ export class GroupRequestController {
 			return false;
 		}
 
-		await this.d.saveGroup({
+		await this.saveGroup({
 			id: req.requestId,
 			name: req.name,
 			memberIds,
