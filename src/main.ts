@@ -15,7 +15,7 @@ import { MemberMode } from "./modes/member/MemberMode";
 import { ManagerMode } from "./modes/manager/ManagerMode";
 import { TFile, TFolder } from "obsidian";
 import { RoleSetupModal } from "./ui/RoleSetupModal";
-import { ConflictModal, ConflictRow, ConflictHost } from "./ui/ConflictModal";
+import { ConflictModal } from "./ui/ConflictModal";
 import { VersionHistoryModal } from "./ui/VersionHistoryModal";
 import { SetupWizardModal } from "./ui/SetupWizardModal";
 import { ResolveChoice } from "./core/sync/ConflictManager";
@@ -55,7 +55,7 @@ import { currentLocale, initI18n, t } from "./i18n";
  * 역할은 최초 1회 선택 후 잠긴다(기술문서 §5.4 보강). 실행 시 저장된 last_seq부터 증분 재개하고,
  * 전체 동기화는 최초 1회와 수동 명령에서만 수행한다.
  */
-export default class CoVaultPlugin extends Plugin implements SettingsHost, ConflictHost, PanelHost {
+export default class CoVaultPlugin extends Plugin implements SettingsHost, PanelHost {
 	settings!: CoVaultSettings;
 	logger = new Logger();
 	private core!: CoreServices;
@@ -744,17 +744,6 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		this.realtime.diagnose();
 	}
 
-	// --- 충돌 해소 (ConflictHost) → RecoveryController 위임 ---
-	listConflicts(): Promise<ConflictRow[]> {
-		return this.recoveryCtl.listConflicts();
-	}
-	resolveConflict(row: ConflictRow, choice: ResolveChoice): Promise<void> {
-		return this.recoveryCtl.resolveConflict(row, choice);
-	}
-	openConflictFiles(row: ConflictRow): Promise<void> {
-		return this.recoveryCtl.openConflictFiles(row);
-	}
-
 	// --- 설정 내보내기/가져오기 (기술문서 §22.4) ---
 	exportSettingsJson(): string {
 		return exportSettings(this.settings);
@@ -865,7 +854,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				const file = this.app.workspace.getActiveFile();
 				return file && file.extension === "md" && this.syncForLocalPath(file.path) ? file.path : null;
 			},
-			openVersionHistory: (path) => new VersionHistoryModal(this.app, this, path).open(),
+			openVersionHistory: (path) => new VersionHistoryModal(this.app, this.recoveryCtl, path).open(),
 		});
 	}
 
@@ -910,7 +899,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return this.recoveryCtl.getDashboardRows();
 	}
 	openConflictModal(): void {
-		new ConflictModal(this.app, this).open();
+		new ConflictModal(this.app, this.recoveryCtl).open();
 	}
 	listDeletedFiles(): Promise<DeletedItem[]> {
 		return this.recoveryCtl.listDeletedFiles();
