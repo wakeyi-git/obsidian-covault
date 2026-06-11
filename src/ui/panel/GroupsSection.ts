@@ -48,7 +48,6 @@ export class GroupsSection implements PanelSection {
 		if (sig === this.sig && c.childElementCount > 0) return;
 		this.sig = sig;
 		c.empty();
-		c.createDiv({ cls: "covault-dash-label", text: t("group.groups") });
 		c.createDiv({ cls: "covault-cr-muted", text: t("group.manage_hint") });
 
 		const actions = c.createDiv({ cls: "covault-panel-actions" });
@@ -132,7 +131,6 @@ export class GroupsSection implements PanelSection {
 		if (sig === this.sig && c.childElementCount > 0) return;
 		this.sig = sig;
 		c.empty();
-		c.createDiv({ cls: "covault-dash-label", text: t("group.groups") });
 		c.createDiv({ cls: "covault-cr-muted", text: t("group.request_member_hint") });
 
 		// 그룹 신청: 교사가 배포한 학급 명단(roster)이 있어야 구성원을 고를 수 있다.

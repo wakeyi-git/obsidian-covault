@@ -84,8 +84,7 @@ export class DashboardSection implements PanelSection {
 	private drawHub(c: HTMLElement): void {
 		const manager = this.host.settings.role === "manager";
 		const ready = this.host.homeroomReady();
-
-		c.createDiv({ cls: "covault-cr-title", text: t("dashboard.classroom_dashboard") });
+		// 상단 제목은 두지 않는다 — 탭 바가 이미 위치를 알려주므로 중복(다른 탭과 동일 원칙).
 
 		if (!ready) {
 			// 지정은 되어 있는데 동기화 링크가 아직 없는 경우(볼트 시작 직후 등) — "지정하세요" 안내가

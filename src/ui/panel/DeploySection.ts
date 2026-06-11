@@ -41,8 +41,7 @@ export class DeploySection implements PanelSection {
 	// --- 학생에게 복사 ---
 
 	private renderCopy(container: HTMLElement): void {
-		container.createDiv({ cls: "covault-panel-label", text: t("deploy.copy_to_members") });
-
+		// 상단 제목 없음 — 탭 바가 이미 위치를 알려준다(실행 버튼에 같은 문구가 있다).
 		const members = this.host.settings.members.filter((st) => st.memberId);
 		if (members.length === 0) {
 			container.createDiv({ cls: "covault-feedback-empty", text: t("deploy.add_members_in_settings_first") });
