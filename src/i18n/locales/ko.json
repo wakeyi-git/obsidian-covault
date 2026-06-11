@@ -333,6 +333,7 @@
 		"base_folder_optional": "기본 폴더 (선택)",
 		"base_folder_desc": "지정하면 각 구성원의 폴더가 ‘<기본>/<이름>’이 됩니다(줄에 적은 폴더가 우선).",
 		"base_folder_placeholder": "구성원",
+		"secret_storage_unavailable_plaintext": "이 기기에서 Secret Storage를 쓸 수 없어 비밀번호가 data.json에 평문으로 저장됩니다. 가능하면 Obsidian을 1.11.4+로 업데이트하세요.",
 		"roster_placeholder": "홍길동,hong\n김철수,kim,팀/A\n이영희",
 		"auto": "자동",
 		"preview_members_to_add": "미리보기: {n}명 추가 예정",
@@ -800,6 +801,7 @@
 		"remote_sync_failed": "원격 동기화 실패: {err}",
 		"full_sync_complete": "전체 동기화 완료 ({direction}).",
 		"download_reconcile_applied_of_docs_attachments": "다운로드 정합: 문서 {notes} + 첨부 {assets} 중 {applied}개 적용.",
+		"upload_skipped_unchanged_by_stat": "증분 스캔: 직전 기준선 이후 변경 없는 파일 {n}개를 읽지 않고 건너뛰었습니다.",
 		"upload_reconcile_uploaded_of_files": "업로드 정합: {files}개 파일 중 {uploaded}개 업로드."
 	},
 	"diagnostics": {

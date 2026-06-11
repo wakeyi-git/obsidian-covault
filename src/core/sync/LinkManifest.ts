@@ -19,6 +19,10 @@ export interface ManifestEntry {
 	rev: string;
 	/** 기준선 시점의 DB 문서 contentHash. 기록 시 로컬 파일 내용과 일치함이 검증된 값. */
 	hash: string;
+	/** 기준선 시점의 로컬 파일 stat.mtime/size. 둘 다 그대로면 파일을 읽지 않고 "변경 없음"으로
+	 *  판정하는 증분 스캔에 쓴다(구버전 기준선엔 없음 → 전체 검사로 폴백). */
+	mtime?: number;
+	size?: number;
 }
 
 /** 현재 DB 문서의 식별 정보(미삭제). selectManifestOrphans 비교용. */

@@ -1,3 +1,4 @@
+import { b64ToUtf8, utf8ToB64 } from "../util/b64";
 /**
  * 학생 초대 페이로드. 기술문서 §22.4 (setup URI).
  * 학생 Member Mode를 자동 설정하는 데 필요한 최소 정보 + 학생 전용 자격증명.
@@ -21,13 +22,12 @@ export const INVITE_ACTION = "covault-invite";
 
 /** base64url 인코딩(UTF-8 안전). */
 function toBase64Url(s: string): string {
-	const b64 = btoa(unescape(encodeURIComponent(s)));
-	return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+	return utf8ToB64(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function fromBase64Url(s: string): string {
 	const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);
-	return decodeURIComponent(escape(atob(b64)));
+	return b64ToUtf8(b64);
 }
 
 /** 페이로드 → base64url 코드. */

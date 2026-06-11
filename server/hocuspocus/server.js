@@ -121,6 +121,33 @@ function nextVersionMs() {
 	lastVersionMs = Math.max(Date.now(), lastVersionMs + 1);
 	return lastVersionMs;
 }
+
+/**
+ * CouchDB 스냅샷 실패 가시성 — 연속 실패 수와 마지막 오류를 헬스 엔드포인트에 노출한다.
+ * 서버-CouchDB 불통 상태로 세션이 계속되면 비실시간/오프라인 멤버가 옛 본을 받는데,
+ * 이전엔 콘솔 로그뿐이라 아무도 몰랐다.
+ */
+let couchFailCount = 0;
+let lastCouchError = null; // { at: ISO, msg }
+function noteCouchOk() {
+	couchFailCount = 0;
+}
+function noteCouchFail(e) {
+	couchFailCount++;
+	lastCouchError = { at: new Date().toISOString(), msg: String(e?.message ?? e).slice(0, 200) };
+}
+
+/**
+ * 토큰 만료의 활성 연결 소급 — 문서별 "가장 이른 만료(epoch sec)"를 기억해 두고, 주기 점검에서
+ * 지난 문서의 연결을 모두 닫는다. 재접속 시 onAuthenticate가 만료 토큰만 거부하므로(재인가),
+ * 나머지 참가자는 끊김 없이 복귀한다(rtpart 변경 강퇴와 동일하게 검증된 경로).
+ */
+const docMinExp = new Map(); // documentName -> epoch sec
+function noteTokenExp(documentName, expSec) {
+	if (typeof expSec !== "number") return;
+	const prev = docMinExp.get(documentName);
+	if (prev == null || expSec < prev) docMinExp.set(documentName, expSec);
+}
 let hocuspocusInstance = null; // onListen에서 채워짐(closeConnections용)
 
 function onControlChange(dbName, changedIds) {
@@ -175,12 +202,29 @@ const server = new Server({
 
 	async onListen({ instance }) {
 		hocuspocusInstance = instance;
+		// 만료 토큰 주기 점검(60초) — 가장 이른 만료가 지난 문서의 연결을 닫아 재인가시킨다.
+		const sweep = setInterval(() => {
+			const nowSec = Math.floor(Date.now() / 1000);
+			for (const [name, exp] of docMinExp) {
+				if (nowSec <= exp) continue;
+				docMinExp.delete(name); // 유효한 연결이 재인증하며 다시 등록한다
+				console.log(`[authz] token expiry passed for "${name}" — closing connections for re-auth`);
+				instance.closeConnections(name);
+			}
+		}, 60_000);
+		sweep.unref?.(); // 점검 타이머가 프로세스 종료를 막지 않게
 	},
 
-	/** 헬스체크(리버스 프록시/모니터링 확인용). throw null = 기본 응답 중단(v4 onRequest 규약). */
+	/** 헬스체크(리버스 프록시/모니터링 확인용). throw null = 기본 응답 중단(v4 onRequest 규약).
+	 *  첫 줄("CoVault realtime server OK")은 호환성 계약 — 뒤에 CouchDB 스냅샷 상태를 덧붙인다. */
 	async onRequest({ response }) {
+		const couchLine = !couch
+			? "couch: disabled"
+			: couchFailCount === 0
+				? "couch: ok"
+				: `couch: failing(${couchFailCount}) last=${lastCouchError?.at ?? "?"} ${lastCouchError?.msg ?? ""}`;
 		response.writeHead(200, { "Content-Type": "text/plain" });
-		response.end("CoVault realtime server OK");
+		response.end(`CoVault realtime server OK\n${couchLine}`);
 		throw null;
 	},
 
@@ -200,6 +244,7 @@ const server = new Server({
 		}
 		if (!allowed) throw new Error(`forbidden: ${claims.m} is not a participant of this file`);
 		connectionConfig.isAuthenticated = true;
+		noteTokenExp(documentName, claims.e); // 만료 주기 점검 대상으로 등록
 		return { claims, room }; // → context (onStoreDocument lastContext, 강퇴 재인가에 사용)
 	},
 
@@ -288,6 +333,7 @@ const server = new Server({
 		if (content.length === 0) return; // 빈 내용으로 기존 문서를 덮어쓰지 않음(데이터 손실 방지)
 		const contentHash = sha256Hex(content);
 		const id = `note:${room.dbPath}`;
+		try {
 		// 조회 실패는 throw → 디바운서가 재시도. (이전엔 null로 폴백해 tombstone 위에 새 문서를 쓸 수 있었다.)
 		const existing = await couch.getDoc(claims.d, id);
 		// 교사 삭제 tombstone: 스냅샷으로 되살리지 않는다 — SQLite 잔존 상태를 지우고 연결을 닫아 세션 종료.
@@ -295,11 +341,13 @@ const server = new Server({
 			deleteDocRow.run({ name: documentName });
 			hocuspocusInstance?.closeConnections(documentName);
 			console.log(`[snapshot] "${documentName}" skipped — note tombstoned by manager; session closed`);
+			noteCouchOk();
 			return;
 		}
 		if (existing && !existing.deleted && existing.contentHash === contentHash) {
 			sqliteAhead.delete(documentName); // CouchDB가 이미 같은 내용 — 앞섬 해제
 			lastCouchHash.set(documentName, contentHash);
+			noteCouchOk();
 			return;
 		}
 
@@ -359,7 +407,12 @@ const server = new Server({
 		});
 		sqliteAhead.delete(documentName); // CouchDB 반영 완료 — 이 시점부터 note가 정본
 		lastCouchHash.set(documentName, contentHash);
+		noteCouchOk();
 		console.log(`[snapshot] "${documentName}" -> ${claims.d}/${id} (v${(existing?.version ?? 0) + 1})`);
+		} catch (e) {
+			noteCouchFail(e); // 헬스 엔드포인트에 실패 누적 노출 — throw는 유지(디바운서 재시도)
+			throw e;
+		}
 	},
 
 	/** 활성 문서 해제 + 감시 정리. 스냅샷이 CouchDB에 안착했으면 SQLite 행도 지운다(다음 세션은 note에서 시드). */
@@ -369,6 +422,7 @@ const server = new Server({
 		activeDocs.delete(documentName);
 		releaseWatcher(info.db);
 		lastCouchHash.delete(documentName);
+		docMinExp.delete(documentName);
 		if (couch && isSnapshotTarget(info.dbPath)) {
 			if (sqliteAhead.has(documentName)) {
 				// 마지막 스냅샷이 CouchDB에 못 갔다 — SQLite 행이 미반영 편집의 유일한 사본이므로 보존.

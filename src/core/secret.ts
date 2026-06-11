@@ -1,4 +1,6 @@
-import { App, SecretStorage } from "obsidian";
+import { App, Notice, SecretStorage } from "obsidian";
+import { t } from "../i18n";
+import { utf8ToB64 } from "./util/b64";
 
 /**
  * Obsidian SecretStorage(@since 1.11.4) 래퍼. 비밀값을 vault별 로컬 스토리지에 저장해 data.json 평문 노출을 막는다.
@@ -14,10 +16,7 @@ export const RT_SERVICE_PASSWORD_ID = "covault-rt-service-password";
 
 /** base64url 인코딩(UTF-8 안전). 키에 memberId를 충돌 없이 담는 용도. */
 function b64url(s: string): string {
-	return btoa(unescape(encodeURIComponent(s)))
-		.replace(/\+/g, "-")
-		.replace(/\//g, "_")
-		.replace(/=+$/, "");
+	return utf8ToB64(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /**
@@ -92,11 +91,19 @@ export function getRtServicePassword(app: App): string {
  * CouchDB 비밀번호 저장: Secret Storage 우선(성공 시 평문 제거+플래그), 미지원이면 평문 보관.
  * settings를 구조적으로만 받아 core가 설정 타입에 결합되지 않게 한다(ingestInvite·설정 탭 공용).
  */
+let warnedPlaintextFallback = false;
+
 export function persistCouchPassword(app: App, settings: { password?: string; passwordSet?: boolean }, pw: string): void {
 	if (setSecretValue(app, COUCH_PASSWORD_ID, pw)) {
 		settings.passwordSet = true;
 		settings.password = "";
 	} else {
 		settings.password = pw;
+		// Secret Storage 미지원(구버전/일부 모바일) — 비밀번호가 data.json에 평문으로 남는다.
+		// 조용히 넘어가면 사용자가 노출 사실을 모른다 → 세션당 1회 경고.
+		if (!warnedPlaintextFallback) {
+			warnedPlaintextFallback = true;
+			new Notice(t("settings.secret_storage_unavailable_plaintext"));
+		}
 	}
 }

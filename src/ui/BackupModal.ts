@@ -1,5 +1,6 @@
 import { App, Modal, Notice, Platform, Setting } from "obsidian";
 import { t } from "../i18n";
+import { copyWithNotice } from "./util/clipboard";
 
 /** 설정 내보내기 모달 — 자격증명 제외된 JSON을 보여주고 복사. 기술문서 §22.4. */
 export class ExportModal extends Modal {
@@ -28,10 +29,8 @@ export class ExportModal extends Modal {
 					.setButtonText(t("backup.copy_to_clipboard"))
 					.setCta()
 					.onClick(async () => {
-						await navigator.clipboard.writeText(this.json).catch(() => {
-							ta.select();
-						});
-						new Notice(t("backup.covault_settings_copied"));
+						// (이전엔 복사가 실패해도 성공 Notice가 떴다 — 실패 시 직접 복사를 안내한다)
+						await copyWithNotice(this.json, t("backup.covault_settings_copied"), t("invite.copy_failed_select_and_copy_the"), () => ta.select());
 					}),
 			)
 			.addButton((b) => b.setButtonText(t("common.close")).onClick(() => this.close()));

@@ -590,7 +590,7 @@
 /* 실시간 커서: 편집자 이름 라벨 항상 표시 (y-codemirror.next)
    — Excalidraw 포인터 라벨과 동일 스타일: 600 12px sans-serif, padding 5/3, radius 8,
    배경은 참가자 색(clientColor, 연한 파스텔), 글자는 검정. */
-.cm-ySelectionInfo {
+.covault-rt .cm-ySelectionInfo {
 	/* y-codemirror.next가 자체 CM 테마(serif·.75em·normal·white)를 더 높은 우선순위로 주입하므로
 	   덮어쓰려면 !important가 필요하다. */
 	opacity: 1 !important;

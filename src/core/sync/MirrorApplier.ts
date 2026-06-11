@@ -115,7 +115,7 @@ export class MirrorApplier {
 
 		// 충돌이 있던 경로인데 로컬이 원격과 다르면, 상대가 해소해 내 편집이 곧 덮일 차례.
 		// 흔적 없이 잃지 않도록 내 버전을 먼저 보존한다. (데이터 손실 방지)
-		if (local != null && this.conflicts.hadConflict(doc.path)) {
+		if (local != null && (await this.conflicts.hadConflict(doc.path))) {
 			await this.conflicts.preserveLocal(doc.path, local);
 			ctx.logger.warn(
 				t("sync.the_other_side_resolved_the_conflict", {

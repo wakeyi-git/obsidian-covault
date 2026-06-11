@@ -5,6 +5,7 @@ import { rubricMax } from "../../../core/classroom/assignments";
 import { computeStats, ratePct, MemberStats } from "../../../core/classroom/stats";
 import { captureScroll } from "../scroll";
 import { t } from "../../../i18n";
+import { copyWithNotice } from "../../util/clipboard";
 
 function localDateStr(d: Date): string {
 	const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -150,12 +151,7 @@ export class GradebookView {
 		if (this.manager) {
 			const csvBtn = panelButton(c, t("dashboard.export_csv"), async () => {
 				const csv = this.buildCsv(stats);
-				try {
-					await navigator.clipboard.writeText(csv);
-					new Notice(t("dashboard.csv_copied"));
-				} catch {
-					new Notice(t("dashboard.csv_copy_failed"));
-				}
+				await copyWithNotice(csv, t("dashboard.csv_copied"), t("dashboard.csv_copy_failed"));
 			});
 			csvBtn.style.marginTop = "10px";
 		}

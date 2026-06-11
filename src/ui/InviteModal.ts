@@ -3,6 +3,7 @@ import { errMessage } from "../core/util/err";
 import qrcode from "qrcode-generator";
 import { InvitePayload, buildInviteUri, encodeInvite } from "../core/invite/invite";
 import { t } from "../i18n";
+import { copyWithNotice } from "./util/clipboard";
 
 /**
  * 학생 초대 표시. 기술문서 §22.4.
@@ -85,12 +86,7 @@ export class InviteModal extends Modal {
 	}
 
 	private async copy(text: string, ok: string): Promise<void> {
-		try {
-			await navigator.clipboard.writeText(text);
-			new Notice(ok);
-		} catch {
-			new Notice(t("invite.copy_failed_select_and_copy_the"));
-		}
+		await copyWithNotice(text, ok, t("invite.copy_failed_select_and_copy_the"));
 	}
 
 	onClose(): void {

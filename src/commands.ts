@@ -28,26 +28,26 @@ export interface CommandActions {
 
 /** CoVault 명령 등록(통합 패널은 금고(vault) 리본; 각 명령은 특정 탭/동작으로). */
 export function registerCommands(plugin: Plugin, a: CommandActions): void {
-	plugin.addCommand({ id: "covault-open-panel", name: t("command.open_panel"), callback: () => a.openPanel() });
-	plugin.addCommand({ id: "covault-open-dashboard", name: t("command.open_dashboard"), callback: () => a.openTab("dashboard") });
-	plugin.addCommand({ id: "covault-cleanup-classroom", name: t("command.cleanup_classroom_docs"), callback: () => a.cleanupClassroom() });
-	plugin.addCommand({ id: "covault-open-log", name: t("command.open_log_panel"), callback: () => a.openSystemView("log") });
-	plugin.addCommand({ id: "covault-test-connection", name: t("panel.test_connection_permissions"), callback: () => a.testConnection() });
-	plugin.addCommand({ id: "covault-diagnostics", name: t("command.run_full_diagnostics_server_read_write"), callback: () => a.runDiagnostics() });
-	plugin.addCommand({ id: "covault-full-sync", name: t("panel.full_sync"), callback: () => a.fullSync("both") });
-	plugin.addCommand({ id: "covault-upload-only", name: t("command.upload_only"), callback: () => a.fullSync("up") });
-	plugin.addCommand({ id: "covault-download-only", name: t("command.download_only"), callback: () => a.fullSync("down") });
-	plugin.addCommand({ id: "covault-toggle-autosync", name: t("command.toggle_auto_sync"), callback: () => a.toggleAutoSync() });
-	plugin.addCommand({ id: "covault-reset-local", name: t("command.reset_local_cache_re_fetch_from"), callback: () => a.resetLocalCache() });
-	plugin.addCommand({ id: "covault-conflicts", name: t("command.open_conflict_list"), callback: () => a.openConflicts() });
-	plugin.addCommand({ id: "covault-dashboard", name: t("command.open_sync_status"), callback: () => a.openSystemView("sync") });
-	plugin.addCommand({ id: "covault-deploy", name: t("deploy.copy_to_members_open_deploy_tab"), callback: () => a.openTab("deploy") });
-	plugin.addCommand({ id: "covault-realtime-status", name: t("panel.check_realtime_status"), callback: () => a.realtimeStatus() });
-	plugin.addCommand({ id: "covault-add-feedback", name: t("command.add_feedback_selection"), callback: () => a.addFeedback() });
-	plugin.addCommand({ id: "covault-open-feedback", name: t("command.open_feedback_panel"), callback: () => a.openTab("feedback") });
-	plugin.addCommand({ id: "covault-refresh-shares", name: t("panel.refresh_shared_spaces"), callback: () => a.refreshShares() });
+	plugin.addCommand({ id: "open-panel", name: t("command.open_panel"), callback: () => a.openPanel() });
+	plugin.addCommand({ id: "open-dashboard", name: t("command.open_dashboard"), callback: () => a.openTab("dashboard") });
+	plugin.addCommand({ id: "cleanup-classroom", name: t("command.cleanup_classroom_docs"), callback: () => a.cleanupClassroom() });
+	plugin.addCommand({ id: "open-log", name: t("command.open_log_panel"), callback: () => a.openSystemView("log") });
+	plugin.addCommand({ id: "test-connection", name: t("panel.test_connection_permissions"), callback: () => a.testConnection() });
+	plugin.addCommand({ id: "diagnostics", name: t("command.run_full_diagnostics_server_read_write"), callback: () => a.runDiagnostics() });
+	plugin.addCommand({ id: "full-sync", name: t("panel.full_sync"), callback: () => a.fullSync("both") });
+	plugin.addCommand({ id: "upload-only", name: t("command.upload_only"), callback: () => a.fullSync("up") });
+	plugin.addCommand({ id: "download-only", name: t("command.download_only"), callback: () => a.fullSync("down") });
+	plugin.addCommand({ id: "toggle-autosync", name: t("command.toggle_auto_sync"), callback: () => a.toggleAutoSync() });
+	plugin.addCommand({ id: "reset-local", name: t("command.reset_local_cache_re_fetch_from"), callback: () => a.resetLocalCache() });
+	plugin.addCommand({ id: "conflicts", name: t("command.open_conflict_list"), callback: () => a.openConflicts() });
+	plugin.addCommand({ id: "dashboard", name: t("command.open_sync_status"), callback: () => a.openSystemView("sync") });
+	plugin.addCommand({ id: "deploy", name: t("deploy.copy_to_members_open_deploy_tab"), callback: () => a.openTab("deploy") });
+	plugin.addCommand({ id: "realtime-status", name: t("panel.check_realtime_status"), callback: () => a.realtimeStatus() });
+	plugin.addCommand({ id: "add-feedback", name: t("command.add_feedback_selection"), callback: () => a.addFeedback() });
+	plugin.addCommand({ id: "open-feedback", name: t("command.open_feedback_panel"), callback: () => a.openTab("feedback") });
+	plugin.addCommand({ id: "refresh-shares", name: t("panel.refresh_shared_spaces"), callback: () => a.refreshShares() });
 	plugin.addCommand({
-		id: "covault-version-history",
+		id: "version-history",
 		name: t("version.open_version_history"),
 		checkCallback: (checking: boolean) => {
 			const path = a.versionHistoryPath();

@@ -9,6 +9,7 @@
  * 토큰이 유출돼도 **그 공간 room + 그 학생의 권한**으로만 접근할 수 있다.
  * 전체 회전은 시크릿 교체, 만료는 exp로 처리.
  */
+import { b64ToUtf8 } from "../util/b64";
 
 export interface SpaceTokenClaims {
 	workspaceId: string;
@@ -35,7 +36,7 @@ function bytesToB64Url(bytes: Uint8Array): string {
 
 function b64UrlToUtf8(s: string): string {
 	const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);
-	return decodeURIComponent(escape(atob(b64)));
+	return b64ToUtf8(b64);
 }
 
 async function hmacB64Url(secret: string, message: string): Promise<string> {

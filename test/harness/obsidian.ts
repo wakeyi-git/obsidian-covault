@@ -28,7 +28,9 @@ export class TFile extends TAbstractFile {
 		const dot = this.name.lastIndexOf(".");
 		this.extension = dot > 0 ? this.name.slice(dot + 1) : "";
 		this.basename = dot > 0 ? this.name.slice(0, dot) : this.name;
-		this.stat = { size, mtime: 0, ctime: 0 };
+		// 실제 Obsidian처럼 생성 시각을 stat에 기록한다(증분 스캔·tombstone mtime 비교가 의존).
+		const now = Date.now();
+		this.stat = { size, mtime: now, ctime: now };
 	}
 }
 

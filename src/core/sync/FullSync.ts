@@ -41,11 +41,11 @@ export class FullSync {
 		const ctx = this.ctx;
 		ctx.logger.info(t("sync.full_sync_started", { direction, db: ctx.remoteDb }));
 
-		// 직전 동기화 종료 시점의 manifest(기준선). 삭제 정합의 "과거 존재" 근거로 쓴다.
+		// 직전 동기화 종료 시점의 manifest(기준선). 삭제 정합의 "과거 존재" 근거 + 증분 스캔에 쓴다.
 		const baseline = await loadManifest(ctx.pouch);
 
 		// 1) vault → 로컬 DB (업로드 방향에서만)
-		if (direction === "up" || direction === "both") await this.upload();
+		if (direction === "up" || direction === "both") await this.upload(baseline);
 
 		// 2~4) 방향별 replication + 삭제 정합.
 		//   up:   reconcile(원격 미확인) → push 만
@@ -79,7 +79,7 @@ export class FullSync {
 		// 6) 정합된 현재 상태를 새 기준선으로 기록(다음 동기화의 삭제 판정 근거).
 		//    down은 삭제 정합 없이 받기만 하므로 기준선을 건드리지 않는다 — 오프라인 중 로컬 삭제의
 		//    증거(기준선 항목)를 down이 지워버리면 그 삭제가 영영 전파되지 못한다.
-		if (direction !== "down") await this.writeManifestSnapshot();
+		if (direction !== "down") await this.writeManifestSnapshot(baseline);
 
 		await ctx.core.flushPersist();
 		ctx.logger.ok(t("sync.full_sync_complete", { direction }), true);
@@ -97,7 +97,7 @@ export class FullSync {
 		ctx.logger.info(t("version.startup_reconcile", { db: ctx.remoteDb }));
 		const baseline = await loadManifest(ctx.pouch);
 
-		await this.upload(); // 미반영 로컬 편집을 먼저 로컬 DB로(원격 변경과 _conflicts가 제대로 생기도록)
+		await this.upload(baseline); // 미반영 로컬 편집을 먼저 로컬 DB로(원격 변경과 _conflicts가 제대로 생기도록)
 		try {
 			const pulled = await ctx.pouch.replicatePullOnce(); // 최신 원격을 먼저 받아 stale 판단 방지
 			await this.reconcileDeletions(baseline);
@@ -107,7 +107,7 @@ export class FullSync {
 			ctx.logger.error(t("version.startup_reconcile_failed", { err: errMessage(e) }), true);
 		}
 
-		await this.writeManifestSnapshot();
+		await this.writeManifestSnapshot(baseline);
 		await ctx.core.flushPersist();
 	}
 
@@ -140,11 +140,18 @@ export class FullSync {
 		);
 	}
 
-	private async upload(): Promise<void> {
+	private async upload(baseline: LinkManifestDoc | null): Promise<void> {
 		const ctx = this.ctx;
 		let uploaded = 0;
+		let unchanged = 0;
 		const files = this.localFiles();
 		for (const file of files) {
+			// 증분 스캔: 기준선 기록 당시의 stat(mtime+size)이 그대로면 내용도 그대로다(기록 시
+			// 파일 해시 = DB 해시가 검증됨) — 읽기·해시 없이 건너뛰어 대용량 vault 시작 비용을 줄인다.
+			if (this.statMatchesBaseline(baseline, file)) {
+				unchanged++;
+				continue;
+			}
 			const res = await this.uploader.uploadPath(file.path);
 			if (res === "uploaded") uploaded++;
 			// tombstone이 있는데 사본이 남은 파일(삭제 적용 보류·실패 잔재) — 부활시키지 않고 삭제를 재적용.
@@ -153,6 +160,17 @@ export class FullSync {
 		ctx.logger.info(
 			t("sync.upload_reconcile_uploaded_of_files", { files: files.length, uploaded }),
 		);
+		if (unchanged > 0) ctx.logger.info(t("sync.upload_skipped_unchanged_by_stat", { n: unchanged }));
+	}
+
+	/** 기준선 항목의 mtime/size가 현재 파일 stat과 정확히 일치하는가(증분 스캔 판정). */
+	private statMatchesBaseline(baseline: LinkManifestDoc | null, file: TFile): boolean {
+		if (!baseline || baseline.localRoot !== this.ctx.localRoot) return false;
+		const dbPath = this.ctx.toDbPath(file.path);
+		if (dbPath == null) return false;
+		const entry = baseline.paths[dbPath];
+		if (!entry || entry.mtime == null || entry.size == null) return false; // 구버전 기준선 → 전체 검사
+		return entry.mtime === file.stat.mtime && entry.size === file.stat.size;
 	}
 
 	/** 보류된 원격 삭제를 정책(archive/즉시삭제)대로 재적용해 잔존 사본을 정리. 실패는 다음 동기화에서 재시도. */
@@ -261,14 +279,16 @@ export class FullSync {
 	/**
 	 * 정합된 현재 상태를 새 manifest 기준선으로 저장. 단, **로컬 파일 내용이 DB 문서와 실제로 일치하는**
 	 * 항목만 기록한다(미적용/충돌/보류 상태가 "보유 이력"으로 잘못 남는 것을 막는다 — 2차 검토 P1).
+	 * 직전 기준선과 stat·rev가 그대로인 파일은 내용을 다시 읽지 않고 항목을 재사용한다(증분).
 	 */
-	private async writeManifestSnapshot(): Promise<void> {
+	private async writeManifestSnapshot(baseline: LinkManifestDoc | null): Promise<void> {
 		const ctx = this.ctx;
+		const reusable = baseline?.localRoot === ctx.localRoot ? baseline.paths : {};
 		const paths: Record<string, ManifestEntry> = {};
 		for (const f of this.localFiles()) {
 			const dbPath = ctx.toDbPath(f.path);
 			if (dbPath == null) continue;
-			const entry = await this.verifiedEntry(dbPath, f.path);
+			const entry = await this.verifiedEntry(dbPath, f, reusable[dbPath]);
 			if (entry) paths[dbPath] = entry;
 		}
 		try {
@@ -281,29 +301,41 @@ export class FullSync {
 	}
 
 	/**
-	 * 한 파일이 manifest 기준선 자격을 갖추는지 검사하고, 자격이 되면 {rev,hash}를 반환.
+	 * 한 파일이 manifest 기준선 자격을 갖추는지 검사하고, 자격이 되면 {rev,hash,mtime,size}를 반환.
 	 * 자격: DB에 미삭제·무충돌로 존재하고, 로컬 파일 내용 해시가 DB contentHash와 정확히 일치.
+	 * 직전 기준선 항목의 stat(mtime/size)·rev·hash가 모두 그대로면 파일을 읽지 않고 재사용(증분).
 	 */
-	private async verifiedEntry(dbPath: string, localPath: string): Promise<ManifestEntry | null> {
+	private async verifiedEntry(dbPath: string, file: TFile, prev?: ManifestEntry): Promise<ManifestEntry | null> {
 		const ctx = this.ctx;
+		const localPath = file.path;
 		const isMd = ctx.isMarkdown(dbPath);
 		const id = isMd ? noteId(dbPath) : assetId(dbPath);
 		const doc = await ctx.pouch.getWithConflicts<NoteDoc | AssetDoc>(id);
 		if (!doc || doc.deleted || !doc._rev || !doc.contentHash) return null;
 		if (doc._conflicts && doc._conflicts.length > 0) return null; // 미해소 충돌 → 보유 이력 아님
+		// 증분 재사용: 파일 stat과 DB 문서가 직전 기준선과 정확히 같으면 검증 결과도 같다.
+		if (
+			prev?.mtime != null &&
+			prev.size != null &&
+			prev.mtime === file.stat.mtime &&
+			prev.size === file.stat.size &&
+			prev.rev === doc._rev &&
+			prev.hash === doc.contentHash
+		) {
+			return prev;
+		}
 		let localHash: string | null;
 		if (isMd) {
 			const content = await ctx.readVaultFile(localPath);
 			localHash = content == null ? null : await sha256(content);
 		} else {
 			// 업로드와 동일하게 크기 한도를 먼저 본다 — 큰 파일을 메모리에 읽지 않는다(모바일 보호).
-			const size = ctx.getFile(localPath)?.stat.size ?? 0;
-			if (exceedsAttachmentLimit(size, ctx.settings.maxAttachmentMB || 0)) return null;
+			if (exceedsAttachmentLimit(file.stat.size, ctx.settings.maxAttachmentMB || 0)) return null;
 			const bin = await ctx.readVaultBinary(localPath);
 			localHash = bin == null ? null : await sha256(bin);
 		}
 		if (localHash == null || localHash !== doc.contentHash) return null; // 내용 불일치(보류/스킵/충돌 등)
-		return { rev: doc._rev, hash: doc.contentHash };
+		return { rev: doc._rev, hash: doc.contentHash, mtime: file.stat.mtime, size: file.stat.size };
 	}
 
 	/** localRoot 아래, excludeFolders 제외 동기화 대상 파일(markdown + 첨부). */

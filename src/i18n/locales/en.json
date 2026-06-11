@@ -333,6 +333,7 @@
 		"base_folder_optional": "Base folder (optional)",
 		"base_folder_desc": "When set, each member’s folder becomes ‘<base>/<name>’ (a per-line folder overrides it).",
 		"base_folder_placeholder": "Members",
+		"secret_storage_unavailable_plaintext": "Secret Storage is unavailable on this device — the password is stored in plain text in data.json. Update Obsidian (1.11.4+) if possible.",
 		"roster_placeholder": "Jane Doe,jane\nJohn Smith,john,Team/A\nAlex Kim",
 		"auto": "Auto",
 		"preview_members_to_add": "Preview: {n} members to add",
@@ -800,6 +801,7 @@
 		"remote_sync_failed": "Remote sync failed: {err}",
 		"full_sync_complete": "Full sync complete ({direction}).",
 		"download_reconcile_applied_of_docs_attachments": "Download reconcile: applied {applied} of {notes} docs + {assets} attachments.",
+		"upload_skipped_unchanged_by_stat": "Incremental scan: {n} file(s) unchanged since the last baseline (skipped without reading).",
 		"upload_reconcile_uploaded_of_files": "Upload reconcile: uploaded {uploaded} of {files} files."
 	},
 	"diagnostics": {

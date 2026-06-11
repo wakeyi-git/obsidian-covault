@@ -3,6 +3,7 @@ import { errMessage } from "./core/util/err";
 import { registerCommands as registerCovaultCommands } from "./commands";
 import { jumpToFeedback } from "./ui/feedbackJump";
 import { CoVaultSettings, DEFAULT_SETTINGS, Role, MemberConfig, SharedSpace, GroupConfig } from "./settings/types";
+import { localizeDefaultFolders } from "./settings/localizeDefaults";
 import { VersionDoc, NoticeDoc, ResponseDoc, MessageDoc, GroupRequestDoc } from "./core/model/types";
 import { AssignmentDoc, AssignmentStateDoc, AssignmentGrade } from "./core/model/types";
 import { RoutineDoc, RoutineStateDoc } from "./core/model/types";
@@ -46,7 +47,7 @@ import { INVITE_ACTION, InvitePayload } from "./core/invite/invite";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { exportSettings, importSettings } from "./settings/portable";
 import { ResetModal } from "./ui/ResetModal";
-import { initI18n, t } from "./i18n";
+import { currentLocale, initI18n, t } from "./i18n";
 
 /**
  * CoVault for Obsidian — 플러그인 진입점.
@@ -342,6 +343,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 	/** 최초 실행 역할 선택 모달 → 역할 잠금 + 모드 시작. 학생은 초대 코드로 바로 설정 가능. */
 	private promptRoleSetup(): void {
+		// 신규 설치(비한국어 로케일)의 기본 폴더명 현지화 — 최초 실행 전용이라 기존 폴더는 불변.
+		if (localizeDefaultFolders(this.settings, currentLocale())) void this.saveSettings();
 		new RoleSetupModal(
 			this.app,
 			async (role) => {

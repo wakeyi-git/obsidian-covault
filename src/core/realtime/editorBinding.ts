@@ -38,9 +38,13 @@ export function bindView(view: EditorView, ytext: Y.Text, awareness: Awareness):
 	}
 	const ext: Extension = yCollab(ytext, awareness);
 	view.dispatch({ effects: rtCompartment.reconfigure(ext) });
+	// 커서 라벨 CSS(.cm-ySelectionInfo)를 이 클래스 아래로 스코프한다 — 전역 선택자는
+	// y-codemirror를 쓰는 다른 플러그인의 커서 스타일까지 덮어쓴다.
+	view.dom.classList.add("covault-rt");
 }
 
 /** 해당 뷰의 실시간 바인딩 해제. */
 export function unbindView(view: EditorView): void {
 	view.dispatch({ effects: rtCompartment.reconfigure([]) });
+	view.dom.classList.remove("covault-rt");
 }

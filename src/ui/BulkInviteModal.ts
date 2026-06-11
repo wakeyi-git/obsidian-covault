@@ -2,6 +2,7 @@ import { App, Modal, Notice, Setting } from "obsidian";
 import { InvitePayload, encodeInvite } from "../core/invite/invite";
 import { InviteModal } from "./InviteModal";
 import { t } from "../i18n";
+import { copyWithNotice } from "./util/clipboard";
 
 /**
  * 일괄 초대 결과 — 방금 프로비저닝한 구성원들의 초대 코드 목록.
@@ -48,12 +49,7 @@ export class BulkInviteModal extends Modal {
 	}
 
 	private async copy(code: string): Promise<void> {
-		try {
-			await navigator.clipboard.writeText(code);
-			new Notice(t("invite.invite_code_copied"));
-		} catch {
-			new Notice(t("invite.copy_failed_select_and_copy_the"));
-		}
+		await copyWithNotice(code, t("invite.invite_code_copied"), t("invite.copy_failed_select_and_copy_the"));
 	}
 
 	onClose(): void {

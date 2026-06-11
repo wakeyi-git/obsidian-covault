@@ -71,6 +71,7 @@ export class InMemoryVault {
 		const next = fn(e.content);
 		e.content = next;
 		e.file.stat.size = byteLen(next);
+		e.file.stat.mtime = Date.now(); // 실제 Obsidian처럼 수정 시각 갱신(증분 스캔이 의존)
 		return next;
 	}
 
@@ -97,6 +98,7 @@ export class InMemoryVault {
 		if (!e) throw new Error(`modifyBinary: missing: ${file.path}`);
 		e.binary = data;
 		e.file.stat.size = data.byteLength;
+		e.file.stat.mtime = Date.now();
 	}
 
 	async createFolder(path: string): Promise<TFolder> {

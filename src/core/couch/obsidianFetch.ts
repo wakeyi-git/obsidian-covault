@@ -1,4 +1,5 @@
 import { requestUrl } from "obsidian";
+import { utf8ToB64 } from "../util/b64";
 
 /**
  * Obsidian requestUrl 기반 fetch 구현.
@@ -66,8 +67,7 @@ function sanitizeResponseHeaders(headers: Record<string, string>): Record<string
 function basicAuth(username: string, password: string): string {
 	if (!username) return "";
 	const raw = `${username}:${password}`;
-	const b64 = btoa(unescape(encodeURIComponent(raw)));
-	return `Basic ${b64}`;
+	return `Basic ${utf8ToB64(raw)}`;
 }
 
 async function normalizeBody(body: BodyInit | null | undefined): Promise<string | ArrayBuffer | undefined> {

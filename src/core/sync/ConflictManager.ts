@@ -3,7 +3,11 @@ import { errMessage } from "../util/err";
 import { NoteDoc, AssetDoc, noteId, assetId } from "../model/types";
 import { sha256 } from "../hash/hash";
 import { insertLabelBeforeExt } from "../path/path";
+import { loadEntries, saveEntries } from "./localQueue";
 import { t } from "../../i18n";
+
+/** 충돌 이력 플래그(_local — 복제 안 됨). _충돌/ 사본 파일과 별개의 2차 근거. */
+const CONFLICT_FLAGS_ID = "_local/conflict-flags";
 
 // both = 두 버전 보관(로컬 최종), both-remote = 두 버전 보관(원격 최종).
 export type ResolveChoice = "local" | "remote" | "both" | "both-remote";
@@ -32,12 +36,31 @@ export interface ConflictInfo {
 export class ConflictManager {
 	constructor(private ctx: MirrorContext) {}
 
+	/** 충돌 이력 플래그 캐시(_local 문서 1회 로드). */
+	private flags: Set<string> | null = null;
+
+	private async loadFlags(): Promise<Set<string>> {
+		if (!this.flags) this.flags = new Set(await loadEntries<string>(this.ctx.pouch, CONFLICT_FLAGS_ID));
+		return this.flags;
+	}
+
+	private async setFlag(dbPath: string, on: boolean): Promise<void> {
+		const f = await this.loadFlags();
+		if (on === f.has(dbPath)) return;
+		if (on) f.add(dbPath);
+		else f.delete(dbPath);
+		await saveEntries(this.ctx.pouch, CONFLICT_FLAGS_ID, [...f]).catch(() => undefined);
+	}
+
 	/** 충돌 감지 시: 원격(=라이브와 다른) 리프 내용을 _충돌/ 폴더에 기록. */
 	async materialize(doc: NoteDoc & { _conflicts?: string[] }): Promise<void> {
 		const ctx = this.ctx;
 		const dbPath = doc.path;
 		const remote = await this.pickRemoteLeaf(dbPath, doc, doc._conflicts ?? []);
 		if (!remote) return;
+		// 사본 파일과 별개로 이력 플래그를 남긴다 — 사용자가 _충돌/ 사본을 지우거나 사본 쓰기가
+		// 실패해도, 상대 해소 시 preserveLocal(내편집 백업)이 빠지지 않게(평가 L-2).
+		await this.setFlag(dbPath, true);
 		const path = ctx.conflictLocalPath(dbPath);
 		// 이미 같은 내용의 보류본이 있으면 다시 쓰지 않는다(미해소 충돌이 매 변경/재시작마다
 		// _충돌/ 사본을 재기록해 mtime이 튀는 churn 방지).
@@ -237,9 +260,10 @@ export class ConflictManager {
 		return null;
 	}
 
-	/** 이 경로에 충돌 원격본이 존재하는가(= 충돌이 있었던 경로인가). */
-	hadConflict(dbPath: string): boolean {
-		return this.ctx.getFile(this.ctx.conflictLocalPath(dbPath)) != null;
+	/** 이 경로에 충돌 이력이 있는가 — _충돌/ 사본 존재 또는 이력 플래그(사본이 지워져도 유지). */
+	async hadConflict(dbPath: string): Promise<boolean> {
+		if (this.ctx.getFile(this.ctx.conflictLocalPath(dbPath)) != null) return true;
+		return (await this.loadFlags()).has(dbPath);
 	}
 
 	/** 상대가 충돌을 해소해 내 편집이 덮일 때, 내 버전을 _충돌/<base>.내편집.md에 보존. */
@@ -266,6 +290,7 @@ export class ConflictManager {
 	}
 
 	private async removeConflictCopy(dbPath: string): Promise<void> {
+		await this.setFlag(dbPath, false); // 해소/정리 — 이력 플래그도 함께 내린다
 		await this.removeFileIfExists(this.ctx.conflictLocalPath(dbPath));
 	}
 

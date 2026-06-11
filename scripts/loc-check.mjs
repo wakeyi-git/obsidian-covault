@@ -14,8 +14,9 @@ const GENERAL_CAP = 500;
 // ratchet 재고정했다(성장 차단). 분해(main.ts PanelHost 컴포지션 등)는 별도 후속 — 평가 보고서 M-12.
 const OVERRIDES = {
 	// main.ts: god object 분해 완료(1424→939, -34%) 후 기능 추가로 재성장(딥링크 초대 확인 모달,
-	// 캐시 초기화 확인 등 UI 글루 포함). PanelHost 인터페이스 컴포지션으로 600 도달이 목표 — 별도 후속.
-	"src/main.ts": 1169,
+	// 캐시 초기화 확인, onunload 타이머 정리, 기본 폴더 현지화 배선 등 UI 글루 포함).
+	// PanelHost 인터페이스 컴포지션으로 600 도달이 목표 — 별도 후속(평가 M-12).
+	"src/main.ts": 1172,
 	"src/settings/SettingsTab.ts": 1121, // 범위 밖(+그룹 관리, +실시간 서버 서비스 계정 설정, +검증 메시지)
 	"src/modes/ClassroomController.ts": 1040, // 범위 밖(+그룹 대화·대화 기능)
 	"src/core/realtime/RealtimeManager.ts": 713, // 범위 밖(게이트 로직은 main에 있음) — +서버 거부 재시도 백오프
