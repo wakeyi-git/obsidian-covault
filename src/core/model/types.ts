@@ -165,6 +165,41 @@ export interface RtControlDoc extends PouchDocBase {
 export const RTCONTROL_DOC_ID = "rtcontrol";
 
 /**
+ * 함께 쓰는 플러그인 배포(정책 엔진 P2 — docs/plugin-theme-deploy-feasibility.md).
+ * 학급 공유 DB에 두어 기존 classroom 문서 파이프라인으로 구성원에게 전파한다(vault에 쓰지 않는 메타데이터).
+ * 배포 가능한 파일(manifest.json/main.js/styles.css/data.json)은 모두 UTF-8 텍스트라 base64로 담는다.
+ * 수신 측은 확인 후 `.obsidian/plugins/<id>/`에 설치한다(adapter — configInstall.ts).
+ */
+export interface PluginDeployFile {
+	name: string; // DEPLOYABLE_PLUGIN_FILES allowlist만
+	b64: string;
+}
+export interface PluginDeployDoc extends PouchDocBase {
+	type: "plugindeploy";
+	schemaVersion: number;
+	workspaceId: string;
+	pluginId: string;
+	pluginName: string;
+	version: string;
+	files: PluginDeployFile[];
+	/** data.json(설정) 포함 여부. */
+	shareSettings: boolean;
+	/** true=재배포마다 구성원 data.json을 덮어씀(관리 설정), false=최초 설치 시드만(이후 구성원 소유). */
+	managedSettings: boolean;
+	/** 멱등 — 페이로드+정책 지문. 바뀔 때만 구성원에 재안내. */
+	contentHash: string;
+	/** 비우면 전원, 있으면 해당 구성원(userId)만. */
+	targetMembers?: string[];
+	deployedBy: string;
+	deployedAt: string;
+	deleted?: boolean;
+}
+export const PLUGINDEPLOY_ID_PREFIX = "plugindeploy:";
+export function pluginDeployId(pluginId: string): string {
+	return `${PLUGINDEPLOY_ID_PREFIX}${pluginId}`;
+}
+
+/**
  * 피드백 앵커(판별 유니온). 마크다운 본문은 텍스트 범위, Excalidraw 드로잉은 요소 id/좌표에 앵커한다.
  * 하위호환: 기존 문서는 `kind`가 없으므로 text로 간주한다(isTextAnchor 참조).
  */

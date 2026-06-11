@@ -11,6 +11,7 @@ import { DeploymentController } from "./modes/DeploymentController";
 import { RealtimeController } from "./modes/RealtimeController";
 import { ServerResetController } from "./modes/ServerResetController";
 import { MemberController } from "./modes/MemberController";
+import { PluginDeployController } from "./modes/PluginDeployController";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
 import { PanelHost, PanelTab, SystemView } from "./ui/panel/PanelSection";
 import { ConflictModal } from "./ui/ConflictModal";
@@ -113,6 +114,7 @@ export interface PanelHostDeps {
 	realtimeCtl: RealtimeController;
 	serverResetCtl: ServerResetController;
 	memberCtl: MemberController;
+	pluginDeployCtl: PluginDeployController;
 	// main 잔존 글루(모드/Plugin 수명주기에 결박된 동작)
 	homeroomReady(): boolean;
 	homeroomConfigured(): boolean;
@@ -251,6 +253,12 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 
 		// --- 동기화 상태·배포·복구 — Deployment/RecoveryController + main 글루 ---
 		...pick(d.deploymentCtl, ["redeployRealtime", "deployShared", "testConnection", "bulkCopy", "bulkCopyPreview"] as const),
+		// 함께 쓰는 플러그인 배포(PluginDeployHost) — PluginDeployController 위임
+		pluginDeploySupported: () => d.pluginDeployCtl.supported(),
+		listInstalledPlugins: () => d.pluginDeployCtl.listInstalled(),
+		listDeployedPlugins: () => d.pluginDeployCtl.listDeployed(),
+		deployPlugin: (id, opts) => d.pluginDeployCtl.deploy(id, opts),
+		undeployPlugin: (id) => d.pluginDeployCtl.undeploy(id),
 		...pick(d.recoveryCtl, [
 			"getDashboardRows",
 			"listDeletedFiles",

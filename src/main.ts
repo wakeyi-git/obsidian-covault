@@ -18,6 +18,8 @@ import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
 import { ClassroomController } from "./modes/ClassroomController";
+import { PluginDeployController } from "./modes/PluginDeployController";
+import { confirmPluginInstall } from "./ui/PluginInstallModal";
 import { RealtimeController } from "./modes/RealtimeController";
 import { MemberController } from "./modes/MemberController";
 import { GroupRequestController } from "./modes/GroupRequestController";
@@ -65,6 +67,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	private participantCtl!: ParticipantController;
 	private deploymentCtl!: DeploymentController;
 	private groupRequestCtl!: GroupRequestController;
+	private pluginDeployCtl!: PluginDeployController;
 	private groupRequestTimer: number | null = null; // grouprequest 변경 → 교사 처리 debounce
 	private serverResetCtl!: ServerResetController;
 	private onboardingCtl!: OnboardingController;
@@ -182,6 +185,14 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			refreshMemberShares: () => this.refreshMemberShares(),
 			restartMode: () => this.restartMode(),
 		});
+		this.pluginDeployCtl = new PluginDeployController({
+			app: this.app,
+			logger: this.logger,
+			settings: () => this.settings,
+			saveSettings: () => this.saveSettings(),
+			classroom: this.classroom,
+			confirmInstall: (doc) => confirmPluginInstall(this.app, doc),
+		});
 		this.serverResetCtl = new ServerResetController({
 			logger: this.logger,
 			settings: () => this.settings,
@@ -246,6 +257,10 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 				void this.groupRequestCtl.processPending();
 			}, 2000);
 		};
+		// 함께 쓰는 플러그인 배포 수신(구성원) → 설치 안내. 교사는 배포 패널이 폴링으로 갱신.
+		this.core.onPluginDeployChange = () => {
+			if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming();
+		};
 		// 알림장·수업은 편집창 + 프론트매터로 작성한다 — 파일 프론트매터 변경/삭제/이름변경을 게시 메타에 반영(교사).
 		this.registerEvent(this.app.metadataCache.on("changed", (file) => { if (file instanceof TFile) void this.classroomCtl.syncNoticeFromFile(file); }));
 		this.registerEvent(this.app.vault.on("delete", (file) => {
@@ -283,6 +298,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			realtimeCtl: this.realtimeCtl,
 			serverResetCtl: this.serverResetCtl,
 			memberCtl: this.memberCtl,
+			pluginDeployCtl: this.pluginDeployCtl,
 			homeroomReady: () => this.homeroomReady(),
 			homeroomConfigured: () => this.homeroomConfigured(),
 			saveSettings: () => this.saveSettings(),
@@ -352,6 +368,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 		await this.realtime?.refresh();
 		void this.participantCtl.backfillRtPartNames(); // 구버전 지정 문서에 이름 채우기(학생 카드에 이름 표시)
 		void this.classroomCtl.cleanupLegacyGroups(); // 0.100.x 파일별 그룹 문서 정리(드롭다운 유령 제거)
+		if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming(); // 시작 시 미처리 플러그인 배포 안내
 		if (this.settings.role === "manager") {
 			void this.deploymentCtl.redeployValidate(); // validate 버전 마이그레이션(1회, 실패 시 다음 시작 재시도)
 			void this.groupRequestCtl.syncRoster(); // 학급 명단 배포(구성원 그룹 신청 UI 선택지)

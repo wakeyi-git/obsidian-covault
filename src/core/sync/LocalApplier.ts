@@ -84,6 +84,9 @@ export class LocalApplier {
 			} else if (type === "grouprequest") {
 				// 그룹 신청 변경 → 교사: 대기 신청 처리, 구성원: 신청 상태 갱신
 				this.ctx.core.onGroupRequestChange();
+			} else if (type === "plugindeploy") {
+				// 함께 쓰는 플러그인 배포 수신 → 구성원: 설치 안내, 교사: 배포 패널 갱신
+				this.ctx.core.onPluginDeployChange();
 			} else if (type != null && CLASSROOM_NOTIFY_TYPES.has(type)) {
 				// 학급 운영 문서(알림장·응답·루틴·메시지 등) 수신 → 대시보드 허브/학급 채널 갱신.
 				// (이전엔 onClassroomChange가 어디서도 호출되지 않아 원격 변경에 패널이 멈춰 있었다.)

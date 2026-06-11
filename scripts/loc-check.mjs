@@ -15,7 +15,7 @@ const GENERAL_CAP = 500;
 const OVERRIDES = {
 	// main.ts: M-12 완료 — PanelHost를 컨트롤러 컴포지션(src/panelHost.ts)으로 조립해 1178→719.
 	// 남은 것은 수명주기·DI 배선·SettingsHost 1줄 위임. 이 값은 실측 ratchet(성장 차단).
-	"src/main.ts": 719,
+	"src/main.ts": 736, // +플러그인 배포(P2) 배선
 	"src/settings/SettingsTab.ts": 1137, // 범위 밖(+그룹 관리·실시간 서비스 계정·검증 메시지·통합 변경 감지 토글)
 	"src/modes/ClassroomController.ts": 1068, // 범위 밖(+그룹 대화·대화 기능, +과제 보관/해제 전파)
 	"src/core/realtime/RealtimeManager.ts": 713, // 범위 밖(게이트 로직은 main에 있음) — +서버 거부 재시도 백오프

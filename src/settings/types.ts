@@ -108,6 +108,8 @@ export interface CoVaultSettings {
 	managerSyncTransport?: "live" | "db-updates";
 	/** tombstone 보존 정리(I-3)의 마지막 실행 시각(기기 로컬 — 24시간 1회 가드). */
 	lastTombstoneSweepAt?: number;
+	/** 구성원: 이미 처리(설치/건너뜀)한 플러그인 배포의 지문(pluginId→contentHash). 같은 세션·페이로드 재안내 방지(기기 로컬). */
+	handledPluginDeploys?: Record<string, string>;
 
 	/** Manager Mode: 내 볼트 개인 동기화 사용 여부(개별/공동 공간·제외 폴더 제외한 나머지 노트·첨부). */
 	personalSyncEnabled?: boolean;

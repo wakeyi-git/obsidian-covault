@@ -46,6 +46,9 @@ export class CoreServices {
 	/** 그룹 신청(grouprequest) 변경 알림. main이 연결 — 교사는 대기 신청 처리, 구성원은 상태 갱신. */
 	onGroupRequestChange: () => void = () => {};
 
+	/** 플러그인 배포(plugindeploy) 변경 알림. main이 연결 — 구성원은 수신 처리(설치 안내). */
+	onPluginDeployChange: () => void = () => {};
+
 	private persistTimer: ReturnType<typeof setTimeout> | null = null;
 	private readonly persistDelayMs = 1500;
 

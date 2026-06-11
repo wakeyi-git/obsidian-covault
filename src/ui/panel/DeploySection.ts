@@ -30,6 +30,7 @@ export class DeploySection implements PanelSection {
 
 		this.renderCopy(container);
 		this.renderShared(container);
+		this.renderPluginDeploy(container);
 		restore();
 	}
 
@@ -263,6 +264,78 @@ export class DeploySection implements PanelSection {
 			});
 			panelButton(row, sp.provisioned ? t("common.redeploy") : t("common.deploy"), async () => {
 				await this.host.deployShared(sp);
+				if (this.container) this.render(this.container);
+			});
+		}
+	}
+
+	// --- 함께 쓰는 플러그인 배포 (정책 엔진 P2) ---
+
+	/** pluginId → {설정 포함, 설정 관리} 입력 상태(체크박스). */
+	private pluginOpts = new Map<string, { share: boolean; managed: boolean }>();
+
+	private renderPluginDeploy(container: HTMLElement): void {
+		container.createDiv({ cls: "covault-panel-label", text: t("plugindeploy.section_title") });
+		container.createDiv({ cls: "covault-panel-hint", text: t("plugindeploy.section_hint") });
+
+		if (!this.host.pluginDeploySupported()) {
+			container.createDiv({ cls: "covault-feedback-empty", text: t("plugindeploy.desktop_only") });
+			return;
+		}
+		if (!this.host.homeroomConfigured()) {
+			container.createDiv({ cls: "covault-feedback-empty", text: t("plugindeploy.needs_homeroom") });
+			return;
+		}
+
+		const installed = this.host.listInstalledPlugins();
+		if (installed.length === 0) {
+			container.createDiv({ cls: "covault-feedback-empty", text: t("plugindeploy.no_plugins") });
+		} else {
+			for (const p of installed) {
+				const opt = this.pluginOpts.get(p.id) ?? { share: false, managed: false };
+				this.pluginOpts.set(p.id, opt);
+				const set = new Setting(container)
+					.setName(p.name)
+					.setDesc(`${t("plugindeploy.version_label", { version: p.version })}${p.enabled ? "" : " · ⚠"}`);
+				set.addToggle((tg) =>
+					tg.setTooltip(t("plugindeploy.share_settings")).setValue(opt.share).onChange((v) => {
+						opt.share = v;
+						if (!v) opt.managed = false; // 설정 미포함이면 관리 무의미
+					}),
+				);
+				set.addToggle((tg) =>
+					tg.setTooltip(t("plugindeploy.managed_settings")).setValue(opt.managed).onChange((v) => {
+						opt.managed = v;
+						if (v) opt.share = true; // 관리하려면 설정 포함
+					}),
+				);
+				set.addButton((b) =>
+					b.setButtonText(t("plugindeploy.deploy_button")).onClick(async () => {
+						const ok = await this.host.deployPlugin(p.id, { shareSettings: opt.share, managedSettings: opt.managed });
+						if (ok && this.container) this.render(this.container);
+					}),
+				);
+			}
+		}
+
+		// 현재 배포된 목록 + 회수.
+		void this.renderDeployedList(container);
+	}
+
+	private async renderDeployedList(container: HTMLElement): Promise<void> {
+		let deployed;
+		try {
+			deployed = await this.host.listDeployedPlugins();
+		} catch {
+			return;
+		}
+		if (deployed.length === 0) return;
+		container.createDiv({ cls: "covault-panel-label", text: t("plugindeploy.deployed_label") });
+		for (const doc of deployed) {
+			const row = container.createDiv({ cls: "covault-panel-row" });
+			row.createSpan({ text: `${doc.pluginName} ${t("plugindeploy.version_label", { version: doc.version })}` });
+			panelButton(row, t("plugindeploy.undeploy_button"), async () => {
+				await this.host.undeployPlugin(doc.pluginId);
 				if (this.container) this.render(this.container);
 			});
 		}

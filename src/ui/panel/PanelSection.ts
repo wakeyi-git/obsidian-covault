@@ -9,6 +9,8 @@ import { PurgeSnapshot } from "../../core/sync/recentPurge";
 import { DeleteModifyItem } from "../../core/sync/deleteModifyQueue";
 import { VersionDoc, AssignmentDoc, AssignmentStateDoc, AssignmentGrade, RubricCriterion, RoutineDoc, RoutineStateDoc, NoticeDoc, ResponseDoc, MessageDoc, GroupRequestDoc } from "../../core/model/types";
 import { CopyOptions, CopyResult, CopyPlan } from "../../modes/manager/BulkCopy";
+import { PluginDeployDoc } from "../../core/model/types";
+import { InstalledPlugin } from "../../core/plugindeploy/configInstall";
 
 /** 통합 패널 탭 식별자. */
 export type PanelTab = "dashboard" | "chat" | "groups" | "feedback" | "realtime" | "deploy" | "system";
@@ -244,7 +246,21 @@ export interface RecoveryHost {
 	restoreVersion(localPath: string, versionDocId: string, opts: { backupCurrent?: boolean }): Promise<"restored" | "missing">;
 }
 
-export interface PanelHost extends CoreHost, NoticeHost, MessageHost, RealtimeHost, AssignmentHost, RoutineHost, SyncHost, RecoveryHost {}
+/** 함께 쓰는 플러그인 배포(정책 엔진 P2 — 교사 배포 탭). */
+export interface PluginDeployHost {
+	/** 플러그인 배포가 가능한 환경(데스크톱)인지. */
+	pluginDeploySupported(): boolean;
+	/** 이 기기에 설치된 커뮤니티 플러그인 목록(CoVault 제외). */
+	listInstalledPlugins(): InstalledPlugin[];
+	/** 현재 학급에 배포된 플러그인 목록. */
+	listDeployedPlugins(): Promise<PluginDeployDoc[]>;
+	/** 플러그인 배포. */
+	deployPlugin(pluginId: string, opts: { shareSettings: boolean; managedSettings: boolean }): Promise<boolean>;
+	/** 배포 회수(문서 soft-delete). */
+	undeployPlugin(pluginId: string): Promise<void>;
+}
+
+export interface PanelHost extends CoreHost, NoticeHost, MessageHost, RealtimeHost, AssignmentHost, RoutineHost, SyncHost, RecoveryHost, PluginDeployHost {}
 
 /** 링크 라벨이 붙은 삭제/수정 충돌 항목. */
 export interface DeleteModifyRow extends DeleteModifyItem {
