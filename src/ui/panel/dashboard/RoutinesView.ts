@@ -150,10 +150,11 @@ export class RoutinesView {
 				await this.host.deleteRoutine(r.uid);
 				await this.reload();
 			});
-			// 전체 펼치기/접기 — 오른쪽 끝 고정 위치(이동/편집/삭제 뒤).
+			// 전체 펼치기/접기 — 카드 가장 오른쪽(항목별 펼침 아이콘 열 위)에 고정.
 			const expandAll = iconButton(top, "chevrons-up-down", t("dashboard.expand_all"), () =>
 				setAll(detailEls.some((d) => d.style.display === "none")),
 			);
+			expandAll.addClass("covault-cr-expandall");
 
 			const items = itemsOn(r, dayTs);
 			if (items.length === 0) {

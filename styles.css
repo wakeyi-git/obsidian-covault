@@ -1581,6 +1581,10 @@
 	align-items: center;
 	gap: 8px;
 }
+/* 전체 펼치기/접기 버튼: 카드 머리줄 오른쪽 끝 — 항목별 펼침 아이콘(rowchev) 열과 세로 정렬 */
+.covault-cr-expandall {
+	margin-left: auto;
+}
 .covault-cr-card-icon {
 	display: inline-flex;
 	color: var(--text-muted);
