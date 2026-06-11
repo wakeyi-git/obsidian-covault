@@ -134,9 +134,6 @@ export class RoutinesView {
 				setIcon(expandAll, open ? "chevrons-down-up" : "chevrons-up-down");
 				expandAll.setAttr("aria-label", open ? t("dashboard.collapse_all") : t("dashboard.expand_all"));
 			};
-			const expandAll = iconButton(top, "chevrons-up-down", t("dashboard.expand_all"), () =>
-				setAll(detailEls.some((d) => d.style.display === "none")),
-			);
 			if (ri > 0) iconButton(top, "chevron-up", t("dashboard.move_up"), () => move(ri, -1));
 			if (ri < routines.length - 1) iconButton(top, "chevron-down", t("dashboard.move_down"), () => move(ri, 1));
 			iconButton(top, "pencil", t("dashboard.edit"), () =>
@@ -153,6 +150,10 @@ export class RoutinesView {
 				await this.host.deleteRoutine(r.uid);
 				await this.reload();
 			});
+			// 전체 펼치기/접기 — 오른쪽 끝 고정 위치(이동/편집/삭제 뒤).
+			const expandAll = iconButton(top, "chevrons-up-down", t("dashboard.expand_all"), () =>
+				setAll(detailEls.some((d) => d.style.display === "none")),
+			);
 
 			const items = itemsOn(r, dayTs);
 			if (items.length === 0) {
