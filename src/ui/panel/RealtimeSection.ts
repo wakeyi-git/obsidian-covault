@@ -16,6 +16,16 @@ export class RealtimeSection implements PanelSection {
 	private timer: number | null = null;
 	private sessSig = ""; // 세션 목록 시그니처(변화 없으면 재구성 생략)
 	private partPath: string | null = null; // 마지막 렌더한 파일(같은 파일이면 타이머에 재구성 안 함)
+	private sessRendering = false; // renderSessions 직렬화 — 겹친 호출이 stale 데이터로 최신 렌더를 덮는 것 방지
+	private sessQueued = false;
+	// 지정 파일·그룹 대화방 캐시 — 모든 링크의 DB 조회는 비싸므로 짧게 캐시해, 세션 열림/닫힘(동기 정보)에
+	// 따른 카드 배치 변화가 조회를 기다리지 않고 즉시 반영되게 한다. 참여자 지정 변경 시 무효화.
+	private cfgCache: {
+		configured: Array<{ path: string; memberIds: string[]; memberNames?: Record<string, string> }>;
+		chatGroups: Array<{ channel: string; memberIds: string[]; temp?: boolean }>;
+	} | null = null;
+	private cfgFetchedAt = 0;
+	private static readonly CFG_TTL_MS = 4000;
 
 	constructor(private host: PanelHost) {}
 
@@ -40,6 +50,7 @@ export class RealtimeSection implements PanelSection {
 		this.partEl = null;
 		this.sessSig = "";
 		this.partPath = null;
+		this.cfgFetchedAt = 0; // 전체 재드로우 시 캐시도 새로
 		const s = this.host.settings;
 
 		if (this.manager) this.drawManager(c, s);
@@ -117,16 +128,43 @@ export class RealtimeSection implements PanelSection {
 	}
 
 	/**
+	 * 세션 목록 갱신 직렬화. 타이머(2초)·워크스페이스 이벤트가 겹쳐 호출해도 한 번에 하나만 실행한다 —
+	 * 조회(모든 링크의 rtpart)가 틱보다 오래 걸리면 옛 호출이 늦게 끝나 최신 렌더를 stale 배치로
+	 * 되돌리던 문제(카드 배치 반응 지연) 방지. 실행 중 들어온 요청은 끝난 뒤 1회로 합쳐 재실행.
+	 */
+	private async renderSessions(): Promise<void> {
+		if (this.sessRendering) {
+			this.sessQueued = true;
+			return;
+		}
+		this.sessRendering = true;
+		try {
+			await this.renderSessionsNow();
+		} finally {
+			this.sessRendering = false;
+			if (this.sessQueued) {
+				this.sessQueued = false;
+				void this.renderSessions();
+			}
+		}
+	}
+
+	/**
 	 * 실시간 파일 목록 — 현재 열린 세션 + 참여자가 지정된(닫혀 있어도) 파일을 합쳐 보여준다.
 	 * 탭을 닫아도 카드가 유지되어 클릭 한 번으로 다시 열 수 있다. 활성 파일 카드는 테두리 강조.
 	 */
-	private async renderSessions(): Promise<void> {
+	private async renderSessionsNow(): Promise<void> {
 		const el = this.sessionEl;
 		if (!el) return;
-		const open = this.host.realtimeSessions(); // [{path, participants}] 이 기기에서 열린 세션
-		const configured = await this.host.listRealtimeFiles(); // 지정된 파일(닫혀도) — 역할별 필터됨
-		// 구성원: 설정 그룹이 없으므로 동기화로 받은 그룹 대화방(자신 소속분)으로 세션 참여자를 매칭.
-		const chatGroups = this.manager ? [] : await this.host.listChatGroups().catch(() => []);
+		const open = this.host.realtimeSessions(); // [{path, participants}] 이 기기에서 열린 세션(동기·즉시)
+		if (!this.cfgCache || Date.now() - this.cfgFetchedAt > RealtimeSection.CFG_TTL_MS) {
+			const configured = await this.host.listRealtimeFiles(); // 지정된 파일(닫혀도) — 역할별 필터됨
+			// 구성원: 설정 그룹이 없으므로 동기화로 받은 그룹 대화방(자신 소속분)으로 세션 참여자를 매칭.
+			const chatGroups = this.manager ? [] : await this.host.listChatGroups().catch(() => []);
+			this.cfgCache = { configured, chatGroups };
+			this.cfgFetchedAt = Date.now();
+		}
+		const { configured, chatGroups } = this.cfgCache;
 		if (this.sessionEl !== el) return; // 비동기 대기 중 재드로우되었으면 중단
 
 		type Row = { path: string; open: boolean; participants: number; memberIds: string[] | null; memberNames?: Record<string, string> };
@@ -274,6 +312,7 @@ export class RealtimeSection implements PanelSection {
 			selEl.onchange = async () => {
 				if (!selEl.value) return;
 				await this.host.applyGroupToFile(f.path, selEl.value);
+				this.cfgFetchedAt = 0; // 지정 변경 → 세션 카드의 지정 명단 즉시 갱신
 				await this.renderFileParticipants(true); // 체크 상태 갱신
 			};
 		}
@@ -300,6 +339,7 @@ export class RealtimeSection implements PanelSection {
 						? null
 						: [...selected];
 				await this.host.setFileRealtimeParticipants(f.path, ids);
+				this.cfgFetchedAt = 0; // 지정 변경 → 세션 카드의 지정 명단 즉시 갱신
 			};
 			lab.toggleClass("is-on", cb.checked);
 			lab.createSpan({ text: m?.memberName || id });
