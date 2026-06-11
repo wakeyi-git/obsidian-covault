@@ -1,4 +1,4 @@
-import { App } from "obsidian";
+import { App, TFile, TFolder } from "obsidian";
 import { Logger } from "../core/log/Logger";
 import { CoVaultSettings, SharedSpace, MemberConfig } from "../settings/types";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
@@ -11,9 +11,10 @@ import {
 } from "../core/couch/validatePolicy";
 import { isValidCouchName } from "../core/path/path";
 import { setHomeroom } from "../core/classroom/homeroom";
+import { BulkCopy, CopyOptions, CopyResult, CopyPlan } from "./manager/BulkCopy";
+import { errMessage } from "../core/util/err";
 import { getYjsSecret, getRtServicePassword } from "../core/secret";
 import { RTCONTROL_DOC_ID, RTPART_ID_PREFIX, RtPartDoc } from "../core/model/types";
-import { errMessage } from "../core/util/err";
 import { t } from "../i18n";
 
 /**
@@ -36,6 +37,8 @@ export interface DeploymentDeps {
 	mintRealtimeTokens(): Promise<void>;
 	/** 전 구성원 shares 재전파(MemberController.refreshMemberShares). */
 	refreshMemberShares(): Promise<void>;
+	/** 한 DB의 연결/권한 테스트(core/sync/connectionTest — core 결합을 main에 남기는 람다). */
+	testDb(db: string): Promise<void>;
 }
 
 export class DeploymentController {
@@ -153,6 +156,71 @@ export class DeploymentController {
 	dispose(): void {
 		for (const tm of this.validateTimers.values()) clearTimeout(tm);
 		this.validateTimers.clear();
+	}
+
+	/** 연결 테스트(설정 버튼) — 관리자는 프로비저닝 권한(_users)부터, 이후 역할별 DB 전체 검사. */
+	async testConnection(): Promise<void> {
+		await this.d.openLog();
+		const s = this.d.settings();
+		if (s.role === "manager") {
+			// 빈 설정에서 누르면 잘못된 요청/예외가 나므로 URL/계정/비밀번호 필수값을 먼저 확인한다.
+			if (!s.couchdbUrl || !s.username || !this.d.couchPassword()) {
+				this.d.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
+				return;
+			}
+			const admin = new CouchAdmin(s.couchdbUrl, s.username, this.d.couchPassword());
+			const chk = await admin.checkAdmin();
+			if (chk.ok) this.d.logger.ok(t("command.admin_provisioning_access_ok"), true);
+			else this.d.logger.error(chk.error ?? t("command.admin_provisioning_access_failed"), true);
+		}
+		const dbs = s.role === "manager" ? s.members.map((m) => m.remoteDb).filter((d) => d) : [s.remoteDb];
+		if (dbs.length === 0) {
+			this.d.logger.warn(t("command.no_mirror_db_to_test_manager"), true);
+			return;
+		}
+		for (const db of dbs) await this.d.testDb(db);
+	}
+
+	// --- 교사 편의: 경로(파일/폴더)를 학생에게 복사 (기술문서 §12.5 / §20). 배포 탭에서 호출. ---
+	async bulkCopy(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyResult & { error?: string }> {
+		const r = this.resolveCopy(sourcePath, opts, memberIds);
+		if ("error" in r) return { written: 0, skipped: 0, details: [], error: r.error };
+		try {
+			return r.src instanceof TFolder
+				? await r.bulk.copyFolder(r.src, r.targets, r.opts)
+				: await r.bulk.copyFile(r.src, r.targets, r.opts);
+		} catch (e) {
+			return { written: 0, skipped: 0, details: [], error: errMessage(e) };
+		}
+	}
+
+	/** 배포 미리보기(dry-run) — 아무것도 쓰지 않고 학생별 대상/동작 예상. 배포 탭에서 호출. */
+	async bulkCopyPreview(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyPlan & { error?: string }> {
+		const r = this.resolveCopy(sourcePath, opts, memberIds);
+		if ("error" in r) return { members: [], error: r.error };
+		try {
+			return await r.bulk.preview(r.src, r.targets, r.opts);
+		} catch (e) {
+			return { members: [], error: errMessage(e) };
+		}
+	}
+
+	/** 복사/미리보기 공통: 경로·대상 학생 해석 + 파일일 때 빈 대상경로 보정. */
+	private resolveCopy(
+		sourcePath: string,
+		opts: CopyOptions,
+		memberIds: string[],
+	): { src: TFile | TFolder; targets: MemberConfig[]; bulk: BulkCopy; opts: CopyOptions } | { error: string } {
+		const s = this.d.settings();
+		if (s.role !== "manager") return { error: t("command.available_in_manager_mode_only") };
+		const src = this.d.app.vault.getAbstractFileByPath(sourcePath);
+		if (!(src instanceof TFile) && !(src instanceof TFolder))
+			return { error: t("deploy.path_not_found", { path: sourcePath }) };
+		const targets = s.members.filter((st) => memberIds.includes(st.memberId));
+		if (targets.length === 0) return { error: t("deploy.no_target_members") };
+		// 파일: 대상 경로가 비어 있으면 원본 파일명으로.
+		const finalOpts = src instanceof TFile && !opts.destPath ? { ...opts, destPath: src.name } : opts;
+		return { src, targets, bulk: new BulkCopy(this.d.app, s), opts: finalOpts };
 	}
 
 	/** 공유 공간 프로비저닝 + 전원 shares 갱신 + 토큰 재발급 + 모드 재시작(교사). quiet=패널 전환 없이(자동 승인용). */

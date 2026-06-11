@@ -182,6 +182,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			writeMemberSync: (admin, m) => this.writeMemberSync(admin, m),
 			mintRealtimeTokens: () => this.mintRealtimeTokens(),
 			refreshMemberShares: () => this.refreshMemberShares(),
+			testDb: (db) => testConnection(this.core, db),
 		});
 		this.groupRequestCtl = new GroupRequestController({
 			logger: this.logger,
@@ -833,29 +834,9 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		});
 	}
 
-	// --- 연결 테스트 (설정 버튼) — 항상 최신 설정으로, 역할별 DB 전체 검사 ---
-	async testConnection(): Promise<void> {
-		await this.openLog();
-		const s = this.settings;
-		// 관리자: 구성원 DB가 없어도 먼저 프로비저닝 권한(_users)을 검증한다(첫 구성원 추가 전에도 의미 있는 결과).
-		if (s.role === "manager") {
-			// 빈 설정에서 누르면 잘못된 요청/예외가 나므로 URL/계정/비밀번호 필수값을 먼저 확인한다.
-			if (!s.couchdbUrl || !s.username || !this.couchPassword()) {
-				this.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
-				return;
-			}
-			const admin = new CouchAdmin(s.couchdbUrl, s.username, this.couchPassword());
-			const chk = await admin.checkAdmin();
-			if (chk.ok) this.logger.ok(t("command.admin_provisioning_access_ok"), true);
-			else this.logger.error(chk.error ?? t("command.admin_provisioning_access_failed"), true);
-		}
-		const dbs =
-			s.role === "manager" ? s.members.map((m) => m.remoteDb).filter((d) => d) : [s.remoteDb];
-		if (dbs.length === 0) {
-			this.logger.warn(t("command.no_mirror_db_to_test_manager"), true);
-			return;
-		}
-		for (const db of dbs) await testConnection(this.core, db);
+	// --- 연결 테스트 (설정 버튼) → DeploymentController 위임 ---
+	testConnection(): Promise<void> {
+		return this.deploymentCtl.testConnection();
 	}
 
 	/** 종합 진단: 서버 도달 + 활성 링크별 읽기/쓰기 권한 + 실시간 상태. */
@@ -1019,53 +1000,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		else await this.restartMode();
 	}
 
-	// --- 교사 편의: 경로(파일/폴더)를 학생에게 복사 (기술문서 §12.5 / §20). 배포 탭에서 호출. ---
-	async bulkCopy(
-		sourcePath: string,
-		opts: CopyOptions,
-		memberIds: string[],
-	): Promise<CopyResult & { error?: string }> {
-		const r = this.resolveCopy(sourcePath, opts, memberIds);
-		if ("error" in r) return { written: 0, skipped: 0, details: [], error: r.error };
-		try {
-			return r.src instanceof TFolder
-				? await r.bulk.copyFolder(r.src, r.targets, r.opts)
-				: await r.bulk.copyFile(r.src, r.targets, r.opts);
-		} catch (e) {
-			return { written: 0, skipped: 0, details: [], error: errMessage(e) };
-		}
+	// --- 교사 편의: 경로(파일/폴더)를 학생에게 복사 → DeploymentController 위임 ---
+	bulkCopy(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyResult & { error?: string }> {
+		return this.deploymentCtl.bulkCopy(sourcePath, opts, memberIds);
 	}
-
-	/** 배포 미리보기(dry-run) — 아무것도 쓰지 않고 학생별 대상/동작 예상. 배포 탭에서 호출. */
-	async bulkCopyPreview(
-		sourcePath: string,
-		opts: CopyOptions,
-		memberIds: string[],
-	): Promise<CopyPlan & { error?: string }> {
-		const r = this.resolveCopy(sourcePath, opts, memberIds);
-		if ("error" in r) return { members: [], error: r.error };
-		try {
-			return await r.bulk.preview(r.src, r.targets, r.opts);
-		} catch (e) {
-			return { members: [], error: errMessage(e) };
-		}
-	}
-
-	/** 복사/미리보기 공통: 경로·대상 학생 해석 + 파일일 때 빈 대상경로 보정. */
-	private resolveCopy(
-		sourcePath: string,
-		opts: CopyOptions,
-		memberIds: string[],
-	): { src: TFile | TFolder; targets: MemberConfig[]; bulk: BulkCopy; opts: CopyOptions } | { error: string } {
-		if (this.settings.role !== "manager") return { error: t("command.available_in_manager_mode_only") };
-		const src = this.app.vault.getAbstractFileByPath(sourcePath);
-		if (!(src instanceof TFile) && !(src instanceof TFolder))
-			return { error: t("deploy.path_not_found", { path: sourcePath }) };
-		const targets = this.settings.members.filter((st) => memberIds.includes(st.memberId));
-		if (targets.length === 0) return { error: t("deploy.no_target_members") };
-		// 파일: 대상 경로가 비어 있으면 원본 파일명으로.
-		const finalOpts = src instanceof TFile && !opts.destPath ? { ...opts, destPath: src.name } : opts;
-		return { src, targets, bulk: new BulkCopy(this.app, this.settings), opts: finalOpts };
+	bulkCopyPreview(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyPlan & { error?: string }> {
+		return this.deploymentCtl.bulkCopyPreview(sourcePath, opts, memberIds);
 	}
 
 	// --- 동기화 상태 · 복구 (PanelHost) → RecoveryController 위임 ---
