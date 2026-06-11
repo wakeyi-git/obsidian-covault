@@ -151,6 +151,39 @@ export class PouchService {
 		}
 	}
 
+	/**
+	 * rev 검증 upsert(평가 L-1·L-3). put()의 409 재시도는 최신 rev 위에 무조건 덮어쓰는 LWW라,
+	 * 읽기→쓰기 사이에 끼어든 원격 변경(특히 tombstone)을 검증 없이 덮을 수 있다. 이 변형은
+	 * 호출측이 읽었던 rev(생성이면 undefined)로만 put하고, 그 사이 문서가 바뀌었으면 "conflict"를
+	 * 반환한다 — 호출측이 전제조건(부활 규칙·해시 동일 등)을 재검증하고 재시도한다.
+	 */
+	async putWithRev<T extends PouchDocBase>(doc: T, expectedRev: string | undefined): Promise<"ok" | "conflict"> {
+		const toPut = expectedRev ? { ...doc, _rev: expectedRev } : { ...doc, _rev: undefined };
+		try {
+			await this.localDb().put(toPut as any);
+			return "ok";
+		} catch (e: any) {
+			if (e?.status === 409) return "conflict";
+			throw e;
+		}
+	}
+
+	/** putAsset의 rev 검증 변형(첨부 포함). putWithRev와 동일 계약. */
+	async putAssetWithRev(doc: AssetDoc, data: ArrayBuffer, expectedRev: string | undefined): Promise<"ok" | "conflict"> {
+		const full: any = {
+			...doc,
+			...(expectedRev ? { _rev: expectedRev } : {}),
+			_attachments: { data: { content_type: doc.mime, data: abToBase64(data) } },
+		};
+		try {
+			await this.localDb().put(full);
+			return "ok";
+		} catch (e: any) {
+			if (e?.status === 409) return "conflict";
+			throw e;
+		}
+	}
+
 	/** 특정 리비전 제거(충돌 해소용). */
 	async removeRev(id: string, rev: string): Promise<void> {
 		await this.localDb().remove(id, rev);

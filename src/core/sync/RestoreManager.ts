@@ -48,7 +48,7 @@ export class RestoreManager {
 		const out: DeletedItem[] = [];
 		for (const d of await ctx.pouch.allNotes()) {
 			if (!d.deleted) continue;
-			out.push(this.toItem("note", d, isRecoverable("note", { hasContent: !!d.content, hasArchiveCopy: false })));
+			out.push(this.toItem("note", d, isRecoverable("note", { hasContent: !!d.content && !d.contentStripped, hasArchiveCopy: false })));
 		}
 		if (ctx.settings.syncAssets) {
 			for (const d of await ctx.pouch.allAssets()) {
@@ -93,7 +93,8 @@ export class RestoreManager {
 
 		if (isMd) {
 			const note = doc as NoteDoc;
-			if (note.content == null) return "unrecoverable";
+			// contentStripped: 보존 기간 경과로 내용이 비워진 tombstone(I-3) — 빈 파일로 "복구"되지 않게 차단.
+			if (note.content == null || note.contentStripped) return "unrecoverable";
 			await this.writeAndRevive(target, targetDb, note.content);
 		} else {
 			// 첨부: archive 사본에서만 복구.

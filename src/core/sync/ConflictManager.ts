@@ -131,56 +131,65 @@ export class ConflictManager {
 		return out;
 	}
 
-	/** 선택대로 해소: 내용 확정(winner 위 새 리비전) + 나머지 리프 제거 + 충돌본 삭제. */
+	/**
+	 * 선택대로 해소: 내용 확정(winner 위 새 리비전) + 나머지 리프 제거 + 충돌본 삭제.
+	 * collapse put은 rev 검증(L-3) — 해소 도중 새 원격 rev가 끼어들면 그 내용을 스냅샷·재평가하고
+	 * 재시도해, 흔적 없는 선형 덮어쓰기를 막는다(끝내 실패하면 충돌을 남기고 사용자에게 안내).
+	 */
 	async resolve(dbPath: string, choice: ResolveChoice): Promise<void> {
 		if (!this.ctx.isMarkdown(dbPath)) return this.resolveAsset(dbPath, choice);
 		const ctx = this.ctx;
 		const id = noteId(dbPath);
-		const winner = await ctx.pouch.getWithConflicts<NoteDoc>(id);
-		if (!winner || !winner._conflicts || winner._conflicts.length === 0) {
-			ctx.logger.info(t("sync.conflict_already_resolved", { path: dbPath }));
+		const localPath = ctx.toLocalPath(dbPath);
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const winner = await ctx.pouch.getWithConflicts<NoteDoc>(id);
+			if (!winner || !winner._conflicts || winner._conflicts.length === 0) {
+				ctx.logger.info(t("sync.conflict_already_resolved", { path: dbPath }));
+				await this.removeConflictCopy(dbPath);
+				return;
+			}
+			const conflictRevs = winner._conflicts;
+			const live = await ctx.readVaultFile(localPath);
+			const remote = await this.pickRemoteLeaf(dbPath, winner, conflictRevs);
+
+			// 충돌 해소 직전 로컬·원격 내용을 버전 히스토리에 보존(잘못 해소해도 되돌릴 수 있게).
+			// 재시도에서 새 원격 rev가 보이면 그 내용도 여기서 스냅샷된다(dedupe 있음).
+			if (live != null) await ctx.versions.snapshot(dbPath, live, "conflict", winner.version);
+			if (remote) await ctx.versions.snapshot(dbPath, remote.content, "conflict", winner.version);
+
+			// "두 버전 보관": 최종이 아닌 쪽을 별도 파일로 저장(동기화됨).
+			// both=로컬 최종(원격을 사본으로), both-remote=원격 최종(로컬을 사본으로).
+			if ((choice === "both" || choice === "both-remote") && remote) {
+				const keepContent = choice === "both-remote" ? (live ?? winner.content) : remote.content;
+				const keepPath = ctx.toLocalPath(dbPath.replace(/\.md$/i, ` ${t("sync.conflict_copy")}.md`));
+				await ctx.writeVaultFile(keepPath, keepContent);
+				ctx.logger.ok(t("sync.kept_both_conflict_versions", { path: keepPath }));
+			}
+
+			// 확정할 내용(최종본)
+			const chosen = (choice === "remote" || choice === "both-remote") && remote ? remote.content : (live ?? winner.content);
+
+			// live vault 갱신 (원격 적용 시 내용이 바뀌므로 guard로 에코 차단)
+			ctx.guard.mark(localPath, await sha256(chosen));
+			await ctx.writeVaultFile(localPath, chosen);
+			ctx.guard.releaseAfterDelay(localPath);
+
+			// DB collapse: 선택 내용을 winner 위에 새 리비전으로(rev 검증) + 나머지 리프 제거
+			const doc = await ctx.buildNoteDoc(dbPath, chosen, winner.version);
+			if ((await ctx.pouch.putWithRev(doc, winner._rev)) === "conflict") continue; // 새 rev 도착 — 재평가
+			for (const rev of conflictRevs) {
+				try {
+					await ctx.pouch.removeRev(id, rev);
+				} catch {
+					/* 이미 제거됨 등 무시 */
+				}
+			}
+
 			await this.removeConflictCopy(dbPath);
+			ctx.logger.ok(t("sync.conflict_resolved", { choice, path: dbPath }), true);
 			return;
 		}
-		const conflictRevs = winner._conflicts;
-		const localPath = ctx.toLocalPath(dbPath);
-		const live = await ctx.readVaultFile(localPath);
-		const remote = await this.pickRemoteLeaf(dbPath, winner, conflictRevs);
-
-		// 충돌 해소 직전 로컬·원격 내용을 버전 히스토리에 보존(잘못 해소해도 되돌릴 수 있게).
-		if (live != null) await ctx.versions.snapshot(dbPath, live, "conflict", winner.version);
-		if (remote) await ctx.versions.snapshot(dbPath, remote.content, "conflict", winner.version);
-
-		// "두 버전 보관": 최종이 아닌 쪽을 별도 파일로 저장(동기화됨).
-		// both=로컬 최종(원격을 사본으로), both-remote=원격 최종(로컬을 사본으로).
-		if ((choice === "both" || choice === "both-remote") && remote) {
-			const keepContent = choice === "both-remote" ? (live ?? winner.content) : remote.content;
-			const keepPath = ctx.toLocalPath(dbPath.replace(/\.md$/i, ` ${t("sync.conflict_copy")}.md`));
-			await ctx.writeVaultFile(keepPath, keepContent);
-			ctx.logger.ok(t("sync.kept_both_conflict_versions", { path: keepPath }));
-		}
-
-		// 확정할 내용(최종본)
-		const chosen = (choice === "remote" || choice === "both-remote") && remote ? remote.content : (live ?? winner.content);
-
-		// live vault 갱신 (원격 적용 시 내용이 바뀌므로 guard로 에코 차단)
-		ctx.guard.mark(localPath, await sha256(chosen));
-		await ctx.writeVaultFile(localPath, chosen);
-		ctx.guard.releaseAfterDelay(localPath);
-
-		// DB collapse: 선택 내용을 winner 위에 새 리비전으로 + 나머지 리프 제거
-		const doc = await ctx.buildNoteDoc(dbPath, chosen, winner.version);
-		await ctx.pouch.put(doc);
-		for (const rev of conflictRevs) {
-			try {
-				await ctx.pouch.removeRev(id, rev);
-			} catch {
-				/* 이미 제거됨 등 무시 */
-			}
-		}
-
-		await this.removeConflictCopy(dbPath);
-		ctx.logger.ok(t("sync.conflict_resolved", { choice, path: dbPath }), true);
+		ctx.logger.warn(t("sync.conflict_resolve_retry_failed", { path: dbPath }), true);
 	}
 
 	/**
@@ -190,49 +199,55 @@ export class ConflictManager {
 	private async resolveAsset(dbPath: string, choice: ResolveChoice): Promise<void> {
 		const ctx = this.ctx;
 		const id = assetId(dbPath);
-		const winner = await ctx.pouch.getWithConflicts<AssetDoc>(id);
-		if (!winner || !winner._conflicts || winner._conflicts.length === 0) {
-			ctx.logger.info(t("sync.conflict_already_resolved", { path: dbPath }));
-			await this.removeConflictCopy(dbPath);
-			return;
-		}
-		const conflictRevs = winner._conflicts;
 		const localPath = ctx.toLocalPath(dbPath);
-		const localBin = await ctx.readVaultBinary(localPath);
-		const remoteBin = await ctx.readVaultBinary(ctx.conflictLocalPath(dbPath)); // materialize된 원격 사본
+		// 노트 resolve와 동일 — collapse put은 rev 검증 + 재시도(L-3).
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const winner = await ctx.pouch.getWithConflicts<AssetDoc>(id);
+			if (!winner || !winner._conflicts || winner._conflicts.length === 0) {
+				ctx.logger.info(t("sync.conflict_already_resolved", { path: dbPath }));
+				await this.removeConflictCopy(dbPath);
+				return;
+			}
+			const conflictRevs = winner._conflicts;
+			const localBin = await ctx.readVaultBinary(localPath);
+			const remoteBin = await ctx.readVaultBinary(ctx.conflictLocalPath(dbPath)); // materialize된 원격 사본
 
-		const remoteFinal = choice === "remote" || choice === "both-remote";
+			const remoteFinal = choice === "remote" || choice === "both-remote";
 
-		// "두 버전 보관": 최종이 아닌 쪽을 동기화되는 사본으로 보관.
-		if ((choice === "both" || choice === "both-remote") && remoteBin && localBin) {
-			const keepPath = ctx.toLocalPath(insertLabelBeforeExt(dbPath, t("mode.conflicted")));
-			await ctx.writeVaultBinary(keepPath, remoteFinal ? localBin : remoteBin);
-		}
+			// "두 버전 보관": 최종이 아닌 쪽을 동기화되는 사본으로 보관.
+			if ((choice === "both" || choice === "both-remote") && remoteBin && localBin) {
+				const keepPath = ctx.toLocalPath(insertLabelBeforeExt(dbPath, t("mode.conflicted")));
+				await ctx.writeVaultBinary(keepPath, remoteFinal ? localBin : remoteBin);
+			}
 
-		const chosen = remoteFinal ? (remoteBin ?? localBin) : (localBin ?? remoteBin);
-		if (chosen == null) {
-			ctx.logger.warn(t("mode.failed_to_resolve_attachment_conflict_neither", { path: dbPath }));
+			const chosen = remoteFinal ? (remoteBin ?? localBin) : (localBin ?? remoteBin);
+			if (chosen == null) {
+				ctx.logger.warn(t("mode.failed_to_resolve_attachment_conflict_neither", { path: dbPath }));
+				return;
+			}
+
+			// 원격을 최종으로 선택하면 라이브 파일도 갱신(에코는 guard로 차단).
+			if (remoteFinal && remoteBin) {
+				ctx.guard.mark(localPath, await sha256(remoteBin));
+				await ctx.writeVaultBinary(localPath, remoteBin);
+				ctx.guard.releaseAfterDelay(localPath);
+			}
+
+			// DB collapse: 선택 바이너리를 winner 위 새 리비전으로(rev 검증) + 나머지 리프 제거.
+			const doc = await ctx.buildAssetDoc(dbPath, chosen, winner.version);
+			if ((await ctx.pouch.putAssetWithRev(doc, chosen, winner._rev)) === "conflict") continue; // 새 rev — 재평가
+			for (const rev of conflictRevs) {
+				try {
+					await ctx.pouch.removeRev(id, rev);
+				} catch {
+					/* 이미 제거됨 등 무시 */
+				}
+			}
+			await this.removeConflictCopy(dbPath);
+			ctx.logger.ok(t("mode.attachment_conflict_resolved", { choice, path: dbPath }), true);
 			return;
 		}
-
-		// 원격을 최종으로 선택하면 라이브 파일도 갱신(에코는 guard로 차단).
-		if (remoteFinal && remoteBin) {
-			ctx.guard.mark(localPath, await sha256(remoteBin));
-			await ctx.writeVaultBinary(localPath, remoteBin);
-			ctx.guard.releaseAfterDelay(localPath);
-		}
-
-		// DB collapse: 선택 바이너리를 winner 위 새 리비전으로 + 나머지 리프 제거.
-		await ctx.pouch.putAsset(await ctx.buildAssetDoc(dbPath, chosen, winner.version), chosen);
-		for (const rev of conflictRevs) {
-			try {
-				await ctx.pouch.removeRev(id, rev);
-			} catch {
-				/* 이미 제거됨 등 무시 */
-			}
-		}
-		await this.removeConflictCopy(dbPath);
-		ctx.logger.ok(t("mode.attachment_conflict_resolved", { choice, path: dbPath }), true);
+		ctx.logger.warn(t("sync.conflict_resolve_retry_failed", { path: dbPath }), true);
 	}
 
 	// --- 내부 ---

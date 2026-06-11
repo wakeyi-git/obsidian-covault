@@ -110,6 +110,30 @@ export class ManagerMode implements CoVaultMode {
 		await this.initTransport();
 		for (const sync of this.syncs) await sync.start();
 		if (this.transport === "event") this.startSafetyNet();
+		void this.sweepTombstoneRetention(); // 보존 기간 경과 tombstone 정리(백그라운드, 24시간 1회)
+	}
+
+	/**
+	 * tombstone 내용 보존 기간 정리(I-3) — versionMaxAgeDays와 정렬, 운영자 기기만 실행(멤버는
+	 * replication으로 스트립본 수신). 버전 히스토리를 꺼둔 환경은 따를 보존 정책이 없으므로 건너뛴다.
+	 */
+	private async sweepTombstoneRetention(): Promise<void> {
+		const s = this.core.settings;
+		if (s.versionHistory === false) return;
+		const now = Date.now();
+		if ((s.lastTombstoneSweepAt ?? 0) > now - 24 * 60 * 60 * 1000) return;
+		s.lastTombstoneSweepAt = now;
+		this.core.requestPersist();
+		const days = s.versionMaxAgeDays ?? 30;
+		let stripped = 0;
+		for (const sync of this.syncs) {
+			try {
+				stripped += await sync.sweepTombstoneRetention(days);
+			} catch {
+				/* 링크 단위 실패는 다음 주기에 재시도 */
+			}
+		}
+		if (stripped > 0) this.core.logger.info(t("sync.tombstone_retention_stripped", { n: stripped, days }));
 	}
 
 	/** 통합 변경 감지 사용 여부 결정(probe) + watcher 기동. 실패/미지원이면 live 유지(기능 동등성). */

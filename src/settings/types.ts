@@ -106,6 +106,8 @@ export interface CoVaultSettings {
 	/** 운영자 동기화 전송 방식. "db-updates"=통합 변경 감지(연결 1개, 서버 관리자 전용·실험적 — 평가 H-6).
 	 *  기본/미지원·권한 부족 시 "live"(DB별 상시 replication)로 동작·폴백한다. */
 	managerSyncTransport?: "live" | "db-updates";
+	/** tombstone 보존 정리(I-3)의 마지막 실행 시각(기기 로컬 — 24시간 1회 가드). */
+	lastTombstoneSweepAt?: number;
 
 	/** Manager Mode: 내 볼트 개인 동기화 사용 여부(개별/공동 공간·제외 폴더 제외한 나머지 노트·첨부). */
 	personalSyncEnabled?: boolean;

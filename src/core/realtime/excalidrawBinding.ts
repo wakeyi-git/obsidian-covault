@@ -2,6 +2,7 @@ import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { ExcalidrawBinding as YExcalidrawBinding } from "y-excalidraw";
 import { PresenceChips } from "./presenceChips";
+import { isSeeder, SEED_SETTLE_MS, SEED_FALLBACK_MS } from "./seedElection";
 
 /** Excalidraw imperative API 중 우리가 쓰는 부분(obsidian-excalidraw-plugin의 getExcalidrawAPI() 반환). */
 export interface ExcalidrawImperativeApi {
@@ -49,9 +50,7 @@ export class ExcalidrawBinding {
 		// 생성 직전 씬을 캡처해 두었다가 다시 적용해 시드한다.
 		const sceneBefore = this.api.getSceneElements();
 		this.inner = new YExcalidrawBinding(yElements, yAssets, this.api as any, this.awareness ?? undefined, undefined);
-		if (sceneBefore.length > 0 && yElements.length === 0) {
-			this.api.updateScene({ elements: [...sceneBefore] }); // onChange → y-excalidraw가 yElements로 캡처
-		}
+		this.scheduleSeed(yElements, [...sceneBefore]);
 
 		// 로컬 포인터 → 커서(awareness) 브로드캐스트. y-excalidraw가 원격 collaborators로 렌더(이름·색).
 		if (this.awareness && this.containerEl) {
@@ -117,6 +116,29 @@ export class ExcalidrawBinding {
 		}
 	}
 
+	private seedTimer: ReturnType<typeof setTimeout> | null = null;
+
+	/**
+	 * 첫 진입 시드의 결정적 선출(평가 M-10). 즉시 시드하면 거의 동시에 진입한 두 클라이언트가
+	 * 모두 시드해 요소가 중복될 수 있다 — awareness가 피어를 교환할 시간(SEED_SETTLE_MS)을 준 뒤,
+	 * 최소 clientID(시더)만 시드하고 나머지는 폴백 대기(SEED_FALLBACK_MS — 시더 이탈 대비) 후
+	 * 여전히 비어 있을 때만 시드한다. 그 사이 원격 요소가 도착하면 y-excalidraw가 씬에 적용하므로 무동작.
+	 */
+	private scheduleSeed(yElements: Y.Array<Y.Map<any>>, sceneBefore: readonly any[]): void {
+		if (sceneBefore.length === 0 || yElements.length > 0) return; // 시드할 것이 없거나 이미 원격 내용 존재
+		const seed = (): void => {
+			this.seedTimer = null;
+			if (yElements.length === 0) this.api.updateScene({ elements: [...sceneBefore] }); // onChange → yElements로 캡처
+		};
+		this.seedTimer = setTimeout(() => {
+			this.seedTimer = null;
+			if (yElements.length > 0) return; // 원격 요소 도착 — 시드 불필요
+			const aw = this.awareness;
+			const seederNow = !aw || isSeeder(aw.clientID, aw.getStates().keys());
+			this.seedTimer = setTimeout(seed, seederNow ? 0 : SEED_FALLBACK_MS);
+		}, SEED_SETTLE_MS);
+	}
+
 	/** viewport(client) → scene 좌표. 캔버스 실제 위치(rect) + appState(scroll/zoom) 사용. */
 	private toScene(clientX: number, clientY: number): { x: number; y: number } | null {
 		const st = this.api.getAppState?.();
@@ -132,6 +154,10 @@ export class ExcalidrawBinding {
 	}
 
 	destroy(): void {
+		if (this.seedTimer) {
+			clearTimeout(this.seedTimer);
+			this.seedTimer = null;
+		}
 		if (this.touchTimer) {
 			clearTimeout(this.touchTimer);
 			this.touchTimer = null;

@@ -12,7 +12,8 @@ export type UploadResult =
 	| "skipped-asset-off"
 	| "skipped-toolarge"
 	| "skipped-missing"
-	| "skipped-deleted";
+	| "skipped-deleted"
+	| "skipped-conflict";
 
 /**
  * 로컬 vault 파일 → 로컬 PouchDB upsert. 기술문서 §11.2 / §18.2 / §8.2.
@@ -44,16 +45,22 @@ export class Uploader {
 		if (!ctx.isMarkdown(localPath)) return "skipped-outside";
 
 		const newHash = await sha256(content);
-		const existing = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
-		// 교사 삭제 tombstone은 실시간 스냅샷으로 되살리지 않는다(교사 삭제가 세션보다 우선 — 부활 방지).
-		if (existing?.deleted && existing.deletedByRole === "manager") return "skipped-deleted";
-		if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
+		// 읽기→쓰기 사이에 pull이 끼어들면 rev 검증 put이 conflict를 돌려준다 — 전제조건을
+		// 새 문서 기준으로 재검증하고 재시도한다(LWW가 tombstone을 검증 없이 덮던 창 봉쇄 — L-1).
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const existing = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
+			// 교사 삭제 tombstone은 실시간 스냅샷으로 되살리지 않는다(교사 삭제가 세션보다 우선 — 부활 방지).
+			if (existing?.deleted && existing.deletedByRole === "manager") return "skipped-deleted";
+			if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
-		const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
-		await ctx.pouch.put(doc);
-		await ctx.versions.snapshot(dbPath, content, "modify", doc.version); // 실시간 편집도 버전 기록(dedupe 있음)
-		this.markUploaded(dbPath);
-		return "uploaded";
+			const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
+			if ((await ctx.pouch.putWithRev(doc, existing?._rev)) === "conflict") continue;
+			await ctx.versions.snapshot(dbPath, content, "modify", doc.version); // 실시간 편집도 버전 기록(dedupe 있음)
+			this.markUploaded(dbPath);
+			return "uploaded";
+		}
+		ctx.logger.warn(t("sync.upload_retry_conflict", { path: dbPath }));
+		return "skipped-conflict";
 	}
 
 	private async uploadNote(localPath: string, dbPath: string): Promise<UploadResult> {
@@ -64,15 +71,20 @@ export class Uploader {
 
 		// 동일하면 생략. tombstone 위 업로드(부활)는 의도적 재생성/편집(파일이 삭제 시점보다 새로 수정됨)만 —
 		// 잔존 사본(삭제 적용 보류·실패로 남은 옛 파일)이 전체 동기화에서 삭제를 전역 무효화하지 않게.
-		const existing = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
-		if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
-		if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
+		// rev 검증 put + 전제조건 재검증 재시도(L-1): 읽기→쓰기 사이에 끼어든 tombstone을 LWW로 덮지 않는다.
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const existing = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
+			if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
+			if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
-		const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
-		await ctx.pouch.put(doc);
-		await ctx.versions.snapshot(dbPath, content, "modify", doc.version); // 버전 히스토리(편집 시점)
-		this.markUploaded(dbPath);
-		return "uploaded";
+			const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
+			if ((await ctx.pouch.putWithRev(doc, existing?._rev)) === "conflict") continue;
+			await ctx.versions.snapshot(dbPath, content, "modify", doc.version); // 버전 히스토리(편집 시점)
+			this.markUploaded(dbPath);
+			return "uploaded";
+		}
+		ctx.logger.warn(t("sync.upload_retry_conflict", { path: dbPath }));
+		return "skipped-conflict";
 	}
 
 	private async uploadAsset(localPath: string, dbPath: string): Promise<UploadResult> {
@@ -106,15 +118,19 @@ export class Uploader {
 		}
 
 		const newHash = await sha256(data);
-		const existing = await ctx.pouch.get<AssetDoc>(assetId(dbPath));
-		// 노트와 동일한 부활 규칙 — 잔존 사본은 tombstone을 되살리지 않는다.
-		if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
-		if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const existing = await ctx.pouch.get<AssetDoc>(assetId(dbPath));
+			// 노트와 동일한 부활 규칙 — 잔존 사본은 tombstone을 되살리지 않는다.
+			if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
+			if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
-		const doc = await ctx.buildAssetDoc(dbPath, data, existing?.version ?? 0);
-		await ctx.pouch.putAsset(doc, data);
-		this.markUploaded(dbPath);
-		return "uploaded";
+			const doc = await ctx.buildAssetDoc(dbPath, data, existing?.version ?? 0);
+			if ((await ctx.pouch.putAssetWithRev(doc, data, existing?._rev)) === "conflict") continue;
+			this.markUploaded(dbPath);
+			return "uploaded";
+		}
+		ctx.logger.warn(t("sync.upload_retry_conflict", { path: dbPath }));
+		return "skipped-conflict";
 	}
 
 	/**
@@ -146,34 +162,39 @@ export class Uploader {
 		// rename 시 "옛 경로 tombstone만 전파되고 새 경로는 업로드되지 않는" 첨부 소실도 막는다.
 		if (!ctx.isMarkdown(dbPath) && !s.syncAssets) return "skipped";
 		const id = ctx.isMarkdown(dbPath) ? noteId(dbPath) : assetId(dbPath);
-		const existing = await ctx.pouch.get<NoteDoc | AssetDoc>(id);
-		if (!existing || existing.deleted) return "skipped";
+		// rev 검증 put + 재시도(L-1): 읽기→쓰기 사이에 새 원격 내용이 끼어들면 그 버전을 스냅샷한 뒤 tombstone.
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const existing = await ctx.pouch.get<NoteDoc | AssetDoc>(id);
+			if (!existing || existing.deleted) return "skipped";
 
-		// 삭제 직전 내용을 버전 히스토리에 보존(마크다운).
-		if (ctx.isMarkdown(dbPath) && (existing as NoteDoc).content != null) {
-			await ctx.versions.snapshot(dbPath, (existing as NoteDoc).content, "delete", existing.version ?? 0);
+			// 삭제 직전 내용을 버전 히스토리에 보존(마크다운).
+			if (ctx.isMarkdown(dbPath) && (existing as NoteDoc).content != null) {
+				await ctx.versions.snapshot(dbPath, (existing as NoteDoc).content, "delete", existing.version ?? 0);
+			}
+
+			const now = Date.now();
+			const doc: any = {
+				...existing,
+				deleted: true,
+				deletedAt: new Date(now).toISOString(),
+				deletedBy: s.userId,
+				deletedByRole: s.role,
+				deleteMode: s.deletePolicy,
+				version: (existing.version ?? 0) + 1,
+				mtime: now,
+				lastModifiedBy: s.userId,
+				lastModifiedRole: s.role,
+				lastModifiedDeviceId: s.deviceId,
+				updatedAt: new Date(now).toISOString(),
+			};
+			delete doc._attachments; // tombstone은 바이너리 불필요
+			if ((await ctx.pouch.putWithRev(doc, existing._rev)) === "conflict") continue;
+			ctx.logger.ok(t("sync.tombstone_marked_deleted", { path: dbPath }));
+			ctx.notifyLocalWrite?.();
+			return "tombstoned";
 		}
-
-		const now = Date.now();
-		const doc: any = {
-			...existing,
-			deleted: true,
-			deletedAt: new Date(now).toISOString(),
-			deletedBy: s.userId,
-			deletedByRole: s.role,
-			deleteMode: s.deletePolicy,
-			version: (existing.version ?? 0) + 1,
-			mtime: now,
-			lastModifiedBy: s.userId,
-			lastModifiedRole: s.role,
-			lastModifiedDeviceId: s.deviceId,
-			updatedAt: new Date(now).toISOString(),
-		};
-		delete doc._attachments; // tombstone은 바이너리 불필요
-		await ctx.pouch.put(doc);
-		ctx.logger.ok(t("sync.tombstone_marked_deleted", { path: dbPath }));
-		ctx.notifyLocalWrite?.();
-		return "tombstoned";
+		ctx.logger.warn(t("sync.upload_retry_conflict", { path: dbPath }));
+		return "skipped";
 	}
 
 	/** DB 문서 영구 제거(purge, note/asset 공통). .deleted/에서 지웠을 때. */

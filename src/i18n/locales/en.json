@@ -810,6 +810,9 @@
 		"remote_sync_failed": "Remote sync failed: {err}",
 		"full_sync_complete": "Full sync complete ({direction}).",
 		"download_reconcile_applied_of_docs_attachments": "Download reconcile: applied {applied} of {notes} docs + {assets} attachments.",
+		"upload_retry_conflict": "Upload deferred — the document kept changing during write ({path}). It will retry on the next change or full sync.",
+		"conflict_resolve_retry_failed": "Could not finalize the conflict resolution for {path} — new remote changes kept arriving. The conflict stays listed; try again.",
+		"tombstone_retention_stripped": "Trimmed {n} deleted-file record(s) past the {days}-day retention window (sync integrity unaffected; restore expires with version history).",
 		"upload_skipped_unchanged_by_stat": "Incremental scan: {n} file(s) unchanged since the last baseline (skipped without reading).",
 		"upload_reconcile_uploaded_of_files": "Upload reconcile: uploaded {uploaded} of {files} files."
 	},

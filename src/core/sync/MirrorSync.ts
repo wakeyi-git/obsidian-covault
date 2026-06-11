@@ -13,6 +13,7 @@ import { LocalWatcher } from "./LocalWatcher";
 import { LocalApplier } from "./LocalApplier";
 import { FullSync, SyncDirection } from "./FullSync";
 import { parseDeniedEvent, deniedDisplayPath } from "./deniedEvent";
+import { sweepTombstones } from "./tombstoneRetention";
 import { t } from "../../i18n";
 
 /**
@@ -374,6 +375,11 @@ export class MirrorSync {
 
 	fullSync(direction: SyncDirection = "both"): Promise<void> {
 		return this.fullSyncRunner.run(direction);
+	}
+
+	/** 보존 기간 경과 tombstone의 content 스트립 + 해당 경로 버전 정리(I-3). 스트립 수 반환. */
+	sweepTombstoneRetention(maxAgeDays: number): Promise<number> {
+		return sweepTombstones(this.ctx, maxAgeDays);
 	}
 
 	/** 실시간 스냅샷: Yjs 내용을 vault 미접촉으로 로컬 DB에 기록(→ replication이 원격 전파). 기술문서 §19.2. */

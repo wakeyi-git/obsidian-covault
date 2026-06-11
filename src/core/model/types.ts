@@ -26,6 +26,8 @@ export interface NoteDoc extends PouchDocBase {
 	deletedBy?: string;
 	deletedByRole?: "member" | "manager";
 	deleteMode?: "archive" | "propagate-delete" | "ignore-delete";
+	/** 보존 기간(versionMaxAgeDays) 경과로 content가 비워진 tombstone — 복구 불가(평가 I-3). */
+	contentStripped?: boolean;
 }
 
 export function noteId(dbPath: string): string {
