@@ -192,6 +192,20 @@ export class MirrorContext {
 		return f instanceof TFile ? f : null;
 	}
 
+	/**
+	 * 대소문자만 다른 기존 파일 경로(없으면 null). 케이스 무시 FS(macOS/Windows)에선 이런 경로에
+	 * vault.create가 "already exists"로 실패해 적용이 영구 정지(stall)된다 — 생성 전에 감지해 비켜간다.
+	 * 정확 일치가 이미 있으면 충돌이 아니다. (파일 생성 경로에서만 호출 — 전체 스캔 비용 주의.)
+	 */
+	findCaseCollision(localPath: string): string | null {
+		if (this.fileExists(localPath)) return null;
+		const lower = normalizePath(localPath).toLowerCase();
+		for (const f of this.app.vault.getFiles()) {
+			if (f.path.toLowerCase() === lower) return f.path;
+		}
+		return null;
+	}
+
 	fileExists(localPath: string): boolean {
 		return this.app.vault.getAbstractFileByPath(localPath) != null;
 	}

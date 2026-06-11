@@ -50,6 +50,20 @@ async function hmacB64Url(secret: string, message: string): Promise<string> {
  * HMAC 시크릿이 없을 때 stale 공간 토큰을 제거(순수). 시크릿을 비우거나 legacy 전역 토큰으로 전환했는데
  * 옛 `sp.token`이 남아 shares 문서로 학생에게 재배포되는 것을 막는다(보고서 P1).
  */
+/** 토큰 payload의 만료(epoch sec). 토큰 형식이 아니거나 무만료면 undefined. 서명은 검증하지 않는다(로컬 점검용). */
+export function tokenExp(token: string | undefined): number | undefined {
+	if (!token) return undefined;
+	const dot = token.lastIndexOf(".");
+	if (dot <= 0) return undefined;
+	try {
+		const b64 = token.slice(0, dot).replace(/-/g, "+").replace(/_/g, "/") + "===".slice((token.slice(0, dot).length + 3) % 4);
+		const payload = JSON.parse(b64ToUtf8(b64)) as { e?: number };
+		return typeof payload.e === "number" ? payload.e : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 export function clearSpaceTokens(spaces: Array<{ token?: string }>): void {
 	for (const sp of spaces) delete sp.token;
 }

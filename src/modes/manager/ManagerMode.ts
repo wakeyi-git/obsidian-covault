@@ -68,7 +68,7 @@ export class ManagerMode implements CoVaultMode {
 		// 전역 실시간이 켜지면 모든 공유 공간과 토큰이 발급된 모든 개인 mirror가 실시간 대상.
 		const mirrorSpaces = members
 			.filter((st) => st.realtimeToken)
-			.map((st) => ({ id: `mirror-${st.memberId}`, folder: st.localRoot, token: st.realtimeToken, kind: "mirror" as const }));
+			.map((st) => ({ id: `mirror-${st.memberId}`, folder: st.localRoot, token: st.managerMirrorToken ?? st.realtimeToken, kind: "mirror" as const }));
 		core.sharedSpaces = [
 			...shared.map((sp) => ({
 				id: sp.id,

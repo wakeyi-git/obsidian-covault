@@ -128,6 +128,28 @@ describe("평가 조치 회귀 방지", () => {
 		expect(m3?.paths["note.md"]?.size).toBe(a.ctx.getFile("note.md")!.stat.size);
 	});
 
+	it("M-6: 대소문자만 다른 파일이 이미 있으면 영구 정지(stall) 대신 경고 1회 + 스킵", async () => {
+		cluster = new Cluster();
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
+
+		// b에는 소문자 note.md가 이미 있고, a가 대문자 Note.md를 만들어 올린다
+		// (케이스 무시 FS에선 같은 파일이라 vault.create가 영구 실패하던 시나리오).
+		b.vault.seed("note.md", "existing");
+		a.vault.seed("Note.md", "from A");
+		await a.uploader.uploadPath("Note.md");
+		await a.push();
+		await b.pull();
+
+		const doc = await b.ctx.pouch.getWithConflicts<any>(noteId("Note.md"));
+		const res = await b.applier.applyDoc(doc);
+
+		expect(res).toBe("skipped-collision");
+		expect(b.vault.has("Note.md")).toBe(false); // 생성을 시도하지 않음
+		expect(b.vault.textOf("note.md")).toBe("existing"); // 기존 파일은 불변
+		expect(b.log.some((l) => l.level === "warn" && l.message.includes("대소문자"))).toBe(true);
+	});
+
 	it("L-2: _충돌/ 사본을 지워도 충돌 이력 플래그가 남아 preserveLocal 근거가 유지된다", async () => {
 		cluster = new Cluster();
 		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });

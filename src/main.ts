@@ -335,6 +335,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			void this.deploymentCtl.redeployValidate(); // validate 버전 마이그레이션(1회, 실패 시 다음 시작 재시도)
 			void this.groupRequestCtl.syncRoster(); // 학급 명단 배포(구성원 그룹 신청 UI 선택지)
 			void this.groupRequestCtl.processPending(); // 오프라인 동안 쌓인 그룹 신청 캐치업
+			this.realtimeCtl.warnExpiringTokens(); // 토큰 만료 임박/경과 경고(재배포 유도)
 		}
 		// 모드 시작 완료 알림 — 패널이 모드보다 먼저 그려졌으면(워크스페이스 복원) homeroomReady=false로
 		// "학급 공동 공간 지정" 안내가 남는다. 준비 완료 시점에 한 번 갱신해 stale 화면을 지운다.

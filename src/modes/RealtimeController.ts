@@ -1,7 +1,8 @@
-import { App } from "obsidian";
+import { App, Notice } from "obsidian";
 import { CoVaultSettings, MemberConfig, SharedSpace } from "../settings/types";
 import { RealtimeManager } from "../core/realtime/RealtimeManager";
-import { mintSpaceToken } from "../core/realtime/spaceToken";
+import { mintSpaceToken, tokenExp } from "../core/realtime/spaceToken";
+import { t } from "../i18n";
 import { getYjsSecret } from "../core/secret";
 
 /**
@@ -81,17 +82,55 @@ export class RealtimeController {
 		const s = this.d.settings();
 		const yjsSecret = getYjsSecret(this.d.app, s.yjsSecret);
 		if (s.realtimeEnabled && yjsSecret && member.memberId && !member.realtimeBlocked) {
-			member.realtimeToken = await mintSpaceToken(yjsSecret, {
+			const claims = {
 				workspaceId: s.workspaceId,
 				spaceId: `mirror-${member.memberId}`,
 				remoteDb: member.remoteDb || `mirror_${member.memberId}`,
+			};
+			member.realtimeToken = await mintSpaceToken(yjsSecret, {
+				...claims,
 				memberId: member.memberId,
 				role: "member",
 				exp: this.ttl(s),
 			});
+			// 운영자 본인은 별도 클레임 토큰을 쓴다 — 스냅샷 주체(lastModifiedBy)가 올바르게 찍히고,
+			// 유출 시 주체 식별이 가능해진다(평가 L-10).
+			member.managerMirrorToken = await mintSpaceToken(yjsSecret, {
+				...claims,
+				memberId: s.userId,
+				role: "manager",
+				exp: this.ttl(s),
+			});
 		} else {
 			delete member.realtimeToken;
+			delete member.managerMirrorToken;
 		}
+	}
+
+	/**
+	 * 발급된 토큰 중 가장 이른 만료가 임박(기본 3일)했거나 지났으면 경고 — 재배포를 유도한다.
+	 * 만료는 서버가 활성 연결까지 강퇴하므로(주기 점검), 미리 갱신하지 않으면 실시간이 끊긴다(평가 M-9).
+	 */
+	warnExpiringTokens(days = 3): void {
+		const s = this.d.settings();
+		if (!s.realtimeEnabled || s.role !== "manager") return;
+		const exps: number[] = [];
+		for (const sp of s.sharedSpaces) {
+			const e = tokenExp(sp.token);
+			if (e != null) exps.push(e);
+		}
+		for (const st of s.members) {
+			for (const tk of [st.realtimeToken, st.managerMirrorToken]) {
+				const e = tokenExp(tk);
+				if (e != null) exps.push(e);
+			}
+		}
+		if (exps.length === 0) return;
+		const nowSec = Math.floor(Date.now() / 1000);
+		const min = Math.min(...exps);
+		if (min - nowSec > days * 86400) return;
+		const left = Math.max(0, Math.ceil((min - nowSec) / 86400));
+		new Notice(min <= nowSec ? t("realtime.tokens_expired_redeploy") : t("realtime.tokens_expiring_redeploy", { days: left }));
 	}
 
 	/** 실시간 진단(로그 패널로 상태 출력). */

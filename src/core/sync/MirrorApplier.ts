@@ -24,6 +24,7 @@ export type ApplyResult =
 	| "skipped-nonmd"
 	| "skipped-excluded"
 	| "skipped-pending"
+	| "skipped-collision"
 	| "conflict";
 
 /** _conflicts를 포함한 로컬 문서. */
@@ -125,6 +126,18 @@ export class MirrorApplier {
 			);
 		}
 
+		// 대소문자만 다른 파일이 이미 있으면 생성이 영구 실패(stall)한다 — 경고 1회 + 스킵(케이스 무시 FS).
+		if (local == null) {
+			const colliding = ctx.findCaseCollision(localPath);
+			if (colliding != null) {
+				if (!this.loggedConflicts.has(doc.path)) {
+					this.loggedConflicts.add(doc.path);
+					ctx.logger.warn(t("sync.case_collision_skipped", { path: localPath, existing: colliding }), true);
+				}
+				return "skipped-collision";
+			}
+		}
+
 		// 충돌 없는 원격 갱신 → 적용 (guard로 에코 차단)
 		this.loggedConflicts.delete(doc.path);
 		await this.conflicts.cleanupCopy(doc.path); // 해소 전파로 들어온 갱신이면 남은 원격본 정리
@@ -190,6 +203,18 @@ export class MirrorApplier {
 		if (localHash === doc.contentHash) return "skipped-same";
 		// 노트와 동일 — 전체 다운로드에서 파일이 없으면 내 기기 문서라도 복원한다.
 		if (doc.lastModifiedDeviceId === ctx.settings.deviceId && !(opts?.restoreMissing && local == null)) return "skipped-self";
+
+		// 노트와 동일 — 대소문자만 다른 기존 파일이 있으면 스킵(영구 stall 방지).
+		if (local == null) {
+			const colliding = ctx.findCaseCollision(localPath);
+			if (colliding != null) {
+				if (!this.loggedConflicts.has(doc.path)) {
+					this.loggedConflicts.add(doc.path);
+					ctx.logger.warn(t("sync.case_collision_skipped", { path: localPath, existing: colliding }), true);
+				}
+				return "skipped-collision";
+			}
+		}
 
 		const data = await ctx.pouch.getAssetBinary(assetId(doc.path));
 		if (data == null) {

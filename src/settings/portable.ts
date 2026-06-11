@@ -55,7 +55,11 @@ export function exportSettings(s: CoVaultSettings): string {
 	const copy: any = JSON.parse(JSON.stringify(s));
 	for (const k of [...SECRET_KEYS, ...DEVICE_KEYS]) delete copy[k];
 	if (Array.isArray(copy.members)) {
-		for (const st of copy.members) delete st.password; // 학생 비밀번호는 내보내지 않음
+		for (const st of copy.members) {
+			delete st.password; // 학생 비밀번호는 내보내지 않음
+			delete st.realtimeToken; // mirror 실시간 토큰(베어러)도 내보내지 않음
+			delete st.managerMirrorToken;
+		}
 	}
 	if (Array.isArray(copy.sharedSpaces)) {
 		for (const sp of copy.sharedSpaces) delete sp.token; // 공간 실시간 토큰(베어러)도 내보내지 않음
