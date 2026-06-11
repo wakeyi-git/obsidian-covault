@@ -44,7 +44,7 @@ import { testConnection } from "./core/sync/connectionTest";
 import { runDiagnostics } from "./core/sync/diagnostics";
 import { CouchAdmin } from "./core/couch/CouchAdmin";
 import { INVITE_ACTION, InvitePayload } from "./core/invite/invite";
-import { ConfirmModal } from "./ui/ConfirmModal";
+import { confirm } from "./ui/ConfirmModal";
 import { exportSettings, importSettings } from "./settings/portable";
 import { ResetModal } from "./ui/ResetModal";
 import { currentLocale, initI18n, t } from "./i18n";
@@ -209,6 +209,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				await this.mode?.stop();
 				this.mode = null;
 			},
+			startMode: () => this.startMode(),
 			cancelPendingApply: () => {
 				if (this.applyTimer) {
 					window.clearTimeout(this.applyTimer);
@@ -234,7 +235,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 				this.mode = null;
 			},
 			startMode: () => this.startMode(),
-			destroyLocalCaches: () => this.destroyLocalCaches(),
+			destroyLocalCaches: () => this.serverResetCtl.destroyAllLocalCaches(),
 			openLog: () => this.openLog(),
 			promptRoleSetup: () => this.promptRoleSetup(),
 			probeStatus: async (db) => {
@@ -248,7 +249,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 					await probe.close();
 				}
 			},
-			confirmInvite: (payload) => this.confirmInvite(payload),
+			confirm: (opts) => confirm(this.app, opts),
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
 		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
@@ -385,53 +386,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 		return this.onboardingCtl.resetSetup();
 	}
 
-	/** 현재 역할이 로컬 캐시를 가진 모든 DB(개인/학생 mirror + 공유 공간). 중복 제거. */
-	private collectLocalDbs(): string[] {
-		const s = this.settings;
-		const dbs =
-			s.role === "manager"
-				? s.members.map((st) => st.remoteDb)
-				: [s.remoteDb];
-		dbs.push(...s.sharedSpaces.map((sp) => sp.remoteDb));
-		return [...new Set(dbs.filter((d) => d))];
-	}
-
-	/** 현재 역할의 모든 mirror DB + 공유 공간 DB 로컬 캐시(IndexedDB)를 삭제. */
-	private async destroyLocalCaches(): Promise<void> {
-		const dbs = this.collectLocalDbs();
-		for (const db of dbs) {
-			try {
-				const p = this.core.createPouch(db);
-				await p.destroyLocal();
-				await p.close();
-				this.logger.ok(t("command.local_cache_deleted", { db }));
-			} catch (e) {
-				this.logger.error(t("command.failed_to_delete_local_cache", { db, err: errMessage(e) }));
-			}
-		}
-	}
-
-	/** 로컬 캐시 초기화(확인 후). 아직 업로드되지 않은 로컬 변경이 유실될 수 있는 파괴적 동작이라 확인을 받는다. */
+	/** 로컬 캐시 초기화(확인 후 — 미업로드 변경 유실 가능). 실제 작업은 ServerResetController. */
 	async resetLocalCache(): Promise<void> {
-		new ConfirmModal(this.app, {
+		const ok = await confirm(this.app, {
 			title: t("command.reset_cache_confirm_title"),
 			message: t("command.reset_cache_confirm_body"),
 			confirmText: t("common.reset"),
 			warning: true,
-			onConfirm: () => this.doResetLocalCache(),
-		}).open();
-	}
-
-	/** 로컬 캐시 초기화 후 서버에서 다시 받기. */
-	private async doResetLocalCache(): Promise<void> {
-		await this.openLog();
-		await this.mode?.stop();
-		this.mode = null;
-		await this.destroyLocalCaches();
-		this.settings.lastSeqByDb = {};
-		await this.saveSettings();
-		if (this.settings.setupComplete) await this.startMode();
-		this.logger.ok(t("command.local_cache_reset_re_syncing_from"), true);
+		});
+		if (ok) await this.serverResetCtl.resetLocalCache();
 	}
 
 	// --- 학생 프로비저닝 + 초대 (Manager) ---
@@ -766,33 +729,6 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	// --- 학생 온보딩: 초대 코드/딥링크로 자동 설정 ---
 	ingestInvite(input: string): Promise<void> {
 		return this.onboardingCtl.ingestInvite(input);
-	}
-
-	/**
-	 * 초대 적용 전 확인(평가 H-3). 대상 서버·계정을 보여주고, 이미 설정된 기기는 역할·자격증명이
-	 * 덮어써짐을(운영자는 더 강하게) 경고한다. 닫기만 해도 취소로 처리해 설정을 건드리지 않는다.
-	 */
-	private confirmInvite(payload: InvitePayload): Promise<boolean> {
-		const lines = [
-			t("command.invite_confirm_member_line", { name: payload.memberName || payload.memberId, id: payload.username }),
-			t("command.invite_confirm_server_line", { url: payload.couchdbUrl }),
-		];
-		if (payload.couchdbUrl.startsWith("http://")) lines.push(t("command.invite_confirm_http_warning"));
-		const configured = this.settings.setupComplete;
-		if (configured) {
-			const role = this.settings.role === "manager" ? t("common.manager") : t("common.member");
-			lines.push(t("command.invite_confirm_overwrite_warning", { role }));
-		}
-		return new Promise((resolve) => {
-			new ConfirmModal(this.app, {
-				title: t("command.invite_confirm_title"),
-				message: lines.join("\n"),
-				confirmText: t("common.apply"),
-				warning: configured,
-				onConfirm: () => resolve(true),
-				onCancel: () => resolve(false),
-			}).open();
-		});
 	}
 
 	// --- 연결 테스트 (설정 버튼) → DeploymentController 위임 ---

@@ -22,12 +22,8 @@ export interface OnboardingDeps {
 	promptRoleSetup(): void;
 	/** remoteDb 인증/도달 상태(HTTP status). 도달 실패면 null. */
 	probeStatus(db: string): Promise<number | null>;
-	/**
-	 * 초대 적용 전 사용자 확인(UI라 main이 구현). 딥링크는 링크 클릭 한 번으로 도달하므로,
-	 * 적용 대상 서버·계정을 보여주고 — 특히 이미 설정된 기기(운영자 포함)의 역할·자격증명을
-	 * 조용히 덮어쓰지 않도록 — 명시적 동의를 받는다. false면 설정을 건드리지 않는다.
-	 */
-	confirmInvite(payload: InvitePayload): Promise<boolean>;
+	/** 범용 확인 모달(Promise) — ui/ConfirmModal.confirm. 컨트롤러는 모달을 직접 import하지 않는다. */
+	confirm(opts: { title: string; message: string; confirmText?: string; warning?: boolean }): Promise<boolean>;
 }
 
 export class OnboardingController {
@@ -49,7 +45,7 @@ export class OnboardingController {
 		}
 		// 적용 전 명시적 확인 — 역할·서버·자격증명(Secret Storage의 활성 비밀번호 포함)을 덮어쓰는
 		// 파괴적 동작이다. 악성 딥링크가 운영자 설정을 클릭 한 번으로 갈아치우는 것을 막는다.
-		if (!(await this.d.confirmInvite(payload))) {
+		if (!(await this.confirmInvite(payload))) {
 			this.d.logger.info(t("command.invite_apply_canceled"));
 			return;
 		}
@@ -83,6 +79,30 @@ export class OnboardingController {
 		}
 
 		await this.d.startMode();
+	}
+
+	/**
+	 * 초대 적용 전 확인(평가 H-3). 대상 서버·계정을 보여주고, 이미 설정된 기기는 역할·자격증명이
+	 * 덮어써짐을(운영자는 더 강하게) 경고한다. 닫기만 해도 취소로 처리해 설정을 건드리지 않는다.
+	 */
+	private confirmInvite(payload: InvitePayload): Promise<boolean> {
+		const s = this.d.settings();
+		const lines = [
+			t("command.invite_confirm_member_line", { name: payload.memberName || payload.memberId, id: payload.username }),
+			t("command.invite_confirm_server_line", { url: payload.couchdbUrl }),
+		];
+		if (payload.couchdbUrl.startsWith("http://")) lines.push(t("command.invite_confirm_http_warning"));
+		const configured = s.setupComplete;
+		if (configured) {
+			const role = s.role === "manager" ? t("common.manager") : t("common.member");
+			lines.push(t("command.invite_confirm_overwrite_warning", { role }));
+		}
+		return this.d.confirm({
+			title: t("command.invite_confirm_title"),
+			message: lines.join("\n"),
+			confirmText: t("common.apply"),
+			warning: configured,
+		});
 	}
 
 	/** 역할 재설정(데이터 초기화). 로컬 캐시까지 비우고 역할 선택 모달을 다시 띄운다. */

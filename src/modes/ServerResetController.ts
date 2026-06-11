@@ -1,4 +1,5 @@
 import { Logger } from "../core/log/Logger";
+import { errMessage } from "../core/util/err";
 import { CoVaultSettings, SharedSpace, MemberConfig } from "../settings/types";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
 import { t } from "../i18n";
@@ -15,6 +16,8 @@ export interface ServerResetDeps {
 	openLog(): Promise<void>;
 	/** mode?.stop() + mode=null (삭제 대상 DB로의 replication 차단). */
 	stopMode(): Promise<void>;
+	/** 모드 재시작(캐시 초기화 후 재수신). */
+	startMode(): Promise<void>;
 	/** 대기 중 자동-적용(requestApply 디바운스) 취소. */
 	cancelPendingApply(): void;
 	/** 로컬 PouchDB(IndexedDB) 캐시 1개 제거(createPouch→destroyLocal→close). */
@@ -41,6 +44,38 @@ export class ServerResetController {
 		} catch {
 			/* 캐시 없음 등 무시 */
 		}
+	}
+
+	/** 현재 역할이 로컬 캐시를 가진 모든 DB(개인/학생 mirror + 공유 공간). 중복 제거. */
+	private collectLocalDbs(): string[] {
+		const s = this.d.settings();
+		const dbs = s.role === "manager" ? s.members.map((st) => st.remoteDb) : [s.remoteDb];
+		dbs.push(...s.sharedSpaces.map((sp) => sp.remoteDb));
+		return [...new Set(dbs.filter((d) => d))];
+	}
+
+	/** 현재 역할의 모든 mirror DB + 공유 공간 DB 로컬 캐시(IndexedDB)를 삭제. */
+	async destroyAllLocalCaches(): Promise<void> {
+		for (const db of this.collectLocalDbs()) {
+			try {
+				await this.d.destroyDbCache(db);
+				this.d.logger.ok(t("command.local_cache_deleted", { db }));
+			} catch (e) {
+				this.d.logger.error(t("command.failed_to_delete_local_cache", { db, err: errMessage(e) }));
+			}
+		}
+	}
+
+	/** 로컬 캐시 초기화 후 서버에서 다시 받기(확인은 호출측 — 미업로드 변경 유실 가능). */
+	async resetLocalCache(): Promise<void> {
+		await this.d.openLog();
+		await this.d.stopMode();
+		await this.destroyAllLocalCaches();
+		const s = this.d.settings();
+		s.lastSeqByDb = {};
+		await this.d.saveSettings();
+		if (s.setupComplete) await this.d.startMode();
+		this.d.logger.ok(t("command.local_cache_reset_re_syncing_from"), true);
 	}
 
 	/** 한 구성원의 서버 데이터(미러 DB + 계정) 삭제. 실패해도 가능한 만큼 진행. */
