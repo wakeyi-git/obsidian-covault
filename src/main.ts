@@ -37,6 +37,7 @@ import { OnboardingController } from "./modes/OnboardingController";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
 import { CoVaultPanelView, PANEL_VIEW_TYPE } from "./ui/PanelView";
+import { PanelNavigator, buildPanelHost } from "./panelHost";
 import { PanelHost, PanelTab, SystemView, DashboardRow, DeleteModifyRow, PurgeRow } from "./ui/panel/PanelSection";
 import { MirrorSync } from "./core/sync/MirrorSync";
 import { DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "./core/sync/RestoreManager";
@@ -55,7 +56,7 @@ import { currentLocale, initI18n, t } from "./i18n";
  * 역할은 최초 1회 선택 후 잠긴다(기술문서 §5.4 보강). 실행 시 저장된 last_seq부터 증분 재개하고,
  * 전체 동기화는 최초 1회와 수동 명령에서만 수행한다.
  */
-export default class CoVaultPlugin extends Plugin implements SettingsHost, PanelHost {
+export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	settings!: CoVaultSettings;
 	logger = new Logger();
 	private core!: CoreServices;
@@ -65,8 +66,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 	private feedback!: FeedbackStore;
 	private classroom!: ClassroomStore;
 	private classroomCtl!: ClassroomController;
-	private pendingChatChannel: string | null = null; // 그룹 대화 카드 → 대화 탭 초기 채널 전달
-	private pendingSystemView: SystemView | null = null; // 명령/CTA → 시스템 탭 초기 서브뷰 전달
+	private nav!: PanelNavigator; // 패널 활성화 + 보류 채널/서브뷰 상태(panelHost.ts)
+	private panelHost!: PanelHost; // 컨트롤러들로 조립된 PanelHost(buildPanelHost) — 뷰/마법사에 주입
 	private realtimeCtl!: RealtimeController;
 	private memberCtl!: MemberController;
 	private recoveryCtl!: RecoveryController;
@@ -78,22 +79,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 	private onboardingCtl!: OnboardingController;
 	private applyTimer: number | null = null;
 
-	/** PanelHost: 피드백 섹션이 사용. */
-	get feedbackStore(): FeedbackStore {
-		return this.feedback;
-	}
-
-	/** PanelHost: 대시보드 섹션이 사용. */
-	get classroomStore(): ClassroomStore {
-		return this.classroom;
-	}
-
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		initI18n(this.settings.language); // 모든 t() 이전에 로케일 확정
 
 		this.core = new CoreServices(this.app, this.settings, this.logger);
 		this.core.save = () => this.saveData(this.settings);
+		this.nav = new PanelNavigator(this.app); // 컨트롤러 deps(openLog 등)가 참조 — 최상단에서 생성
 
 		// 실시간 공동 편집(Yjs) — 공유 폴더 문서
 		this.realtime = new RealtimeManager(
@@ -109,7 +101,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 			app: this.app,
 			settings: () => this.settings,
 			realtime: () => this.realtime,
-			openLog: () => this.openLog(),
+			openLog: () => this.nav.openLog(),
 		});
 		this.memberCtl = new MemberController({
 			app: this.app,
@@ -118,7 +110,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 			couchPassword: () => this.couchPassword(),
 			saveSettings: () => this.saveSettings(),
 			requestApply: () => this.requestApply(),
-			openLog: () => this.openLog(),
+			openLog: () => this.nav.openLog(),
 			mintMirror: (m) => this.realtimeCtl.mintMirror(m),
 			mintMemberToken: (sp, memberId) => this.realtimeCtl.mintMemberToken(sp, memberId),
 		});
@@ -154,7 +146,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 			getSyncs: () => this.mode?.getSyncs() ?? [],
 			findSyncByDb: (db) => this.mode?.findSyncByDb(db),
 			findSyncOwning: (p) => this.mode?.findSyncOwning(p),
-			openLog: () => this.openLog(),
+			openLog: () => this.nav.openLog(),
 		});
 		this.participantCtl = new ParticipantController({
 			app: this.app,
@@ -177,8 +169,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 			couchPassword: () => this.couchPassword(),
 			saveSettings: () => this.saveSettings(),
 			restartMode: () => this.restartMode(),
-			openLog: () => this.openLog(),
-			openDashboard: () => this.activatePanel("dashboard"),
+			openLog: () => this.nav.openLog(),
+			openDashboard: () => this.nav.activatePanel("dashboard"),
 			writeMemberSync: (admin, m) => this.writeMemberSync(admin, m),
 			mintRealtimeTokens: () => this.mintRealtimeTokens(),
 			refreshMemberShares: () => this.refreshMemberShares(),
@@ -194,7 +186,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 			syncGroupDoc: (g, names) => this.classroomCtl.syncGroupDoc(g, names),
 			deleteGroupDoc: (id) => this.classroomCtl.deleteGroupDoc(id),
 			groupChannelFor: (id) => this.classroomCtl.groupChannelFor(id),
-			openChat: (ch) => this.openChat(ch),
+			openChat: (ch) => this.nav.openChat(ch),
 			deleteSharedServer: (space) => this.serverResetCtl.deleteSharedServer(space),
 			refreshMemberShares: () => this.refreshMemberShares(),
 			restartMode: () => this.restartMode(),
@@ -204,7 +196,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 			settings: () => this.settings,
 			couchPassword: () => this.couchPassword(),
 			saveSettings: () => this.saveSettings(),
-			openLog: () => this.openLog(),
+			openLog: () => this.nav.openLog(),
 			stopMode: async () => {
 				await this.mode?.stop();
 				this.mode = null;
@@ -236,7 +228,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 			},
 			startMode: () => this.startMode(),
 			destroyLocalCaches: () => this.serverResetCtl.destroyAllLocalCaches(),
-			openLog: () => this.openLog(),
+			openLog: () => this.nav.openLog(),
 			promptRoleSetup: () => this.promptRoleSetup(),
 			probeStatus: async (db) => {
 				const probe = this.core.createPouch(db);
@@ -284,10 +276,37 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 		// 백그라운드(앱/창 비활성) 시 원격 동기화 일시정지 → 배터리/네트워크 절감(기술문서 §24.6)
 		this.registerDomEvent(document, "visibilitychange", () => this.onVisibilityChange());
 
-		this.registerView(PANEL_VIEW_TYPE, (leaf: WorkspaceLeaf) => new CoVaultPanelView(leaf, this));
+		// PanelHost 조립(M-12) — 워크스페이스 복원이 onload 직후 뷰를 만들 수 있으므로 registerView보다 먼저.
+		this.panelHost = buildPanelHost({
+			app: this.app,
+			logger: this.logger,
+			nav: this.nav,
+			feedback: this.feedback,
+			classroom: this.classroom,
+			settings: () => this.settings,
+			classroomCtl: this.classroomCtl,
+			participantCtl: this.participantCtl,
+			recoveryCtl: this.recoveryCtl,
+			groupRequestCtl: this.groupRequestCtl,
+			deploymentCtl: this.deploymentCtl,
+			realtimeCtl: this.realtimeCtl,
+			serverResetCtl: this.serverResetCtl,
+			memberCtl: this.memberCtl,
+			homeroomReady: () => this.homeroomReady(),
+			homeroomConfigured: () => this.homeroomConfigured(),
+			saveSettings: () => this.saveSettings(),
+			openSettings: () => this.openSettings(),
+			completeOnboarding: () => this.completeOnboarding(),
+			fullSync: (dir) => this.fullSync(dir),
+			toggleAutoSync: () => this.toggleAutoSync(),
+			refreshShares: () => this.refreshShares(),
+			runDiagnostics: () => this.runDiagnostics(),
+			openResetModal: () => this.openResetModal(),
+		});
+		this.registerView(PANEL_VIEW_TYPE, (leaf: WorkspaceLeaf) => new CoVaultPanelView(leaf, this.panelHost));
 		this.addSettingTab(new CoVaultSettingTab(this.app, this));
 		// 아이콘은 학급 전용(학사모)이 아닌 제품 정체성(공유 금고) 기준 — 볼트 공유·동기화·실시간 편집 전반에 쓰인다.
-		this.addRibbonIcon("vault", t("command.open_covault_panel"), () => this.activatePanel());
+		this.addRibbonIcon("vault", t("command.open_covault_panel"), () => this.nav.activatePanel());
 		this.registerCommands();
 
 		// 학생 초대 딥링크: 폰 카메라로 QR 스캔 → obsidian://covault-invite?d=... → 자동 설정
@@ -386,17 +405,6 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 		return this.onboardingCtl.resetSetup();
 	}
 
-	/** 로컬 캐시 초기화(확인 후 — 미업로드 변경 유실 가능). 실제 작업은 ServerResetController. */
-	async resetLocalCache(): Promise<void> {
-		const ok = await confirm(this.app, {
-			title: t("command.reset_cache_confirm_title"),
-			message: t("command.reset_cache_confirm_body"),
-			confirmText: t("common.reset"),
-			warning: true,
-		});
-		if (ok) await this.serverResetCtl.resetLocalCache();
-	}
-
 	// --- 학생 프로비저닝 + 초대 (Manager) ---
 	/** 성공(프로비저닝+초대 표시) 시 true. 실패 시 false(호출자가 로컬 상태를 되돌릴 수 있게). */
 	inviteMember(member: MemberConfig): Promise<boolean> {
@@ -456,28 +464,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 	realtimeTokenReceived(): boolean {
 		return this.participantCtl.realtimeTokenReceived();
 	}
-	realtimeSessions(): Array<{ path: string; participants: number }> {
-		return this.participantCtl.realtimeSessions();
-	}
-	realtimeActiveFile(): { path: string; participants: number } | null {
-		return this.participantCtl.realtimeActiveFile();
-	}
-	getFileRealtimeParticipants(path: string): Promise<string[] | null> {
-		return this.participantCtl.getFileRealtimeParticipants(path);
-	}
-	listRealtimeFiles(): Promise<Array<{ path: string; memberIds: string[]; memberNames?: Record<string, string> }>> {
-		return this.participantCtl.listRealtimeFiles();
-	}
 	setSharedReadOnly(on: boolean): Promise<void> {
 		return this.participantCtl.setSharedReadOnly(on);
-	}
-	setFileRealtimeParticipants(path: string, memberIds: string[] | null): Promise<void> {
-		return this.participantCtl.setFileRealtimeParticipants(path, memberIds);
-	}
-
-	/** PanelHost: 구성원별 실시간 허용/차단(교사). */
-	setMemberRealtime(memberId: string, allowed: boolean): Promise<void> {
-		return this.memberCtl.setMemberRealtime(memberId, allowed);
 	}
 
 	/** SettingsHost: 공유 공간 하나를 학급 공동 공간으로 지정/해제(교사 전용). */
@@ -492,22 +480,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 
 	/** SettingsHost: 교사 온보딩 마법사(모달) 실행. */
 	openSetupWizard(): void {
-		new SetupWizardModal(this.app, this).open();
-	}
-
-
-	// --- 학급 운영(대시보드): ClassroomController에 위임 ---
-	newNotice(): Promise<boolean> {
-		return this.classroomCtl.newNotice();
-	}
-	createLesson(title: string, weekKey?: string): Promise<string | null> {
-		return this.classroomCtl.createLesson(title, weekKey);
-	}
-	deleteNotice(notice: NoticeDoc): Promise<void> {
-		return this.classroomCtl.deleteNotice(notice);
-	}
-	setNoticePublished(notice: NoticeDoc, published: boolean): Promise<void> {
-		return this.classroomCtl.setNoticePublished(notice, published);
+		new SetupWizardModal(this.app, this.panelHost).open();
 	}
 	createTemplateFile(kind: "notice" | "lesson" | "assignment"): Promise<void> {
 		return this.classroomCtl.createTemplateFile(kind);
@@ -517,117 +490,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 	}
 	/** 명령용: 로그 패널을 열고 중복/고아 학급 문서 정리 실행(결과는 로그에 표시). */
 	private async runCleanupClassroom(): Promise<void> {
-		await this.openLog();
+		await this.nav.openLog();
 		await this.cleanupClassroomDocs();
-	}
-	openLesson(uid: string): Promise<void> {
-		return this.classroomCtl.openLesson(uid);
-	}
-	assignmentDefs(): AssignmentDoc[] {
-		return this.classroomCtl.assignmentDefs();
-	}
-	createAssignment(input: Parameters<ClassroomController["createAssignment"]>[0]): Promise<boolean> {
-		return this.classroomCtl.createAssignment(input);
-	}
-	updateAssignment(uid: string, input: Parameters<ClassroomController["updateAssignment"]>[1]): Promise<boolean> {
-		return this.classroomCtl.updateAssignment(uid, input);
-	}
-	deleteAssignment(uid: string): Promise<boolean> {
-		return this.classroomCtl.deleteAssignment(uid);
-	}
-	listMyAssignments(): Promise<AssignmentStateDoc[]> {
-		return this.classroomCtl.listMyAssignments();
-	}
-	listAssignmentStates(uid: string): Promise<AssignmentStateDoc[]> {
-		return this.classroomCtl.listAssignmentStates(uid);
-	}
-	listAllAssignmentStates(): Promise<AssignmentStateDoc[]> {
-		return this.classroomCtl.listAllAssignmentStates();
-	}
-	submitAssignment(state: AssignmentStateDoc): Promise<boolean> {
-		return this.classroomCtl.submitAssignment(state);
-	}
-	unsubmitAssignment(state: AssignmentStateDoc): Promise<boolean> {
-		return this.classroomCtl.unsubmitAssignment(state);
-	}
-	openVaultPath(path: string): Promise<void> {
-		return this.classroomCtl.openVaultPath(path);
-	}
-	returnAssignment(uid: string, memberId: string, grade: AssignmentGrade): Promise<boolean> {
-		return this.classroomCtl.returnAssignment(uid, memberId, grade);
-	}
-	listRoutines(): Promise<RoutineDoc[]> {
-		return this.classroomCtl.listRoutines();
-	}
-	reorderRoutines(orderedUids: string[]): Promise<void> {
-		return this.classroomCtl.reorderRoutines(orderedUids);
-	}
-	createRoutine(input: Parameters<ClassroomController["createRoutine"]>[0]): Promise<boolean> {
-		return this.classroomCtl.createRoutine(input);
-	}
-	updateRoutine(uid: string, input: Parameters<ClassroomController["updateRoutine"]>[1]): Promise<boolean> {
-		return this.classroomCtl.updateRoutine(uid, input);
-	}
-	deleteRoutine(uid: string): Promise<void> {
-		return this.classroomCtl.deleteRoutine(uid);
-	}
-	myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null> {
-		return this.classroomCtl.myRoutineState(uid, day);
-	}
-	toggleRoutineItem(uid: string, day: string, itemId: string, checked: boolean): Promise<boolean> {
-		return this.classroomCtl.toggleRoutineItem(uid, day, itemId, checked);
-	}
-	myRoutineDays(uid: string): Promise<RoutineStateDoc[]> {
-		return this.classroomCtl.myRoutineDays(uid);
-	}
-	listRoutineStates(uid: string, day: string): Promise<RoutineStateDoc[]> {
-		return this.classroomCtl.listRoutineStates(uid, day);
-	}
-	listAllRoutineStates(): Promise<RoutineStateDoc[]> {
-		return this.classroomCtl.listAllRoutineStates();
-	}
-	postPrivateResponse(doc: ResponseDoc): Promise<boolean> {
-		return this.classroomCtl.postPrivateResponse(doc);
-	}
-	postPrivateResponseTo(remoteDb: string, doc: ResponseDoc): Promise<boolean> {
-		return this.classroomCtl.postPrivateResponseTo(remoteDb, doc);
-	}
-	listPrivateResponses(): Promise<ResponseDoc[]> {
-		return this.classroomCtl.listPrivateResponses();
-	}
-	sendMessage(channel: string, body: string, replyTo?: string): Promise<boolean> {
-		return this.classroomCtl.sendMessage(channel, body, replyTo);
-	}
-	listMessages(channel: string): Promise<MessageDoc[]> {
-		return this.classroomCtl.listMessages(channel);
-	}
-	deleteMessage(channel: string, doc: MessageDoc): Promise<void> {
-		return this.classroomCtl.deleteMessage(channel, doc);
-	}
-	attachFileToChannel(channel: string, srcPath: string): Promise<string | null> {
-		return this.classroomCtl.attachFileToChannel(channel, srcPath);
-	}
-	listChatGroups(): Promise<Array<{ channel: string; groupId: string; name: string; memberIds: string[]; memberNames?: Record<string, string>; temp?: boolean }>> {
-		return this.classroomCtl.listChatGroups();
-	}
-	/** PanelHost: 노트의 피드백 목록(대화 피드백 참조 picker용). */
-	async listFeedback(path: string): Promise<Array<{ uid: string; label: string; path: string }>> {
-		const docs = await this.feedback.listFor(path);
-		return docs.map((d) => ({ uid: d._id.split(":").pop() ?? d._id, label: (d.content || "").replace(/\s+/g, " ").trim().slice(0, 40) || path.split("/").pop() || path, path }));
-	}
-	/** PanelHost: 피드백 참조 클릭 → 앵커 위치로 이동. */
-	async openFeedback(path: string, uid: string): Promise<void> {
-		const docs = await this.feedback.listFor(path);
-		const doc = docs.find((d) => (d._id.split(":").pop() ?? "") === uid);
-		if (!doc) {
-			new Notice(t("chat.feedback_not_found"));
-			return;
-		}
-		await jumpToFeedback(this.app, doc, path);
-	}
-	// --- 그룹 라이프사이클 → GroupRequestController 위임 ---
-	listGroups(): GroupConfig[] {
-		return this.groupRequestCtl.listGroups();
 	}
 	saveGroup(group: GroupConfig): Promise<void> {
 		return this.groupRequestCtl.saveGroup(group);
@@ -635,65 +499,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 	deleteGroup(id: string): Promise<void> {
 		return this.groupRequestCtl.deleteGroup(id);
 	}
-	/** 라이브 세션에 그룹 적용: 그 파일의 참여자를 그룹 구성원으로 설정(교사). */
-	async applyGroupToFile(filePath: string, groupId: string): Promise<void> {
-		const g = this.settings.groups.find((x) => x.id === groupId);
-		if (!g) return;
-		await this.participantCtl.setFileRealtimeParticipants(filePath, g.memberIds);
-	}
 	openGroupChat(groupId: string): Promise<void> {
 		return this.groupRequestCtl.openGroupChat(groupId);
-	}
-	openSessionGroupChat(memberIds: string[]): Promise<void> {
-		return this.groupRequestCtl.openSessionGroupChat(memberIds);
-	}
-	/** PanelHost: 구성원 자율 그룹 신청-승인(GroupRequestController 위임). */
-	requestGroup(input: { name: string; folder: string; memberIds: string[] }): Promise<boolean> {
-		return this.groupRequestCtl.requestGroup(input);
-	}
-	listMyGroupRequests(): Promise<GroupRequestDoc[]> {
-		return this.groupRequestCtl.listMyRequests();
-	}
-	cancelGroupRequest(req: GroupRequestDoc): Promise<void> {
-		return this.groupRequestCtl.cancelRequest(req);
-	}
-	listPendingGroupRequests(): Promise<GroupRequestDoc[]> {
-		return this.groupRequestCtl.listPendingRequests();
-	}
-	approveGroupRequest(req: GroupRequestDoc): Promise<boolean> {
-		return this.groupRequestCtl.approveRequest(req);
-	}
-	rejectGroupRequest(req: GroupRequestDoc, reason?: string): Promise<void> {
-		return this.groupRequestCtl.rejectRequest(req, reason);
-	}
-	rosterMembers(): Promise<Array<{ memberId: string; name: string }>> {
-		return this.groupRequestCtl.rosterMembers();
-	}
-	/** 대화 탭을 특정 채널로 연다. ChatSection이 render 시 consumePendingChatChannel로 받는다. */
-	async openChat(channel: string): Promise<void> {
-		this.pendingChatChannel = channel;
-		await this.activatePanel("chat");
-	}
-	/** 보류 중 초기 대화 채널을 반환하고 비운다(ChatSection 전용). */
-	consumePendingChatChannel(): string | null {
-		const c = this.pendingChatChannel ?? null;
-		this.pendingChatChannel = null;
-		return c;
-	}
-	/** 시스템 탭을 특정 서브뷰(동기화/복구/이력/로그)로 연다. */
-	async openSystemView(view: SystemView): Promise<void> {
-		this.pendingSystemView = view;
-		await this.activatePanel("system");
-	}
-	/** 보류 중 초기 시스템 서브뷰를 반환하고 비운다(SystemSection 전용). */
-	consumePendingSystemView(): SystemView | null {
-		const v = this.pendingSystemView ?? null;
-		this.pendingSystemView = null;
-		return v;
-	}
-	/** 로그 패널 열기(시스템 탭 → 로그 서브뷰). 진단·동기화 출력 표시용. */
-	openLog(): Promise<void> {
-		return this.openSystemView("log");
 	}
 
 	/**
@@ -738,7 +545,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 
 	/** 종합 진단: 서버 도달 + 활성 링크별 읽기/쓰기 권한 + 실시간 상태. */
 	async runDiagnostics(): Promise<void> {
-		await this.openLog();
+		await this.nav.openLog();
 		const targets = (this.mode?.getSyncs() ?? []).map((s) => ({ db: s.remoteDb, label: s.label }));
 		await runDiagnostics(this.core, targets);
 		this.realtime.diagnose();
@@ -837,16 +644,16 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 	// --- 명령 등록 (패널 버튼과 동일 메서드를 호출) ---
 	private registerCommands(): void {
 		registerCovaultCommands(this, {
-			openPanel: () => void this.activatePanel(),
-			openTab: (tab) => void this.activatePanel(tab),
-			openSystemView: (view) => void this.openSystemView(view),
+			openPanel: () => void this.nav.activatePanel(),
+			openTab: (tab) => void this.nav.activatePanel(tab),
+			openSystemView: (view) => void this.nav.openSystemView(view),
 			cleanupClassroom: () => this.runCleanupClassroom(),
 			testConnection: () => void this.testConnection(),
 			runDiagnostics: () => void this.runDiagnostics(),
 			fullSync: (dir) => void this.fullSync(dir),
 			toggleAutoSync: () => void this.toggleAutoSync(),
-			resetLocalCache: () => void this.resetLocalCache(),
-			openConflicts: () => this.openConflictModal(),
+			resetLocalCache: () => void this.panelHost.resetLocalCache(),
+			openConflicts: () => this.panelHost.openConflictModal(),
 			realtimeStatus: () => void this.realtimeStatus(),
 			refreshShares: () => void this.refreshShares(),
 			addFeedback: () => promptAddFeedback(this.app, this.feedback),
@@ -858,19 +665,11 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 		});
 	}
 
-	// --- 버전 히스토리 → RecoveryController 위임 ---
-	versionHistoryFor(localPath: string): Promise<VersionDoc[]> {
-		return this.recoveryCtl.versionHistoryFor(localPath);
-	}
-	restoreVersion(localPath: string, versionDocId: string, opts: { backupCurrent?: boolean }): Promise<"restored" | "missing"> {
-		return this.recoveryCtl.restoreVersion(localPath, versionDocId, opts);
-	}
-
 	// --- 패널 버튼/명령 공용 동작 (PanelHost) ---
 
 	/** 전체/업로드/다운로드 수동 동기화. */
 	async fullSync(dir: "both" | "up" | "down"): Promise<void> {
-		await this.openLog();
+		await this.nav.openLog();
 		await this.mode?.fullSync(dir);
 	}
 
@@ -881,67 +680,9 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Panel
 
 	/** 공유 공간 새로고침(학생=shares 재조회, 교사=재시작). */
 	async refreshShares(): Promise<void> {
-		await this.openLog();
+		await this.nav.openLog();
 		if (this.settings.role === "member" && this.mode?.refreshShares) await this.mode.refreshShares();
 		else await this.restartMode();
-	}
-
-	// --- 교사 편의: 경로(파일/폴더)를 학생에게 복사 → DeploymentController 위임 ---
-	bulkCopy(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyResult & { error?: string }> {
-		return this.deploymentCtl.bulkCopy(sourcePath, opts, memberIds);
-	}
-	bulkCopyPreview(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyPlan & { error?: string }> {
-		return this.deploymentCtl.bulkCopyPreview(sourcePath, opts, memberIds);
-	}
-
-	// --- 동기화 상태 · 복구 (PanelHost) → RecoveryController 위임 ---
-	getDashboardRows(): Promise<DashboardRow[]> {
-		return this.recoveryCtl.getDashboardRows();
-	}
-	openConflictModal(): void {
-		new ConflictModal(this.app, this.recoveryCtl).open();
-	}
-	listDeletedFiles(): Promise<DeletedItem[]> {
-		return this.recoveryCtl.listDeletedFiles();
-	}
-	restoreDeleted(remoteDb: string, dbPath: string, opts?: RestoreOptions): Promise<RestoreResult> {
-		return this.recoveryCtl.restoreDeleted(remoteDb, dbPath, opts);
-	}
-	purgeDeleted(remoteDb: string, dbPath: string): Promise<"purged" | "skipped"> {
-		return this.recoveryCtl.purgeDeleted(remoteDb, dbPath);
-	}
-	listDeleteModify(): Promise<DeleteModifyRow[]> {
-		return this.recoveryCtl.listDeleteModify();
-	}
-	resolveDeleteModify(remoteDb: string, dbPath: string, choice: DeleteModifyChoice): Promise<void> {
-		return this.recoveryCtl.resolveDeleteModify(remoteDb, dbPath, choice);
-	}
-	listRecentPurges(): Promise<PurgeRow[]> {
-		return this.recoveryCtl.listRecentPurges();
-	}
-	undoPurge(remoteDb: string, id: string): Promise<RestoreResult> {
-		return this.recoveryCtl.undoPurge(remoteDb, id);
-	}
-	clearPurge(remoteDb: string, id: string): Promise<void> {
-		return this.recoveryCtl.clearPurge(remoteDb, id);
-	}
-
-	/** 통합 패널 활성화(우측 사이드바). tab을 주면 해당 탭으로 전환. */
-	async activatePanel(tab?: PanelTab): Promise<void> {
-		let leaf = this.app.workspace.getLeavesOfType(PANEL_VIEW_TYPE)[0];
-		if (!leaf) {
-			const right = this.app.workspace.getRightLeaf(false);
-			if (!right) return;
-			await right.setViewState({ type: PANEL_VIEW_TYPE, active: true });
-			leaf = right;
-		}
-		await this.app.workspace.revealLeaf(leaf);
-		// Deferred views: revealLeaf가 로드를 트리거하지만 view가 즉시 CoVaultPanelView로
-		// 바뀌지 않을 수 있다(차가운 리프). 탭 전환이 필요할 때만 명시적으로 로드를 보장한다.
-		if (tab) {
-			await leaf.loadIfDeferred?.();
-			if (leaf.view instanceof CoVaultPanelView) leaf.view.setTab(tab);
-		}
 	}
 
 	/** 로컬 경로를 담당하는 동기화 링크(피드백 저장/조회 + 실시간 스냅샷 대상). 없으면 undefined. */
