@@ -103,6 +103,12 @@ export class MirrorContext {
 		this.core.requestPersist();
 	}
 
+	/**
+	 * 이벤트 구동 동기화(통합 변경 감지)에서 로컬 DB 쓰기 후 원격 push를 깨우는 훅(MirrorSync가 주입).
+	 * live replication 모드에선 undefined — live sync가 자동 전파하므로 불필요.
+	 */
+	notifyLocalWrite?: () => void;
+
 	// --- 업로드 대기 중인 로컬 경로 (적용 레이스 방지) ---
 	// 사용자가 방금 편집해 업로드 대기 중인 파일은 원격 적용으로 덮지 않는다.
 	// 참조 카운트: 업로드 의무(디바운스 타이머 1개 또는 진행 중 업로드 1건)마다 1씩 잡는다.

@@ -3,6 +3,9 @@ import { MirrorSync } from "../../core/sync/MirrorSync";
 import { SyncDirection } from "../../core/sync/FullSync";
 import { computeChildRoots } from "../../core/sync/childRoots";
 import { pickSyncByDb, pickSyncOwning } from "../../core/sync/syncLookup";
+import { DbUpdatesWatcher } from "../../core/couch/DbUpdatesWatcher";
+import { chooseTransport } from "../../core/couch/dbUpdatesLogic";
+import { getCouchPassword } from "../../core/secret";
 import { CoVaultMode } from "../CoVaultMode";
 import { t } from "../../i18n";
 
@@ -14,6 +17,10 @@ import { t } from "../../i18n";
 export class ManagerMode implements CoVaultMode {
 	readonly role = "manager" as const;
 	private readonly syncs: MirrorSync[];
+	// --- 통합 변경 감지(_db_updates, 평가 H-6) — 옵션·probe 성공 시 live 대신 이벤트 구동 ---
+	private watcher: DbUpdatesWatcher | null = null;
+	private safetyTimer: ReturnType<typeof setInterval> | null = null;
+	private transport: "live" | "event" = "live";
 
 	constructor(private core: CoreServices) {
 		const s = core.settings;
@@ -35,6 +42,7 @@ export class ManagerMode implements CoVaultMode {
 				localRoot: st.localRoot,
 				remoteDb: st.remoteDb,
 				childRoots: [...computeChildRoots(st.localRoot, roots), ...foreignShared],
+				transport: () => this.transport, // start()에서 probe 후 확정 — getter라 생성 시점 미정이어도 안전
 			});
 		});
 		const sharedSyncs = shared.map(
@@ -45,6 +53,7 @@ export class ManagerMode implements CoVaultMode {
 					localRoot: sp.folder,
 					remoteDb: sp.remoteDb,
 					childRoots: computeChildRoots(sp.folder, roots),
+					transport: () => this.transport,
 				}),
 		);
 		// 내 볼트 개인 동기화(선택): vault 전체(localRoot="") ↔ 개인 DB. 개별/공동 공간 폴더는 childRoots로,
@@ -58,6 +67,7 @@ export class ManagerMode implements CoVaultMode {
 							localRoot: "",
 							remoteDb: s.personalRemoteDb,
 							childRoots: computeChildRoots("", roots),
+							transport: () => this.transport,
 						}),
 				  ]
 				: [];
@@ -96,10 +106,81 @@ export class ManagerMode implements CoVaultMode {
 			this.core.logger.warn(t("mode.no_members_or_shared_spaces_add"));
 			return;
 		}
+		// 감지 연결을 먼저 켠 뒤 각 sync.start()의 runStartup이 그 이전 누락분을 흡수한다(공백 없음).
+		await this.initTransport();
 		for (const sync of this.syncs) await sync.start();
+		if (this.transport === "event") this.startSafetyNet();
+	}
+
+	/** 통합 변경 감지 사용 여부 결정(probe) + watcher 기동. 실패/미지원이면 live 유지(기능 동등성). */
+	private async initTransport(): Promise<void> {
+		const s = this.core.settings;
+		const enabled = s.managerSyncTransport === "db-updates";
+		const password = getCouchPassword(this.core.app, s.password);
+		const hasCreds = !!(s.couchdbUrl && s.username && password);
+		let probeOk = false;
+		if (enabled && hasCreds) {
+			const p = await DbUpdatesWatcher.probe(s.couchdbUrl, s.username, password);
+			probeOk = p.ok;
+			if (!p.ok) this.core.logger.warn(t("mode.db_updates_unsupported", { status: String(p.status ?? "network") }), true);
+		}
+		this.transport = chooseTransport({ enabled, isManager: true, hasCreds, probeOk });
+		if (this.transport !== "event") return;
+		this.watcher = new DbUpdatesWatcher({
+			baseUrl: s.couchdbUrl,
+			username: s.username,
+			password,
+			dbs: () => new Set(this.syncs.map((x) => x.remoteDb)),
+			onDbChanged: (db) => void this.findSyncByDb(db)?.syncOnce(),
+			onFatal: (reason, detail) => this.onWatcherFatal(reason, detail),
+		});
+		this.watcher.start();
+		this.core.logger.info(t("mode.db_updates_active", { n: this.syncs.length }));
+	}
+
+	/** 런타임 권한 회수/미지원 — 전 링크를 live replication으로 폴백(무중단 기능 동등성). */
+	private onWatcherFatal(reason: "forbidden" | "unsupported", detail: string): void {
+		this.core.logger.warn(t("mode.db_updates_fallback", { reason, detail }), true);
+		this.watcher = null;
+		this.stopSafetyNet();
+		this.transport = "live";
+		for (const sync of this.syncs) sync.fallbackToLive();
+	}
+
+	/** 5분 안전망 — 감지 누락(since 리셋·외부 직접 쓰기 등)의 최종 방어선. 직렬 await라 자연 스태거. */
+	private startSafetyNet(): void {
+		this.safetyTimer = setInterval(
+			() =>
+				void (async () => {
+					for (const sync of this.syncs) await sync.syncOnce();
+				})(),
+			5 * 60_000,
+		);
+	}
+
+	private stopSafetyNet(): void {
+		if (this.safetyTimer) {
+			clearInterval(this.safetyTimer);
+			this.safetyTimer = null;
+		}
+	}
+
+	/** 백그라운드 전환: 감지 연결도 함께 멈추고/재개(절전 정책 일관성). 재개 캐치업은 resumeReplication이 수행. */
+	onVisibility(hidden: boolean): void {
+		if (this.transport !== "event") return;
+		if (hidden) {
+			this.watcher?.stop();
+			this.stopSafetyNet();
+		} else {
+			this.watcher?.start();
+			this.startSafetyNet();
+		}
 	}
 
 	async stop(): Promise<void> {
+		this.watcher?.stop();
+		this.watcher = null;
+		this.stopSafetyNet();
 		for (const sync of this.syncs) await sync.stop();
 		this.core.logger.info(t("mode.manager_mode_stopped"));
 	}

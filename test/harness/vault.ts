@@ -135,6 +135,12 @@ export class InMemoryVault {
 		this.files.set(to, e);
 	}
 
+	// --- 이벤트 API 스텁(LocalWatcher 호환) — 테스트는 업로드를 직접 구동하므로 발화는 없다. ---
+	on(_name: string, _cb: (...args: unknown[]) => unknown): { id: number } {
+		return { id: 0 };
+	}
+	offref(_ref: unknown): void {}
+
 	// --- 테스트 헬퍼 ---
 	has(path: string): boolean {
 		return this.files.has(normalizePath(path));
@@ -170,6 +176,9 @@ export function makeApp(appId: string, vaultName: string): { app: any; vault: In
 		vault,
 		fileManager: {
 			renameFile: async (file: TFile, toPath: string) => vault.rename(file, toPath),
+		},
+		workspace: {
+			onLayoutReady: (cb: () => void) => cb(), // 테스트에선 항상 준비됨
 		},
 	};
 	return { app, vault };

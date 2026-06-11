@@ -134,6 +134,7 @@ export class Uploader {
 		this.ctx.status.lastUploadAt = Date.now();
 		this.ctx.status.lastError = undefined;
 		this.ctx.logger.ok(t("sync.uploaded_local_remote", { path: dbPath }));
+		this.ctx.notifyLocalWrite?.(); // 이벤트 구동 모드: 원격 push 깨우기
 	}
 
 	/** 삭제/이름변경 시 옛 경로를 tombstone 처리(note/asset 공통). 기술문서 §8.3 / §10.3. */
@@ -171,6 +172,7 @@ export class Uploader {
 		delete doc._attachments; // tombstone은 바이너리 불필요
 		await ctx.pouch.put(doc);
 		ctx.logger.ok(t("sync.tombstone_marked_deleted", { path: dbPath }));
+		ctx.notifyLocalWrite?.();
 		return "tombstoned";
 	}
 
@@ -185,6 +187,7 @@ export class Uploader {
 		await this.snapshotBeforePurge(dbPath, existing); // '최근 영구 삭제' 되돌리기용
 		await ctx.pouch.removeRev(id, existing._rev);
 		ctx.logger.ok(t("sync.permanently_deleted_from_db_purge", { path: dbPath }));
+		ctx.notifyLocalWrite?.();
 		return "purged";
 	}
 

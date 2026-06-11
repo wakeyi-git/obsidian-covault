@@ -372,6 +372,9 @@ that exceeds the HTTP/1.1 per-host connection limit (typically 6), so requests q
 
 - Put CouchDB behind a reverse proxy that speaks **HTTP/2** to clients (Caddy and recent nginx do this automatically
   over HTTPS) — multiplexing removes the per-host connection cap.
+- Or enable **Unified change detection** in the plugin's manager settings (experimental, v0.112+): one `_db_updates`
+  connection watches every DB and only changed DBs replicate — requires server-admin credentials, falls back
+  automatically when unsupported.
 - On the manager device, prefer running large workspaces on the desktop app and keep mobile to member vaults
   (a member vault uses only 1–2 connections).
 

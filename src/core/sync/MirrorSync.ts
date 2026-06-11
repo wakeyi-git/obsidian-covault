@@ -36,6 +36,11 @@ export interface MirrorSyncOptions {
 	pouch?: PouchService;
 	/** 'shares' 등 설정 문서가 바뀌면 호출(학생이 공유 링크 reconcile). */
 	onConfigChange?: () => void;
+	/**
+	 * 전송 방식(start 시점에 평가). "event"면 live replication 대신 통합 변경 감지(_db_updates)가
+	 * syncOnce()를 깨우는 이벤트 구동 모드 — 운영자 N개 longpoll 병목 완화(평가 H-6). 기본 "live".
+	 */
+	transport?: () => "live" | "event";
 }
 
 export class MirrorSync {
@@ -50,6 +55,12 @@ export class MirrorSync {
 	private started = false;
 	private pausedByHidden = false; // 백그라운드 일시정지로 replication을 멈춘 상태
 	private transferredSinceActive = false; // 직전 active 구간에서 실제 문서가 오갔는지(빈 재연결 로그 억제)
+	// --- 이벤트 구동 모드(통합 변경 감지, 평가 H-6) ---
+	private readonly transportFn: () => "live" | "event";
+	private eventDriven = false;
+	private authStopped = false; // 인증 실패 시 스케줄 거부(계정 잠금 방지 — live 모드의 stopReplication과 동형)
+	private syncChain: Promise<void> = Promise.resolve(); // syncOnce/push 직렬화(동시 호출 코얼레싱)
+	private pushTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(core: CoreServices, opts: MirrorSyncOptions) {
 		const remoteDb = opts.remoteDb;
@@ -69,6 +80,7 @@ export class MirrorSync {
 		this.watcher = new LocalWatcher(this.ctx, this.uploader);
 		this.localApplier = new LocalApplier(this.ctx, this.applier, opts.onConfigChange);
 		this.fullSyncRunner = new FullSync(this.ctx, this.applier, this.uploader);
+		this.transportFn = opts.transport ?? (() => "live");
 	}
 
 	/** 이 링크의 라벨(학생 식별). */
@@ -167,10 +179,78 @@ export class MirrorSync {
 
 		// 로컬 DB 변경을 vault에 반영(원격에서 replication으로 들어온 것 포함)
 		this.localApplier.start();
-		// 로컬 ↔ 원격 live replication (오프라인 큐·재연결·충돌)
-		this.ctx.pouch.startReplication(this.replicationHandlers());
+		if (this.transportFn() === "event") {
+			// 이벤트 구동: live replication 없이 통합 변경 감지(_db_updates)가 syncOnce()를 깨운다.
+			// 로컬 쓰기는 notifyLocalWrite → requestPush(디바운스)로 원격에 전파한다.
+			this.eventDriven = true;
+			this.ctx.notifyLocalWrite = () => this.requestPush();
+			this.ctx.status.state = "idle"; // runStartup이 이미 정합 — 다음 이벤트까지 대기
+		} else {
+			// 로컬 ↔ 원격 live replication (오프라인 큐·재연결·충돌)
+			this.ctx.pouch.startReplication(this.replicationHandlers());
+		}
 		// vault 변경 감시
 		this.watcher.start();
+	}
+
+	// --- 이벤트 구동 모드 API (통합 변경 감지가 호출) ---
+
+	/**
+	 * 1회 pull+push + 상태 갱신. 직렬화 체인에 올려 동시 호출을 코얼레싱한다.
+	 * live 모드·정지·인증 실패·백그라운드에선 no-op.
+	 */
+	syncOnce(): Promise<void> {
+		if (!this.started || !this.eventDriven || this.authStopped || this.pausedByHidden) return Promise.resolve();
+		this.syncChain = this.syncChain.then(() => this.replicateOnce("both"));
+		return this.syncChain;
+	}
+
+	/** 로컬 쓰기 후 push만 디바운스 실행(연속 편집 코얼레싱). */
+	requestPush(delayMs = 1500): void {
+		if (!this.started || !this.eventDriven || this.authStopped || this.pausedByHidden) return;
+		if (this.pushTimer) clearTimeout(this.pushTimer);
+		this.pushTimer = setTimeout(() => {
+			this.pushTimer = null;
+			this.syncChain = this.syncChain.then(() => this.replicateOnce("push"));
+		}, delayMs);
+	}
+
+	/** 감지 연결 폴백/중단 시 live replication으로 전환(멱등). 기능 동등성 보장. */
+	fallbackToLive(): void {
+		if (!this.started || !this.eventDriven) return;
+		this.eventDriven = false;
+		this.ctx.notifyLocalWrite = undefined;
+		if (this.pushTimer) {
+			clearTimeout(this.pushTimer);
+			this.pushTimer = null;
+		}
+		if (!this.authStopped && !this.pausedByHidden) this.ctx.pouch.startReplication(this.replicationHandlers());
+	}
+
+	/** 1회 replication 실행체(직렬화 체인 전용). 오류는 상태로만 — 다음 이벤트/안전망이 재시도한다. */
+	private async replicateOnce(dir: "both" | "push"): Promise<void> {
+		if (!this.started || this.authStopped || this.pausedByHidden) return;
+		const wasOffline = this.ctx.status.state === "offline";
+		this.ctx.status.state = "syncing";
+		try {
+			const pulled = dir === "both" ? await this.ctx.pouch.replicatePullOnce() : 0;
+			const pushed = await this.ctx.pouch.replicatePushOnce();
+			this.ctx.status.state = "idle";
+			// 실제 문서가 오갔을 때만 로그(안전망 주기 실행의 무변경 소음 억제 — live 모드 onPaused와 동형).
+			if (pulled + pushed > 0) this.ctx.logger.info(t("sync.sync_caught_up_idle", { db: this.ctx.remoteDb }));
+		} catch (e) {
+			const msg = errMessage(e);
+			this.ctx.status.lastError = msg;
+			if (isAuthError(msg)) {
+				// 인증 실패 — 스케줄을 멈춘다(계속 두드리면 서버가 계정을 잠금. live 모드와 동일 정책).
+				this.authStopped = true;
+				this.ctx.status.state = "error";
+				this.ctx.logger.error(t("sync.sync_stopped_due_to_auth_failure", { db: this.ctx.remoteDb, err: msg }), true);
+			} else {
+				this.ctx.status.state = "offline"; // 다음 이벤트/안전망에서 재시도
+				if (!wasOffline) this.ctx.logger.info(t("sync.sync_waiting_offline_error", { db: this.ctx.remoteDb })); // 전이 시에만 로그
+			}
+		}
 	}
 
 	/** live replication 핸들러(시작/재개 공용). */
@@ -249,7 +329,15 @@ export class MirrorSync {
 		if (!this.started || this.pausedByHidden) return;
 		if (this.ctx.status.state === "disabled" || this.ctx.status.state === "error") return;
 		this.pausedByHidden = true;
-		this.ctx.pouch.stopReplication();
+		if (this.eventDriven) {
+			// 이벤트 모드: 끊을 연결이 없다 — 대기 push 취소 + 스케줄 거부 플래그만.
+			if (this.pushTimer) {
+				clearTimeout(this.pushTimer);
+				this.pushTimer = null;
+			}
+		} else {
+			this.ctx.pouch.stopReplication();
+		}
 		this.ctx.status.state = "offline";
 		this.ctx.logger.info(t("sync.background_sync_paused", { db: this.ctx.remoteDb }));
 	}
@@ -259,8 +347,13 @@ export class MirrorSync {
 		if (!this.pausedByHidden) return;
 		this.pausedByHidden = false;
 		if (!this.started || !this.ctx.settings.autoSync || !this.ctx.settings.couchdbUrl) return;
-		this.ctx.status.state = "syncing";
-		this.ctx.pouch.startReplication(this.replicationHandlers());
+		if (this.eventDriven) {
+			// 백그라운드 동안 놓친 변경 캐치업 1회 — 이후엔 감지 이벤트가 깨운다.
+			void this.syncOnce();
+		} else {
+			this.ctx.status.state = "syncing";
+			this.ctx.pouch.startReplication(this.replicationHandlers());
+		}
 		this.ctx.logger.info(t("sync.foreground_sync_resumed", { db: this.ctx.remoteDb }));
 	}
 
@@ -268,6 +361,11 @@ export class MirrorSync {
 		if (!this.started) return;
 		this.started = false;
 		this.ctx.status.state = "disabled";
+		if (this.pushTimer) {
+			clearTimeout(this.pushTimer);
+			this.pushTimer = null;
+		}
+		this.ctx.notifyLocalWrite = undefined;
 		this.watcher.stop();
 		this.localApplier.stop();
 		await this.ctx.core.flushPersist();

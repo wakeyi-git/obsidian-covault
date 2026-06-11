@@ -1155,10 +1155,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	private onVisibilityChange(): void {
 		if (!this.settings.pauseWhenHidden) return;
 		const hidden = document.hidden;
+		if (!hidden) this.mode?.onVisibility?.(false); // 감지 연결을 먼저 재시작(이후 캐치업이 공백 흡수)
 		for (const sync of this.mode?.getSyncs() ?? []) {
 			if (hidden) sync.pauseReplication();
 			else sync.resumeReplication();
 		}
+		if (hidden) this.mode?.onVisibility?.(true);
 	}
 
 	// --- 실시간 상태바 ---

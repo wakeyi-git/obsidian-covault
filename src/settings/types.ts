@@ -103,6 +103,9 @@ export interface CoVaultSettings {
 	/** 공유 DB별 마지막 성공 배포된 validate 정책 지문(validatePolicy.policyFingerprint).
 	 *  지문이 다를 때만 재배포 — 시작 시 호출이 멱등하고, 실패 DB는 미기록으로 자동 재시도된다. */
 	validatePolicyByDb?: Record<string, string>;
+	/** 운영자 동기화 전송 방식. "db-updates"=통합 변경 감지(연결 1개, 서버 관리자 전용·실험적 — 평가 H-6).
+	 *  기본/미지원·권한 부족 시 "live"(DB별 상시 replication)로 동작·폴백한다. */
+	managerSyncTransport?: "live" | "db-updates";
 
 	/** Manager Mode: 내 볼트 개인 동기화 사용 여부(개별/공동 공간·제외 폴더 제외한 나머지 노트·첨부). */
 	personalSyncEnabled?: boolean;

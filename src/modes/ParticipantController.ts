@@ -159,6 +159,7 @@ export class ParticipantController {
 			} as RtPartDoc);
 		}
 		this.d.realtime().invalidateParticipants(path);
+		sync.ctx.notifyLocalWrite?.(); // 이벤트 구동 동기화: rtpart 변경을 바로 원격에 push
 		// 읽기전용일 때만 의미 있음 — validate 임베드 허용 명단 갱신(20초 디바운스, 원격 전파 유예 겸함).
 		if (s.sharedReadOnly) this.d.requestValidateRedeploy(sync.ctx.remoteDb);
 	}
@@ -192,6 +193,8 @@ export class ParticipantController {
 		await oldSync.ctx.pouch.put({ ...oldDoc, deleted: true, updatedAtMs: Date.now() }).catch(() => {});
 		this.d.realtime().invalidateParticipants(oldPath);
 		this.d.realtime().invalidateParticipants(newPath);
+		oldSync.ctx.notifyLocalWrite?.();
+		newSync?.ctx.notifyLocalWrite?.();
 		if (s.sharedReadOnly) {
 			this.d.requestValidateRedeploy(oldSync.ctx.remoteDb);
 			if (newSync && newSync.ctx.remoteDb !== oldSync.ctx.remoteDb) this.d.requestValidateRedeploy(newSync.ctx.remoteDb);
@@ -208,6 +211,7 @@ export class ParticipantController {
 		const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath)).catch(() => null);
 		if (doc && !doc.deleted) await sync.ctx.pouch.put({ ...doc, deleted: true, updatedAtMs: Date.now() }).catch(() => {});
 		this.d.realtime().invalidateParticipants(path);
+		sync.ctx.notifyLocalWrite?.();
 		if (s.sharedReadOnly && doc && !doc.deleted) this.d.requestValidateRedeploy(sync.ctx.remoteDb);
 	}
 

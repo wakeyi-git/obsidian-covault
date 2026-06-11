@@ -17,4 +17,6 @@ export interface CoVaultMode {
 	findSyncOwning(localPath: string): MirrorSync | undefined;
 	/** 공유 공간 shares 재조회(Member 전용). Manager는 미구현(undefined). */
 	refreshShares?(): Promise<void>;
+	/** 백그라운드 전환 알림(선택). Manager의 통합 변경 감지 연결을 함께 멈추고/재개한다. */
+	onVisibility?(hidden: boolean): void;
 }

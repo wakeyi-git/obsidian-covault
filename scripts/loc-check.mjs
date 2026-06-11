@@ -16,8 +16,8 @@ const OVERRIDES = {
 	// main.ts: god object 분해 완료(1424→939, -34%) 후 기능 추가로 재성장(딥링크 초대 확인 모달,
 	// 캐시 초기화 확인, onunload 타이머 정리, 기본 폴더 현지화 배선 등 UI 글루 포함).
 	// PanelHost 인터페이스 컴포지션으로 600 도달이 목표 — 별도 후속(평가 M-12).
-	"src/main.ts": 1176, // +토큰 만료 경고(M-9)·validate 재배포 배선(H-5)
-	"src/settings/SettingsTab.ts": 1121, // 범위 밖(+그룹 관리, +실시간 서버 서비스 계정 설정, +검증 메시지)
+	"src/main.ts": 1178, // +M-9 경고·H-5 재배포·H-6 visibility 배선
+	"src/settings/SettingsTab.ts": 1137, // 범위 밖(+그룹 관리·실시간 서비스 계정·검증 메시지·통합 변경 감지 토글)
 	"src/modes/ClassroomController.ts": 1040, // 범위 밖(+그룹 대화·대화 기능)
 	"src/core/realtime/RealtimeManager.ts": 713, // 범위 밖(게이트 로직은 main에 있음) — +서버 거부 재시도 백오프
 	// 문서 모델: 타입 선언 + 타입 가드(평가 H-8) 위주라 캡을 너그럽게 둔다.

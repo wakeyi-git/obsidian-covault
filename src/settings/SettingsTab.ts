@@ -373,6 +373,22 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		this.templateRow(tpl, t("settings.assignment_template"), "assignmentTemplate", "assignment");
 
 		// 내 볼트 개인 동기화(개별/공동 공간 제외)
+		// 통합 변경 감지(H-6, 실험적) — 변경 시 모드 재시작으로 즉시 적용.
+		shared.addSetting((set) =>
+			set
+				.setName(t("settings.db_updates_transport"))
+				.setDesc(t("settings.db_updates_transport_desc"))
+				.addToggle((tg) =>
+					tg.setValue(s.managerSyncTransport === "db-updates").onChange((v) =>
+						this.runAsync(tg, async () => {
+							s.managerSyncTransport = v ? "db-updates" : "live";
+							await this.host.saveSettings();
+							await this.host.restartMode();
+						}),
+					),
+				),
+		);
+
 		const personal = this.group(t("settings.personal_sync"), t("settings.personal_sync_desc"));
 		personal.addSetting((set) =>
 			set
