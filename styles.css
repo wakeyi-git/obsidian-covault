@@ -68,10 +68,10 @@
 	padding: 4px 6px 0;
 	overflow-x: auto;
 	overflow-y: hidden;
-	scrollbar-width: thin;
+	scrollbar-width: none; /* 가장자리 자동 스크롤이 있어 스크롤바는 숨긴다(Firefox) */
 }
 .covault-panel-tabs::-webkit-scrollbar {
-	height: 4px;
+	display: none; /* Chromium/WebKit(Obsidian 데스크톱·모바일) */
 }
 
 .covault-panel-tab {
