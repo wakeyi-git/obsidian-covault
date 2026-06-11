@@ -72,7 +72,7 @@ export class CoVaultPanelView extends ItemView {
 		return t("panel.covault");
 	}
 	getIcon(): string {
-		return "graduation-cap";
+		return "vault"; // 리본 아이콘과 동일 — 학급 전용이 아닌 제품 정체성(공유 금고)
 	}
 
 	/** 역할에 허용된 전체 탭(기본 순서). 탭 사용자화의 후보 목록. */

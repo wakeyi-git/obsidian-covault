@@ -273,7 +273,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 
 		this.registerView(PANEL_VIEW_TYPE, (leaf: WorkspaceLeaf) => new CoVaultPanelView(leaf, this));
 		this.addSettingTab(new CoVaultSettingTab(this.app, this));
-		this.addRibbonIcon("graduation-cap", t("command.open_covault_panel"), () => this.activatePanel());
+		// 아이콘은 학급 전용(학사모)이 아닌 제품 정체성(공유 금고) 기준 — 볼트 공유·동기화·실시간 편집 전반에 쓰인다.
+		this.addRibbonIcon("vault", t("command.open_covault_panel"), () => this.activatePanel());
 		this.registerCommands();
 
 		// 학생 초대 딥링크: 폰 카메라로 QR 스캔 → obsidian://covault-invite?d=... → 자동 설정
