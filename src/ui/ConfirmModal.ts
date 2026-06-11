@@ -14,6 +14,16 @@ export interface ConfirmOptions {
 	onCancel?: () => void;
 }
 
+/**
+ * 확인 모달의 Promise 래퍼 — true=확인, false=취소(닫기 포함). 컨트롤러가 모달을 직접 import하지
+ * 않는 관례를 지키면서 확인 절차를 deps로 주입할 때 쓴다(M-12 컴포지션).
+ */
+export function confirm(app: App, opts: Omit<ConfirmOptions, "onConfirm" | "onCancel">): Promise<boolean> {
+	return new Promise((resolve) => {
+		new ConfirmModal(app, { ...opts, onConfirm: () => resolve(true), onCancel: () => resolve(false) }).open();
+	});
+}
+
 /** 간단한 확인 모달(파괴적 동작 실수 방지). 서버 초기화처럼 단어 입력까지는 필요 없는 경우에 쓴다. */
 export class ConfirmModal extends Modal {
 	private checked: boolean;
