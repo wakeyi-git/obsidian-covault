@@ -167,6 +167,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 			saveSettings: () => this.saveSettings(),
 			refreshMemberShares: () => this.refreshMemberShares(),
 			writeRtControl: () => this.deploymentCtl.writeRtControl(),
+			redeployValidate: () => this.deploymentCtl.redeployValidate(),
+			requestValidateRedeploy: (db) => this.deploymentCtl.requestValidateRedeploy(db),
 		});
 		this.deploymentCtl = new DeploymentController({
 			app: this.app,
@@ -298,6 +300,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost, Confl
 	async onunload(): Promise<void> {
 		if (this.applyTimer) window.clearTimeout(this.applyTimer);
 		if (this.groupRequestTimer) window.clearTimeout(this.groupRequestTimer);
+		this.deploymentCtl?.dispose(); // 대기 중인 validate 재배포 타이머 정리
 		await this.realtime?.dispose();
 		await this.mode?.stop();
 		await this.core?.flushPersist();

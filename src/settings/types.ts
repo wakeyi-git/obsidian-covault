@@ -98,8 +98,11 @@ export interface CoVaultSettings {
 	groupAutoApprove?: boolean;
 	/** Manager Mode: 구성원 1인당 대기/보유 가능한 자율 그룹 상한(기본 3). */
 	groupMaxPerMember?: number;
-	/** 공유 DB validate_doc_update 배포 버전 — 다르면 시작 시 1회 재배포(교사). */
+	/** @deprecated v3부터 validatePolicyByDb(지문)로 대체 — 읽지 않음(구버전 설정 호환용으로만 유지). */
 	validateDocVersion?: number;
+	/** 공유 DB별 마지막 성공 배포된 validate 정책 지문(validatePolicy.policyFingerprint).
+	 *  지문이 다를 때만 재배포 — 시작 시 호출이 멱등하고, 실패 DB는 미기록으로 자동 재시도된다. */
+	validatePolicyByDb?: Record<string, string>;
 
 	/** Manager Mode: 내 볼트 개인 동기화 사용 여부(개별/공동 공간·제외 폴더 제외한 나머지 노트·첨부). */
 	personalSyncEnabled?: boolean;

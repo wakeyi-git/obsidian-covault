@@ -1,35 +1,8 @@
 import { createObsidianFetch } from "./obsidianFetch";
 import { t } from "../../i18n";
 
-/** validate_doc_update 배포 버전. 내용이 바뀌면 올린다 — 교사 시작 시 settings.validateDocVersion과 비교해 1회 재배포. */
-export const VALIDATE_DOC_VERSION = 2;
-
-/**
- * 공유 DB validate_doc_update 소스(CouchDB가 평가하는 함수 문자열). 테스트에서 직접 평가해 검증한다.
- * - 교사(_admin)는 우회. 구성원(member)은:
- *   · 교사 전용 타입(게시물 메타 + 인가·명단 문서) 쓰기 금지 — rtpart/rtcontrol을 구성원이 써서
- *     스스로 실시간 인가를 부여하던 구멍 봉쇄, chatgroup/roster 위·변조 차단
- *   · response(읽음/댓글)는 자기 소유만
- *   · grouprequest(그룹 신청)는 본인(byUsername=CouchDB 계정명) 문서만 + status는 pending만(승인 위조 차단)
- * - message(대화)는 협업 콘텐츠로 소유 검사하지 않는다 — byUser는 앱 정체성이라 계정명과 다를 수 있다.
- */
-export const VALIDATE_DOC_SOURCE =
-	"function (newDoc, oldDoc, userCtx) {\n" +
-	"  if (userCtx && userCtx.roles && userCtx.roles.indexOf('_admin') >= 0) return;\n" +
-	"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
-	"  var teacherOnly = ['notice','timetable','routine','assignment','chatgroup','rtpart','rtcontrol','roster'];\n" +
-	"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
-	"  if (t === 'response') {\n" +
-	"    var owner = newDoc._deleted ? (oldDoc && oldDoc.byUser) : newDoc.byUser;\n" +
-	"    if (owner && owner !== userCtx.name) throw({ forbidden: 'own doc only' });\n" +
-	"  }\n" +
-	"  if (t === 'grouprequest') {\n" +
-	"    var reqOwner = newDoc._deleted ? (oldDoc && oldDoc.byUsername) : newDoc.byUsername;\n" +
-	"    if (!reqOwner || reqOwner !== userCtx.name) throw({ forbidden: 'own request only' });\n" +
-	"    if (oldDoc && oldDoc.byUsername && oldDoc.byUsername !== userCtx.name) throw({ forbidden: 'own request only' });\n" +
-	"    if (!newDoc._deleted && newDoc.status !== 'pending') throw({ forbidden: 'status is manager-only' });\n" +
-	"  }\n" +
-	"}";
+// validate_doc_update 소스·버전·정책 빌더는 validatePolicy.ts로 이전(v3 — 정책 임베드형).
+// 배포 오케스트레이션은 DeploymentController.redeployValidate(지문 비교)가 담당한다.
 
 /**
  * CouchDB 관리자 프로비저닝. 기술문서 §13 / §22.
@@ -208,22 +181,17 @@ export class CouchAdmin {
 				}),
 			};
 		}
-		const sec = await this.setSecurity(remoteDb, memberUsernames);
-		if (!sec.ok) return sec;
-		// 서버측 쓰기 권한 강제(학생=member): 교사 게시물(메타) 보호 + 응답은 본인 것만.
-		// 교사는 server-admin 자격증명으로 쓰므로 validate를 우회한다. note/asset(파일) 협업은 영향 없음.
-		return this.putValidateDesignDoc(remoteDb);
+		// validate 배포는 분리됐다 — 정책(읽기전용·참여자)이 DB마다 달라 호출측(redeployValidate)이
+		// buildValidateSource로 만든 소스를 putValidateDesignDoc(db, source)로 배포한다.
+		return this.setSecurity(remoteDb, memberUsernames);
 	}
 
 	/**
 	 * 공유 DB에 validate_doc_update 디자인 문서를 배포(멱등). 서버 admin(_admin=교사)은 우회.
-	 * member(학생)는: notice/timetable/routine/assignment(교사 메타)·chatgroup/rtpart/rtcontrol/roster(인가·명단)
-	 * 쓰기 금지, response는 byUser=본인만, grouprequest는 본인(byUsername) 것만 + status는 pending만.
-	 * note/asset/feedback/message 등 협업 콘텐츠는 제한하지 않는다(모둠 공유 공간 호환).
+	 * 소스는 validatePolicy.buildValidateSource()가 정책(읽기전용·파일별 참여자)을 임베드해 생성한다.
 	 */
-	async putValidateDesignDoc(remoteDb: string): Promise<{ ok: boolean; error?: string }> {
+	async putValidateDesignDoc(remoteDb: string, validate: string): Promise<{ ok: boolean; error?: string }> {
 		const path = `${encodeURIComponent(remoteDb)}/_design/auth`;
-		const validate = VALIDATE_DOC_SOURCE;
 		for (let attempt = 0; attempt < 3; attempt++) {
 			const existing = await this.req("GET", path);
 			const body: Record<string, unknown> = { _id: "_design/auth", language: "javascript", validate_doc_update: validate };
@@ -295,6 +263,20 @@ export class CouchAdmin {
 		const delRev = del.json?.rev ?? rev;
 		await this.req("POST", "_users/_purge", { [userId]: [delRev] });
 		return { ok: true };
+	}
+
+	/**
+	 * prefix로 시작하는 문서 전체(원격 직접 조회, admin). validate 재배포가 rtpart를 **원격 기준**으로
+	 * 읽는 데 사용 — 로컬 pouch 캐치업 여부·모드 기동 여부와 무관하게 권위 소스를 본다.
+	 */
+	async listDocsByPrefix<T>(db: string, prefix: string): Promise<T[]> {
+		const q = `startkey=${encodeURIComponent(JSON.stringify(prefix))}&endkey=${encodeURIComponent(JSON.stringify(`${prefix}￿`))}`;
+		const res = await this.req("GET", `${encodeURIComponent(db)}/_all_docs?include_docs=true&${q}`);
+		if (res.status >= 400) {
+			throw new Error(t("couch.failed_to_list_documents_http", { status: res.status, reason: this.reasonOf(res) }));
+		}
+		const rows: Array<{ doc?: T }> = Array.isArray(res.json?.rows) ? res.json.rows : [];
+		return rows.map((r) => r.doc).filter((d): d is T => d != null);
 	}
 
 	/** 임의 DB에 문서 upsert(멱등). 학생 mirror DB에 shares 문서를 기록하는 데 사용. */

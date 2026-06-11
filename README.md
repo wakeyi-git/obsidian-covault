@@ -201,9 +201,10 @@ note, and in its highlighted session card pick the participating members (defaul
 *nobody* when read-only is on, *everyone* when off). Only the chosen members join the live session; the rest stay on plain
 file sync. This access control is **enforced by the server** — members not on the list are refused entry, and removing
 a member from a file makes the server **drop their live connection immediately** (and re-locks the note under the
-read-only policy). Note the scope: the server enforces **realtime session entry**; the read-only lock on plain file
-sync is applied by the plugin on each member's device, so treat it as a collaboration aid rather than a hard security
-boundary (per-member **data isolation** is what CouchDB `_security` enforces server-side). Excalidraw drawings are locked/unlocked the same way (view mode). Each card also lists who's
+read-only policy). Enforcement is server-side on both paths: the realtime server gates **session entry**, and CouchDB
+`validate_doc_update` rejects member writes of shared **note/asset documents** while read-only is on (session
+participants and the realtime service account stay allowed, so end-of-session uploads still work). A member editing
+files outside the plugin keeps their local copy, but the server refuses to accept the change. Excalidraw drawings are locked/unlocked the same way (view mode). Each card also lists who's
 co-editing **by name**, and assigned files stay in the list even when closed so you can reopen them with one click.
 Troubleshooting actions (reissue/redeploy tokens, check realtime status) live in a separate section of the tab.
 Members get a slim Realtime tab that shows only the sessions they're assigned to.

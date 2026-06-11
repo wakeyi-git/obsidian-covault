@@ -12,6 +12,7 @@ import { Uploader, UploadResult } from "./Uploader";
 import { LocalWatcher } from "./LocalWatcher";
 import { LocalApplier } from "./LocalApplier";
 import { FullSync, SyncDirection } from "./FullSync";
+import { parseDeniedEvent, deniedDisplayPath } from "./deniedEvent";
 import { t } from "../../i18n";
 
 /**
@@ -200,6 +201,7 @@ export class MirrorSync {
 						: t("sync.sync_caught_up_idle", { db: this.ctx.remoteDb }),
 				);
 			},
+			onDenied: (e) => this.handleDenied(e),
 			onError: (e) => {
 				this.ctx.status.lastError = e.message;
 				this.ctx.status.state = "error";
@@ -218,6 +220,28 @@ export class MirrorSync {
 				}
 			},
 		};
+	}
+
+	/** 읽기전용 거부 안내는 파일별 1회만(replication이 새 로컬 rev마다 재시도하므로 반복 방지). */
+	private deniedNotified = new Set<string>();
+
+	/**
+	 * 서버 validate가 쓰기를 거부(denied). 공유 읽기전용 정책(H-5)이면 구성원에게 행동 가능한 안내.
+	 * PouchDB는 거부된 문서를 영구 재시도하지 않는다 — 체크포인트는 전진하고, 로컬에서 새 rev가
+	 * 생기면 그때 다시 시도(다시 거부)된다. 즉 로컬 사본은 보존되고 재시도 폭주는 없다.
+	 * 정책 해제 후에는 다음 전체 동기화/시작 정합(push)이 보류분을 자연 수렴시킨다.
+	 */
+	private handleDenied(e: unknown): void {
+		const info = parseDeniedEvent(e);
+		if (!info.sharedReadOnly) {
+			this.ctx.logger.warn(t("sync.replication_write_denied", { db: this.ctx.remoteDb, id: info.id ?? "?" }));
+			return;
+		}
+		const path = deniedDisplayPath(info.id);
+		this.ctx.status.lastError = t("sync.readonly_write_denied_short", { path });
+		if (this.deniedNotified.has(path)) return;
+		this.deniedNotified.add(path);
+		this.ctx.logger.warn(t("sync.readonly_write_denied", { path }), true);
 	}
 
 	/** 백그라운드 진입 시 원격 replication만 일시정지(배터리/네트워크 절감). watcher/applier는 유지. */

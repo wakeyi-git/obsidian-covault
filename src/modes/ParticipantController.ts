@@ -25,6 +25,10 @@ export interface ParticipantDeps {
 	refreshMemberShares(): Promise<void>;
 	/** 실시간 인가 기본값(rtcontrol)을 공유 공간 DB에 기록 — Hocuspocus 서버가 즉시 재인가. */
 	writeRtControl(): Promise<void>;
+	/** validate(v3) 전체 재배포 — 읽기전용 토글을 서버 쓰기 규칙에 반영(지문 비교로 멱등). */
+	redeployValidate(): Promise<void>;
+	/** 한 DB의 validate 재배포를 디바운스 예약(참여자 변경 → 임베드 허용 명단 갱신). */
+	requestValidateRedeploy(db: string): void;
 }
 
 export class ParticipantController {
@@ -118,6 +122,9 @@ export class ParticipantController {
 		await this.d.saveSettings();
 		await this.d.refreshMemberShares(); // rtconfig로 전 구성원에 전파
 		await this.d.writeRtControl(); // 서버 인가 기본값 갱신(rtcontrol) → 활성 연결 재인가
+		// 서버 쓰기 규칙(validate)에도 반영 — 켜면 비참여자의 note/asset 쓰기가 서버에서 거부된다(H-5).
+		// 켜는 방향도 즉시 안전: 세션 참여자(rtpart)는 임베드 허용 명단에 있어 보증 업로드가 통과한다.
+		await this.d.redeployValidate();
 		this.d.realtime().syncOpenEditors();
 	}
 
@@ -152,6 +159,8 @@ export class ParticipantController {
 			} as RtPartDoc);
 		}
 		this.d.realtime().invalidateParticipants(path);
+		// 읽기전용일 때만 의미 있음 — validate 임베드 허용 명단 갱신(20초 디바운스, 원격 전파 유예 겸함).
+		if (s.sharedReadOnly) this.d.requestValidateRedeploy(sync.ctx.remoteDb);
 	}
 
 	/** 파일 이름 변경 시 지정 문서를 옛 dbPath → 새 dbPath로 이전(멤버/이름 보존). 교사만. */
@@ -183,6 +192,10 @@ export class ParticipantController {
 		await oldSync.ctx.pouch.put({ ...oldDoc, deleted: true, updatedAtMs: Date.now() }).catch(() => {});
 		this.d.realtime().invalidateParticipants(oldPath);
 		this.d.realtime().invalidateParticipants(newPath);
+		if (s.sharedReadOnly) {
+			this.d.requestValidateRedeploy(oldSync.ctx.remoteDb);
+			if (newSync && newSync.ctx.remoteDb !== oldSync.ctx.remoteDb) this.d.requestValidateRedeploy(newSync.ctx.remoteDb);
+		}
 	}
 
 	/** 파일 삭제 시 지정 문서 정리(soft-delete). 교사만. */
@@ -195,6 +208,7 @@ export class ParticipantController {
 		const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath)).catch(() => null);
 		if (doc && !doc.deleted) await sync.ctx.pouch.put({ ...doc, deleted: true, updatedAtMs: Date.now() }).catch(() => {});
 		this.d.realtime().invalidateParticipants(path);
+		if (s.sharedReadOnly && doc && !doc.deleted) this.d.requestValidateRedeploy(sync.ctx.remoteDb);
 	}
 
 	/** 이전 버전 rtpart 문서(memberNames 없음)에 이름을 채운다(교사). 학생은 동료 명단이 없어 문서 이름에 의존. */

@@ -1,11 +1,19 @@
 import { App } from "obsidian";
 import { Logger } from "../core/log/Logger";
 import { CoVaultSettings, SharedSpace, MemberConfig } from "../settings/types";
-import { CouchAdmin, VALIDATE_DOC_VERSION } from "../core/couch/CouchAdmin";
+import { CouchAdmin } from "../core/couch/CouchAdmin";
+import {
+	ValidatePolicy,
+	buildValidateSource,
+	policyFingerprint,
+	allowMapFromRtParts,
+	VALIDATE_SOURCE_WARN_BYTES,
+} from "../core/couch/validatePolicy";
 import { isValidCouchName } from "../core/path/path";
 import { setHomeroom } from "../core/classroom/homeroom";
 import { getYjsSecret, getRtServicePassword } from "../core/secret";
-import { RTCONTROL_DOC_ID } from "../core/model/types";
+import { RTCONTROL_DOC_ID, RTPART_ID_PREFIX, RtPartDoc } from "../core/model/types";
+import { errMessage } from "../core/util/err";
 import { t } from "../i18n";
 
 /**
@@ -74,31 +82,77 @@ export class DeploymentController {
 		}
 	}
 
+	/** DB별 validate 재배포 디바운스 타이머(requestValidateRedeploy). */
+	private validateTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 	/**
-	 * validate_doc_update를 프로비저닝된 모든 공유 DB에 재배포(버전 마이그레이션, 멱등).
-	 * 시작 시 settings.validateDocVersion이 현재 버전과 다르면 1회 호출 — 전부 성공해야 버전을 기록해
-	 * 자격증명 부재·일부 실패 시 다음 시작에 재시도된다.
+	 * validate_doc_update(v3 — 정책 임베드형)를 프로비저닝된 공유 DB에 재배포(지문 비교, 멱등).
+	 * DB마다 원격 rtpart(권위 소스)를 읽어 정책(읽기전용 + 파일별 참여자 username)을 만들고,
+	 * 마지막 성공 배포 지문(settings.validatePolicyByDb)과 다를 때만 PUT한다.
+	 * 실패 DB는 지문 미기록 → 다음 트리거/시작에서 자동 재시도(기존 validateDocVersion 패턴의 일반화).
 	 */
-	async redeployValidate(): Promise<void> {
+	async redeployValidate(opts?: { dbs?: string[] }): Promise<void> {
 		const s = this.d.settings();
-		if (s.role !== "manager" || s.validateDocVersion === VALIDATE_DOC_VERSION) return;
+		if (s.role !== "manager") return;
 		const adminPw = this.d.couchPassword();
 		if (!s.couchdbUrl || !s.username || !adminPw) return;
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
-		let allOk = true;
-		for (const sp of s.sharedSpaces) {
-			if (!sp.provisioned || !sp.remoteDb) continue;
-			const r = await admin.putValidateDesignDoc(sp.remoteDb);
-			if (!r.ok) {
-				allOk = false;
-				this.d.logger.warn(t("command.validate_redeploy_failed", { db: sp.remoteDb, err: r.error ?? "" }));
+		const targets = s.sharedSpaces.filter(
+			(sp) => sp.provisioned && sp.remoteDb && (!opts?.dbs || opts.dbs.includes(sp.remoteDb)),
+		);
+		let changed = 0;
+		for (const sp of targets) {
+			try {
+				const rtparts = await admin.listDocsByPrefix<RtPartDoc>(sp.remoteDb, RTPART_ID_PREFIX);
+				const policy: ValidatePolicy = {
+					readOnly: !!s.sharedReadOnly,
+					svcUsername: s.rtServiceUsername?.trim() || undefined,
+					allowByPath: allowMapFromRtParts(rtparts, s.members),
+				};
+				const fp = await policyFingerprint(policy);
+				if ((s.validatePolicyByDb ?? {})[sp.remoteDb] === fp) continue; // 이미 최신
+				const source = buildValidateSource(policy);
+				if (source.length > VALIDATE_SOURCE_WARN_BYTES) {
+					this.d.logger.warn(t("command.validate_source_too_large", { db: sp.remoteDb, kb: Math.round(source.length / 1024) }));
+				}
+				const r = await admin.putValidateDesignDoc(sp.remoteDb, source);
+				if (!r.ok) {
+					this.d.logger.warn(t("command.validate_redeploy_failed", { db: sp.remoteDb, err: r.error ?? "" }));
+					continue;
+				}
+				s.validatePolicyByDb = { ...(s.validatePolicyByDb ?? {}), [sp.remoteDb]: fp };
+				changed++;
+			} catch (e) {
+				this.d.logger.warn(t("command.validate_redeploy_failed", { db: sp.remoteDb, err: errMessage(e) }));
 			}
 		}
-		if (allOk) {
-			s.validateDocVersion = VALIDATE_DOC_VERSION;
+		if (changed > 0) {
 			await this.d.saveSettings();
 			this.d.logger.info(t("command.validate_redeployed"));
 		}
+	}
+
+	/**
+	 * 한 DB의 validate 재배포를 디바운스 예약(기본 20초). 연속 참여자 변경을 코얼레싱하고,
+	 * 참여자 제거 직후 그 구성원의 마지막 세션 종료 보증 업로드가 도달할 시간을 벌어준다.
+	 * rtpart는 로컬 pouch → replication으로 원격에 닿으므로 유예가 전파 시간도 겸한다.
+	 */
+	requestValidateRedeploy(db: string, delayMs = 20_000): void {
+		const prev = this.validateTimers.get(db);
+		if (prev) clearTimeout(prev);
+		this.validateTimers.set(
+			db,
+			setTimeout(() => {
+				this.validateTimers.delete(db);
+				void this.redeployValidate({ dbs: [db] });
+			}, delayMs),
+		);
+	}
+
+	/** 대기 중인 validate 재배포 타이머 정리(플러그인 언로드 시). */
+	dispose(): void {
+		for (const tm of this.validateTimers.values()) clearTimeout(tm);
+		this.validateTimers.clear();
 	}
 
 	/** 공유 공간 프로비저닝 + 전원 shares 갱신 + 토큰 재발급 + 모드 재시작(교사). quiet=패널 전환 없이(자동 승인용). */
@@ -137,6 +191,11 @@ export class DeploymentController {
 		space.provisioned = true;
 		space.lastDeployedAt = Date.now();
 		space.lastMemberSnapshot = [...space.members].sort();
+
+		// validate(v3)는 프로비저닝과 분리 배포 — 재배포(서버 리셋 후 포함)에서 디자인 문서가 빠지지 않게
+		// 이 DB의 지문을 무효화하고 즉시 배포한다(멤버십 변경에 따른 참여자 username 갱신도 반영).
+		if (s.validatePolicyByDb) delete s.validatePolicyByDb[space.remoteDb];
+		await this.redeployValidate({ dbs: [space.remoteDb] });
 
 		// 배포 때마다 모든 실시간 토큰을 재발급한다(공유: realtime 플래그, 개인 mirror: member.realtime).
 		// 이 배포에서 모든 학생의 shares가 다시 기록되므로, 시크릿/멤버/플래그 변경 시 구 토큰 재유출을 막는다.
@@ -246,6 +305,8 @@ export class DeploymentController {
 		for (const st of s.members) {
 			if (st.provisioned && st.remoteDb) await this.d.writeMemberSync(admin, st);
 		}
+		// 서비스 계정·멤버 구성 변경이 validate 임베드 정책에 반영되도록 전체 재배포(지문 비교로 멱등).
+		await this.redeployValidate();
 		this.d.logger.ok(t("command.realtime_settings_applied"), true);
 		await this.d.restartMode();
 	}

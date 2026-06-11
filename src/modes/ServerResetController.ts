@@ -135,6 +135,7 @@ export class ServerResetController {
 			for (const sp of s.sharedSpaces) sp.provisioned = false;
 		}
 		s.lastSeqByDb = {};
+		s.validatePolicyByDb = {}; // 서버가 비워졌으니 validate 배포 지문도 무효 — 재배포 강제
 		await this.d.saveSettings();
 
 		this.d.logger.warn(t("command.reset_yjs_realtime_data_manually_restart"), true);
