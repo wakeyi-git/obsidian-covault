@@ -16,7 +16,8 @@ export class PanelTabsModal extends Modal {
 	constructor(
 		app: App,
 		private rows: Array<TabRow & { visible: boolean }>,
-		private onSave: (visibleIds: string[] | null) => void,
+		private rememberLastTab: boolean,
+		private onSave: (visibleIds: string[] | null, rememberLastTab: boolean) => void,
 	) {
 		super(app);
 	}
@@ -60,10 +61,16 @@ export class PanelTabsModal extends Modal {
 			};
 		});
 
+		// 마지막에 본 탭을 재시작 후 복원할지(옵션).
+		new Setting(c)
+			.setName(t("panel.remember_last_tab"))
+			.setDesc(t("panel.remember_last_tab_desc"))
+			.addToggle((tg) => tg.setValue(this.rememberLastTab).onChange((v) => (this.rememberLastTab = v)));
+
 		new Setting(c)
 			.addButton((b) =>
 				b.setButtonText(t("panel.tabs_reset")).onClick(() => {
-					this.onSave(null); // 기본 구성으로 복귀
+					this.onSave(null, this.rememberLastTab); // 탭 구성만 기본 복귀, 복원 옵션은 토글값 유지
 					this.close();
 				}),
 			)
@@ -77,7 +84,7 @@ export class PanelTabsModal extends Modal {
 							new Notice(t("panel.tabs_min"));
 							return;
 						}
-						this.onSave(visible);
+						this.onSave(visible, this.rememberLastTab);
 						this.close();
 					}),
 			);

@@ -216,6 +216,10 @@ export interface CoVaultSettings {
 	 * 역할에 허용되지 않는 탭은 무시되고, 비워지면 기본 구성으로 복귀한다.
 	 */
 	panelTabs?: string[];
+	/** 패널을 다시 열 때 마지막에 보던 탭을 복원할지(탭 편집의 토글). 기본 꺼짐. */
+	rememberLastTab?: boolean;
+	/** rememberLastTab이 켜져 있을 때 마지막으로 본 탭 id(기기 로컬 — 내보내기 제외). */
+	lastActiveTab?: string;
 
 	/** 학급 대시보드: 알림장/과제 한 화면 표시 개수(이후 "더 보기"). 기본 10. */
 	dashboardPageSize?: number;

@@ -469,6 +469,8 @@
 		"move_down": "아래로",
 		"tabs_reset": "기본 구성으로",
 		"tabs_min": "최소 1개 탭은 남겨야 합니다.",
+		"remember_last_tab": "마지막 탭 기억",
+		"remember_last_tab_desc": "패널을 다시 열 때 대시보드 대신 마지막에 보던 탭으로 엽니다.",
 		"feedback": "피드백",
 		"sync_status": "동기화 상태",
 		"manager_setup": "운영자 시작하기",

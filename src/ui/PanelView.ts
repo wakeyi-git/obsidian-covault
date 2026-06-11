@@ -99,9 +99,21 @@ export class CoVaultPanelView extends ItemView {
 		this.tabBar = c.createDiv({ cls: "covault-panel-tabs" });
 		this.body = c.createDiv({ cls: "covault-panel-body" });
 		this.attachEdgeScroll(this.tabBar);
+		// 마지막 본 탭 복원(옵션). 저장된 탭이 현재 표시 목록에 있을 때만 — 숨김/역할변경이면 폴백.
+		const s = this.host.settings;
+		if (s.rememberLastTab && s.lastActiveTab && this.tabs().includes(s.lastActiveTab as PanelTab)) {
+			this.activeTab = s.lastActiveTab as PanelTab;
+		}
 		if (!this.tabs().includes(this.activeTab)) this.activeTab = this.tabs()[0] ?? "dashboard";
 		this.renderTabBar();
 		this.renderSection();
+	}
+
+	/** 마지막 본 탭 기록(옵션 켜짐일 때만). 클릭/외부 진입 공통. */
+	private rememberTab(tab: PanelTab): void {
+		if (!this.host.settings.rememberLastTab) return;
+		this.host.settings.lastActiveTab = tab;
+		void this.host.saveSettings();
 	}
 
 	/** 탭 바 좌우 가장자리에 포인터가 오면 자동으로 가로 스크롤. */
@@ -151,6 +163,7 @@ export class CoVaultPanelView extends ItemView {
 	setTab(tab: PanelTab): void {
 		if (!this.allTabs().includes(tab)) return;
 		this.activeTab = tab;
+		this.rememberTab(tab);
 		this.renderTabBar();
 		this.renderSection();
 	}
@@ -175,6 +188,7 @@ export class CoVaultPanelView extends ItemView {
 					return;
 				}
 				this.activeTab = tab;
+				this.rememberTab(tab);
 				this.renderTabBar();
 				this.renderSection();
 			};
@@ -194,11 +208,14 @@ export class CoVaultPanelView extends ItemView {
 			...visible.map((tab) => ({ id: tab, label: tabLabel(tab), icon: tabIcon(tab), visible: true })),
 			...hidden.map((tab) => ({ id: tab, label: tabLabel(tab), icon: tabIcon(tab), visible: false })),
 		];
-		new PanelTabsModal(this.host.app, rows, (visibleIds) => {
+		new PanelTabsModal(this.host.app, rows, this.host.settings.rememberLastTab ?? false, (visibleIds, rememberLastTab) => {
 			// null=기본 구성으로 복귀. 기본과 동일한 선택도 미설정으로 저장해 이후 기본 변경을 따라가게 한다.
 			const all = this.allTabs();
 			const isDefault = visibleIds != null && visibleIds.length === all.length && visibleIds.every((id, i) => id === all[i]);
 			this.host.settings.panelTabs = visibleIds == null || isDefault ? undefined : visibleIds;
+			this.host.settings.rememberLastTab = rememberLastTab;
+			// 켜는 즉시 현재 탭을 기준점으로 기록(끄면 무의미하므로 그대로 둠).
+			if (rememberLastTab) this.host.settings.lastActiveTab = this.activeTab;
 			void this.host.saveSettings();
 			if (!this.tabs().includes(this.activeTab)) this.activeTab = this.tabs()[0] ?? "dashboard";
 			this.refresh();

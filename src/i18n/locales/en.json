@@ -469,6 +469,8 @@
 		"move_down": "Move down",
 		"tabs_reset": "Reset to default",
 		"tabs_min": "Keep at least one tab.",
+		"remember_last_tab": "Remember last tab",
+		"remember_last_tab_desc": "Reopen the panel on the tab you were last viewing instead of the dashboard.",
 		"feedback": "Feedback",
 		"sync_status": "Sync status",
 		"manager_setup": "Manager setup",
