@@ -69,3 +69,12 @@ export class PluginSettingTab {}
 export class Modal {}
 export class MarkdownView {}
 export class ItemView {}
+// panelHost(빌더) 테스트가 ui 그래프를 import할 때 extends 대상이 필요(인스턴스화는 안 함).
+export class AbstractInputSuggest<T> {
+	protected _t!: T;
+}
+export class FuzzySuggestModal<T> extends Modal {
+	protected _t!: T;
+}
+export class Menu {}
+export function setIcon(_el: unknown, _icon: string): void {}

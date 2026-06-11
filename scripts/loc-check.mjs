@@ -13,10 +13,9 @@ const GENERAL_CAP = 500;
 // 2026-06 평가 H-7 조치: 이 검사를 CI에 연결하면서, 그 사이 캡을 넘긴 파일들을 현재값으로
 // ratchet 재고정했다(성장 차단). 분해(main.ts PanelHost 컴포지션 등)는 별도 후속 — 평가 보고서 M-12.
 const OVERRIDES = {
-	// main.ts: god object 분해 완료(1424→939, -34%) 후 기능 추가로 재성장(딥링크 초대 확인 모달,
-	// 캐시 초기화 확인, onunload 타이머 정리, 기본 폴더 현지화 배선 등 UI 글루 포함).
-	// PanelHost 인터페이스 컴포지션으로 600 도달이 목표 — 별도 후속(평가 M-12).
-	"src/main.ts": 1178, // +M-9 경고·H-5 재배포·H-6 visibility 배선
+	// main.ts: M-12 완료 — PanelHost를 컨트롤러 컴포지션(src/panelHost.ts)으로 조립해 1178→719.
+	// 남은 것은 수명주기·DI 배선·SettingsHost 1줄 위임. 이 값은 실측 ratchet(성장 차단).
+	"src/main.ts": 719,
 	"src/settings/SettingsTab.ts": 1137, // 범위 밖(+그룹 관리·실시간 서비스 계정·검증 메시지·통합 변경 감지 토글)
 	"src/modes/ClassroomController.ts": 1040, // 범위 밖(+그룹 대화·대화 기능)
 	"src/core/realtime/RealtimeManager.ts": 713, // 범위 밖(게이트 로직은 main에 있음) — +서버 거부 재시도 백오프
