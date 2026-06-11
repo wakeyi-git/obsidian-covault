@@ -188,6 +188,7 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 			"createAssignment",
 			"updateAssignment",
 			"deleteAssignment",
+			"archiveAssignment",
 			"listMyAssignments",
 			"listAssignmentStates",
 			"listAllAssignmentStates",

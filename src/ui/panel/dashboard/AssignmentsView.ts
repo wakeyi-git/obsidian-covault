@@ -1,7 +1,7 @@
 import { setIcon } from "obsidian";
 import { PanelHost, panelButton, iconButton } from "../PanelSection";
 import { AssignmentDoc, AssignmentStateDoc } from "../../../core/model/types";
-import { buildMatrix, statusCounts, displayStatus, gradeTotal, rubricMax, AssignmentDisplayStatus, MatrixRow } from "../../../core/classroom/assignments";
+import { buildMatrix, statusCounts, displayStatus, gradeTotal, rubricMax, defTab, stateTab, AssignmentDisplayStatus, AssignmentTab, MatrixRow } from "../../../core/classroom/assignments";
 import { AssignmentCreateModal, AssignmentInput } from "../../AssignmentCreateModal";
 import { GradingModal } from "../../GradingModal";
 import { ConfirmModal } from "../../ConfirmModal";
@@ -55,6 +55,9 @@ function statusIcon(s: AssignmentDisplayStatus): string {
 export class AssignmentsView {
 	private container: HTMLElement | null = null;
 	private limit = 0;
+	private tab: AssignmentTab = "active";
+	/** 명단을 펼쳐 둔 과제 uid — 채점·반환 후 reload에도 펼침 유지. */
+	private openUids = new Set<string>();
 
 	constructor(private host: PanelHost, private onBack: () => void) {}
 
@@ -122,15 +125,36 @@ export class AssignmentsView {
 			);
 		}
 
+		this.renderTabBar(c);
 		if (this.manager) await this.renderManager(c);
 		else await this.renderMember(c);
 	}
 
+	/** 진행 중/완료 필터 탭 — 전환 시 페이지네이션 limit 리셋. */
+	private renderTabBar(c: HTMLElement): void {
+		const bar = c.createDiv({ cls: "covault-dash-subtabs" });
+		const tabs: Array<{ tab: AssignmentTab; icon: string; label: string }> = [
+			{ tab: "active", icon: "circle-dashed", label: t("dashboard.tab_active") },
+			{ tab: "done", icon: "check-check", label: t("dashboard.tab_done") },
+		];
+		for (const d of tabs) {
+			const b = bar.createEl("button", { cls: `covault-dash-subtab${d.tab === this.tab ? " is-active" : ""}` });
+			setIcon(b.createSpan({ cls: "covault-dash-subtab-icon" }), d.icon);
+			b.createSpan({ text: d.label });
+			b.onclick = () => {
+				if (this.tab === d.tab) return;
+				this.tab = d.tab;
+				this.limit = 0;
+				void this.reload();
+			};
+		}
+	}
+
 	// --- 교사: 정의별 제출 매트릭스 ---
 	private async renderManager(c: HTMLElement): Promise<void> {
-		const defs = this.host.assignmentDefs();
+		const defs = this.host.assignmentDefs().filter((d) => defTab(d) === this.tab);
 		if (defs.length === 0) {
-			this.empty(c, t("dashboard.no_assignments"));
+			this.empty(c, this.tab === "done" ? t("dashboard.no_assignments_done") : t("dashboard.no_assignments"));
 			return;
 		}
 		const members = this.host.settings.members
@@ -149,17 +173,34 @@ export class AssignmentsView {
 			titles.createSpan({ cls: "covault-cr-card-title", text: def.title });
 			if (def.dueAt) titles.createSpan({ cls: "covault-cr-card-due", text: t("dashboard.due", { date: formatDate(new Date(def.dueAt)) }) });
 			iconButton(top, "pencil", t("common.edit"), () => this.editAssignment(def));
+			const archived = def.archivedAtMs != null;
+			iconButton(top, archived ? "archive-restore" : "archive", archived ? t("dashboard.unarchive") : t("dashboard.archive"), async () => {
+				await this.host.archiveAssignment(def.uid, !archived);
+				await this.reload();
+			});
 			iconButton(top, "trash-2", t("common.delete"), () => this.confirmDelete(def));
 
-			// 제출 진행률(제출+지각+반환 / 전체)
+			// 제출 진행률(제출+지각+반환 / 전체) — 행 클릭으로 명단 펼침/접힘(기본 접힘)
 			const submitted = counts.submitted + counts["submitted-late"] + counts.returned;
 			const total = rows.length;
-			const prow = card.createDiv({ cls: "covault-cr-cardrow" });
+			const prow = card.createDiv({ cls: "covault-cr-cardrow is-clickable" });
 			prow.createSpan({ cls: "covault-cr-muted", text: t("dashboard.submit_summary", { submitted, total }) });
 			const prog = prow.createDiv({ cls: "covault-cr-progress" });
 			prog.createEl("i").style.width = total > 0 ? `${Math.round((submitted / total) * 100)}%` : "0%";
+			const chev = prow.createSpan({ cls: "covault-cr-rowchev" });
 
 			const matrix = card.createDiv({ cls: "covault-cr-matrix" });
+			const setOpen = (open: boolean): void => {
+				matrix.style.display = open ? "" : "none";
+				setIcon(chev, open ? "chevron-down" : "chevron-right");
+			};
+			setOpen(this.openUids.has(def.uid));
+			prow.onclick = () => {
+				const open = !this.openUids.has(def.uid);
+				if (open) this.openUids.add(def.uid);
+				else this.openUids.delete(def.uid);
+				setOpen(open);
+			};
 			for (const r of rows) {
 				const line = matrix.createDiv({ cls: "covault-cr-matrix-row" });
 				line.createSpan({ cls: "covault-cr-matrix-name", text: r.memberName });
@@ -235,9 +276,11 @@ export class AssignmentsView {
 
 	// --- 학생: 내 과제 + 제출 ---
 	private async renderMember(c: HTMLElement): Promise<void> {
-		const states = (await this.host.listMyAssignments()).sort((a, b) => b.assignedAtMs - a.assignedAtMs);
+		const states = (await this.host.listMyAssignments())
+			.filter((s) => stateTab(s) === this.tab)
+			.sort((a, b) => b.assignedAtMs - a.assignedAtMs);
 		if (states.length === 0) {
-			this.empty(c, t("dashboard.no_assignments_member"));
+			this.empty(c, this.tab === "done" ? t("dashboard.no_assignments_done_member") : t("dashboard.no_assignments_member"));
 			return;
 		}
 		const now = Date.now();

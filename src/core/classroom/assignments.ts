@@ -67,6 +67,18 @@ export function displayStatus(state: AssignmentStateDoc, now: number): Assignmen
 	return state.dueAt && now > state.dueAt ? "overdue" : "assigned";
 }
 
+export type AssignmentTab = "active" | "done";
+
+/** 교사 뷰 탭 분류(순수): 보관됨 → done. */
+export function defTab(def: Pick<AssignmentDoc, "archivedAtMs">): AssignmentTab {
+	return def.archivedAtMs != null ? "done" : "active";
+}
+
+/** 학생 뷰 탭 분류(순수): 보관됨 또는 반환됨 → done, 나머지(미제출·채점 대기 포함) → active. */
+export function stateTab(state: Pick<AssignmentStateDoc, "archivedAtMs" | "state">): AssignmentTab {
+	return state.archivedAtMs != null || state.state === "returned" ? "done" : "active";
+}
+
 export interface MatrixRow {
 	memberId: string;
 	memberName: string;

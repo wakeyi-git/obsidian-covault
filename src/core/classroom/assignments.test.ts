@@ -4,6 +4,8 @@ import {
 	assignmentFileName,
 	substituteTemplate,
 	displayStatus,
+	defTab,
+	stateTab,
 	buildMatrix,
 	statusCounts,
 	criterionMax,
@@ -58,6 +60,25 @@ describe("displayStatus", () => {
 		expect(displayStatus(state({ state: "assigned", dueAt: 100 }), 200)).toBe("overdue");
 		expect(displayStatus(state({ state: "assigned", dueAt: 100 }), 50)).toBe("assigned");
 		expect(displayStatus(state({ state: "assigned" }), 999)).toBe("assigned");
+	});
+});
+
+describe("defTab / stateTab (진행 중/완료 탭 분류)", () => {
+	it("defTab: archivedAtMs 있으면 done, 없으면 active", () => {
+		expect(defTab({ archivedAtMs: undefined })).toBe("active");
+		expect(defTab({})).toBe("active");
+		expect(defTab({ archivedAtMs: 123 })).toBe("done");
+	});
+	it("stateTab: 반환됨 또는 보관됨 → done", () => {
+		expect(stateTab(state({ state: "returned" }))).toBe("done");
+		expect(stateTab(state({ state: "assigned", archivedAtMs: 123 }))).toBe("done");
+		expect(stateTab(state({ state: "returned", archivedAtMs: 123 }))).toBe("done");
+	});
+	it("stateTab: 미제출(마감 경과 포함)·채점 대기 → active", () => {
+		expect(stateTab(state({ state: "assigned" }))).toBe("active");
+		expect(stateTab(state({ state: "assigned", dueAt: 100 }))).toBe("active"); // overdue도 active
+		expect(stateTab(state({ state: "submitted", submittedAtMs: 50 }))).toBe("active"); // 채점 대기
+		expect(stateTab(state({ state: "submitted", submittedAtMs: 150, dueAt: 100 }))).toBe("active"); // 지각 제출
 	});
 });
 

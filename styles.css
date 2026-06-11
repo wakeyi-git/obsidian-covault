@@ -124,8 +124,9 @@
 	flex: 1;
 }
 
-/* 시스템 탭의 서브탭 바(동기화/복구/이력/로그) */
-.covault-system-subtabs {
+/* 시스템 탭의 서브탭 바(동기화/복구/이력/로그) + 대시보드 모듈 필터 탭(과제 진행 중/완료) */
+.covault-system-subtabs,
+.covault-dash-subtabs {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 4px;
@@ -133,7 +134,8 @@
 	padding-bottom: 6px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
-.covault-system-subtab {
+.covault-system-subtab,
+.covault-dash-subtab {
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
@@ -144,18 +146,22 @@
 	background: transparent;
 	cursor: pointer;
 }
-.covault-system-subtab:hover {
+.covault-system-subtab:hover,
+.covault-dash-subtab:hover {
 	background: var(--background-modifier-hover);
 }
-.covault-system-subtab.is-active {
+.covault-system-subtab.is-active,
+.covault-dash-subtab.is-active {
 	color: var(--text-on-accent);
 	background: var(--interactive-accent);
 	font-weight: 600;
 }
-.covault-system-subtab-icon {
+.covault-system-subtab-icon,
+.covault-dash-subtab-icon {
 	display: inline-flex;
 }
-.covault-system-subtab-icon .svg-icon {
+.covault-system-subtab-icon .svg-icon,
+.covault-dash-subtab-icon .svg-icon {
 	width: 14px;
 	height: 14px;
 }
@@ -1711,6 +1717,14 @@
 }
 
 /* covault-cr 보조: 카드 내 진행률 행 + 보조 텍스트 */
+/* 과제 카드 진행률 행 — 클릭으로 명단 펼침/접힘 */
+.covault-cr-cardrow.is-clickable {
+	cursor: pointer;
+	border-radius: 6px;
+}
+.covault-cr-cardrow.is-clickable:hover {
+	background: var(--background-modifier-hover);
+}
 .covault-cr-cardrow {
 	display: flex;
 	align-items: center;

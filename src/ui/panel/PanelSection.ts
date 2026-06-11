@@ -172,6 +172,8 @@ export interface AssignmentHost {
 	}): Promise<boolean>;
 	/** 과제 삭제(교사) — 정의 제거 + 학생 상태 문서 soft-delete. */
 	deleteAssignment(uid: string): Promise<boolean>;
+	/** 과제 보관/해제(교사) — 학생 상태 문서에도 전파. */
+	archiveAssignment(uid: string, archived: boolean): Promise<boolean>;
 	listMyAssignments(): Promise<AssignmentStateDoc[]>;
 	listAssignmentStates(uid: string): Promise<AssignmentStateDoc[]>;
 	/** 전체 구성원의 모든 과제 상태(교사 통계용, 구성원당 prefix 조회 1회). */

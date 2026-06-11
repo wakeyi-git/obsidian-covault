@@ -585,6 +585,7 @@ export class ClassroomController {
 				dueAt: def.dueAt,
 				maxPoints: def.rubric ? rubricMax(def.rubric) : def.points,
 				deleted: undefined,
+				archivedAtMs: def.archivedAtMs, // 정의 기준으로 보관 상태 재수렴(보관 시 미동기화였던 학생 보정)
 			};
 			const r = await admin.putDoc(member.remoteDb, stateDoc);
 			if (!r.ok) this.d.logger.error(t("dashboard.assignment_distribute_failed", { id: memberId, err: r.error ?? "" }));
@@ -643,6 +644,39 @@ export class ClassroomController {
 	async openVaultPath(path: string): Promise<void> {
 		const f = this.d.app.vault.getAbstractFileByPath(path);
 		if (f instanceof TFile) await this.d.app.workspace.getLeaf(false).openFile(f, { active: true });
+	}
+
+	/**
+	 * 과제 보관/해제(교사) — 정의에 archivedAtMs 기록 + 각 학생 상태 문서에 전파(복제로 도달).
+	 * 미동기화 학생(상태 문서 미수신)은 건너뛰고 경고만 — 이후 편집·재배포 시 정의 기준으로 재수렴된다.
+	 */
+	async archiveAssignment(uid: string, archived: boolean): Promise<boolean> {
+		const s = this.d.settings();
+		if (s.role !== "manager") {
+			this.d.logger.warn(t("command.available_in_manager_mode_only"), true);
+			return false;
+		}
+		const defs = s.assignments ?? [];
+		const def = defs.find((d) => d.uid === uid);
+		if (!def) return false;
+		const archivedAtMs = archived ? Date.now() : undefined;
+		s.assignments = defs.map((d) => (d.uid === uid ? { ...d, archivedAtMs } : d));
+		await this.d.saveSettings();
+		let failed = 0;
+		for (const memberId of def.targetMembers) {
+			const member = s.members.find((m) => m.memberId === memberId);
+			const sync = member ? this.d.memberSyncByRemoteDb(member.remoteDb) : null;
+			const cur = await sync?.ctx.pouch.get<AssignmentStateDoc>(assignmentStateId(uid, memberId));
+			if (!cur || cur.deleted) {
+				failed++;
+				continue;
+			}
+			await sync!.ctx.pouch.put({ ...cur, archivedAtMs });
+		}
+		this.d.requestApply();
+		this.d.logger.ok(archived ? t("dashboard.assignment_archived", { title: def.title }) : t("dashboard.assignment_unarchived", { title: def.title }), true);
+		if (failed > 0) this.d.logger.warn(t("dashboard.archive_partial", { n: failed }), true);
+		return true;
 	}
 
 	async returnAssignment(uid: string, memberId: string, grade: AssignmentGrade): Promise<boolean> {

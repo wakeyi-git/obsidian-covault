@@ -237,14 +237,14 @@ export class DashboardSection implements PanelSection {
 
 	private async assignmentsSummary(): Promise<string> {
 		if (!this.manager) {
-			// 학생: 제출(또는 반환)한 과제 / 전체
-			const states = await this.host.listMyAssignments();
+			// 학생: 제출(또는 반환)한 과제 / 전체 — 보관된 과제는 요약에서 제외
+			const states = (await this.host.listMyAssignments()).filter((s) => s.archivedAtMs == null);
 			if (states.length === 0) return "";
 			const submitted = states.filter((s) => s.state === "submitted" || s.state === "returned").length;
 			return t("dashboard.sum_submitted", { done: submitted, total: states.length });
 		}
-		// 교사: 제출한 (과제,구성원) / 전체 대상
-		const defs = this.host.assignmentDefs();
+		// 교사: 제출한 (과제,구성원) / 전체 대상 — 보관된 과제는 요약에서 제외
+		const defs = this.host.assignmentDefs().filter((d) => d.archivedAtMs == null);
 		if (defs.length === 0) return "";
 		let total = 0;
 		let submitted = 0;

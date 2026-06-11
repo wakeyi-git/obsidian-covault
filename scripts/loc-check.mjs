@@ -17,7 +17,7 @@ const OVERRIDES = {
 	// 남은 것은 수명주기·DI 배선·SettingsHost 1줄 위임. 이 값은 실측 ratchet(성장 차단).
 	"src/main.ts": 719,
 	"src/settings/SettingsTab.ts": 1137, // 범위 밖(+그룹 관리·실시간 서비스 계정·검증 메시지·통합 변경 감지 토글)
-	"src/modes/ClassroomController.ts": 1040, // 범위 밖(+그룹 대화·대화 기능)
+	"src/modes/ClassroomController.ts": 1068, // 범위 밖(+그룹 대화·대화 기능, +과제 보관/해제 전파)
 	"src/core/realtime/RealtimeManager.ts": 713, // 범위 밖(게이트 로직은 main에 있음) — +서버 거부 재시도 백오프
 	// 문서 모델: 타입 선언 + 타입 가드(평가 H-8) 위주라 캡을 너그럽게 둔다.
 	"src/core/model/types.ts": 600,

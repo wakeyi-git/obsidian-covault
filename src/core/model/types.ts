@@ -464,6 +464,8 @@ export interface AssignmentDoc extends PouchDocBase {
 	createdBy: string;
 	createdAtMs: number;
 	deleted?: boolean;
+	/** 보관 시각(교사). 있으면 대시보드 "완료" 탭으로 분류. */
+	archivedAtMs?: number;
 }
 
 export const ASSIGNMENT_ID_PREFIX = "assignment:";
@@ -497,6 +499,8 @@ export interface AssignmentStateDoc extends PouchDocBase {
 	grade?: AssignmentGrade;
 	returnedAtMs?: number;
 	deleted?: boolean;
+	/** 교사 보관 전파 플래그 — 있으면 학생 대시보드에서 "완료" 탭으로 분류. */
+	archivedAtMs?: number;
 }
 
 export const ASSIGNMENT_STATE_ID_PREFIX = "assignment-state:";
