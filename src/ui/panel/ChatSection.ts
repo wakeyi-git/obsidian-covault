@@ -39,6 +39,10 @@ export class ChatSection implements PanelSection {
 	private limit = ChatSection.PAGE;
 	private loadedChannel: string | null = null;
 	private renderedIds: string[] = []; // 증분(append-only) 렌더 판정용
+	// reload 경쟁 가드: redraw(그룹 목록 도착 등)가 새 listEl을 만든 사이, 먼저 시작된 reload가
+	// 늦게 끝나며 분리된 옛 listEl에 렌더하고 lastSig를 선점하면 새 reload가 "변화 없음"으로
+	// 건너뛰어 화면이 빈 채로 남는다 — 각 reload에 순번을 주고 stale 결과는 폐기한다.
+	private reloadSeq = 0;
 
 	constructor(private host: PanelHost) {}
 
@@ -65,9 +69,10 @@ export class ChatSection implements PanelSection {
 
 	render(container: HTMLElement): void {
 		this.root = container;
-		// 그룹 대화 카드에서 넘어온 초기 채널.
+		// 초기 채널: 그룹 대화 카드에서 넘어온 채널 > 마지막 사용 채널(기기 로컬) > 전체 채널.
 		const pending = this.host.consumePendingChatChannel();
-		if (pending) this.channel = pending;
+		const ch = pending ?? this.host.settings.lastChatChannel;
+		if (ch) this.setChannel(ch, !!pending); // 저장된 채널은 다시 저장할 필요 없음
 		// 학급 채널 변경(원격 수신)은 classroomStore가 알림 → 현재 학급 채널이면 갱신.
 		this.unsub = this.host.classroomStore.onChange(() => {
 			if (this.channel === CLASS_CHANNEL) void this.reload();
@@ -81,13 +86,27 @@ export class ChatSection implements PanelSection {
 		this.draw();
 	}
 
+	/**
+	 * 채널 전환 + 마지막 사용 채널 저장(다음에 대화 탭을 열 때 복원). save=false면 저장 생략
+	 * (저장된 값으로 복원할 때). class/dm은 즉시 검증, group은 목록 로드 후 refreshGroups가 검증.
+	 */
+	private setChannel(id: string, save = true): void {
+		// 저장된 dm 채널의 구성원이 사라졌을 수 있다 — 동기 목록(class/dm)에서 먼저 검증.
+		if (!id.startsWith("group:") && !this.channels().some((ch) => ch.id === id)) id = CLASS_CHANNEL;
+		this.channel = id;
+		if (save && this.host.settings.lastChatChannel !== id) {
+			this.host.settings.lastChatChannel = id;
+			void this.host.saveSettings();
+		}
+	}
+
 	/** 그룹 대화방 목록을 갱신하고, 변경 시 드롭다운을 다시 그린다(입력 텍스트 보존). */
 	private async refreshGroups(): Promise<void> {
 		try {
 			const g = await this.host.listChatGroups();
 			const sig = g.map((x) => x.channel).join("|");
 			this.groupMembers = new Map(g.map((x) => [x.channel, x.memberNames ?? {}]));
-			if (sig === this.groupSig) return;
+			const unchanged = sig === this.groupSig;
 			this.groupSig = sig;
 			this.groups = g.map((x) => ({
 				id: x.channel,
@@ -95,6 +114,13 @@ export class ChatSection implements PanelSection {
 				temp: x.temp,
 				groupId: x.groupId,
 			}));
+			// 저장됐던 그룹 채널이 더는 없으면(그룹 삭제 등) 전체 채널로 복귀 — 목록은 이제서야 확정된다.
+			if (this.channel.startsWith("group:") && !this.groups.some((x) => x.id === this.channel)) {
+				this.setChannel(CLASS_CHANNEL);
+				if (this.root) this.draw();
+				return;
+			}
+			if (unchanged) return;
 			if (this.root) this.draw();
 		} catch (e) {
 			// 폴링 주기마다 반복되므로 1회만 기록 — 무음이면 그룹 목록이 비는 이유를 진단할 수 없다.
@@ -129,7 +155,7 @@ export class ChatSection implements PanelSection {
 						.setTitle(ch.label)
 						.setChecked(ch.id === this.channel)
 						.onClick(() => {
-							this.channel = ch.id;
+							this.setChannel(ch.id);
 							this.lastSig = "";
 							this.draw();
 						}),
@@ -186,6 +212,7 @@ export class ChatSection implements PanelSection {
 
 		this.renderReplyBanner(); // 재드로우 후 답글 상태 복원
 		this.lastSig = "";
+		this.renderedIds = []; // 새(빈) listEl 기준으로 증분 판정 초기화 — stale ids로 꼬리만 붙는 것 방지
 		void this.reload();
 	}
 
@@ -198,7 +225,7 @@ export class ChatSection implements PanelSection {
 			warning: true,
 			onConfirm: async () => {
 				await this.host.deleteGroup(groupId);
-				this.channel = CLASS_CHANNEL;
+				this.setChannel(CLASS_CHANNEL);
 				await this.refreshGroups();
 				this.draw();
 			},
@@ -297,8 +324,8 @@ export class ChatSection implements PanelSection {
 	}
 
 	private async reload(): Promise<void> {
-		const list = this.listEl;
-		if (!list) return;
+		if (!this.listEl) return;
+		const seq = ++this.reloadSeq;
 		// 채널이 바뀌면 창·증분 상태 초기화(평가 P-2).
 		if (this.channel !== this.loadedChannel) {
 			this.loadedChannel = this.channel;
@@ -310,12 +337,18 @@ export class ChatSection implements PanelSection {
 		if (this.channel === CLASS_CHANNEL && !this.host.homeroomReady()) {
 			if (this.lastSig === "no-home") return;
 			this.lastSig = "no-home";
-			list.empty();
-			this.empty(list, t("chat.class_needs_homeroom"));
+			this.listEl.empty();
+			this.renderedIds = [];
+			this.empty(this.listEl, t("chat.class_needs_homeroom"));
 			return;
 		}
 		// +1건 더 요청해 "이전 메시지" 존재 여부를 판정(전체 카운트 없이).
 		const fetched = await this.host.listMessages(this.channel, this.limit + 1);
+		// 조회 중에 더 새 reload/redraw가 시작됐으면 stale 결과 폐기 — lastSig를 건드리지 않아
+		// 최신 reload가 정상 렌더한다("대화 탭이 빈 채로 열림" 버그의 원인).
+		if (seq !== this.reloadSeq) return;
+		const list = this.listEl;
+		if (!list) return;
 		const hasMore = fetched.length > this.limit;
 		const msgs = hasMore ? fetched.slice(fetched.length - this.limit) : fetched;
 		const sig = `${this.channel}|${this.limit}|${msgs.length}|${msgs[0]?._id ?? ""}|${msgs[msgs.length - 1]?._id ?? ""}|${msgs[msgs.length - 1]?._rev ?? ""}`;

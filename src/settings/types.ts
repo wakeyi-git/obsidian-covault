@@ -248,6 +248,8 @@ export interface CoVaultSettings {
 	rememberLastTab?: boolean;
 	/** rememberLastTab이 켜져 있을 때 마지막으로 본 탭 id(기기 로컬 — 내보내기 제외). */
 	lastActiveTab?: string;
+	/** 대화 탭에서 마지막으로 사용한 채널 id — 다시 열 때 복원(기기 로컬 — 내보내기 제외). */
+	lastChatChannel?: string;
 
 	/** 학급 대시보드: 알림장/과제 한 화면 표시 개수(이후 "더 보기"). 기본 10. */
 	dashboardPageSize?: number;
