@@ -10,7 +10,8 @@ RUN apt-get update \
  && apt-get purge -y python3 make g++ \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
-COPY server.js auth.js couch.js ./
+# 서버 소스 전체(*.js) — 파일을 명시 나열하면 새 모듈 추가 시 누락된다(0.121.0 docLifecycle.js 사고).
+COPY *.js ./
 ENV HOST=0.0.0.0 PORT=1234 SQLITE_PATH=/data/hocuspocus.sqlite
 EXPOSE 1234
 CMD ["node", "server.js"]
