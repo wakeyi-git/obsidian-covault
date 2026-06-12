@@ -1363,6 +1363,116 @@
 	color: var(--text-muted);
 	padding: 12px 0;
 }
+
+/* 성적부 기간 프리셋 줄 — 좁은 패널에선 줄바꿈 */
+.covault-dash-presets {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 0 0 8px;
+}
+
+/* 성적부 카드 헤드 도구(스파크라인 + 미달 토글) */
+.covault-dash-cardtools {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+
+/* 추세 스파크라인 — 학급 평균(0~100%) */
+.covault-dash-spark {
+	flex: none;
+}
+.covault-dash-spark polyline {
+	fill: none;
+	stroke: var(--interactive-accent);
+	stroke-width: 1.5;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+}
+.covault-dash-spark circle {
+	fill: var(--interactive-accent);
+}
+
+/* 임계값 미만 구성원 강조 */
+.covault-cr-matrix-row.is-low .covault-cr-score,
+.covault-cr-matrix-row.is-low .covault-cr-matrix-name {
+	color: var(--text-error);
+}
+.covault-cr-matrix-row.is-low .covault-cr-progress > i {
+	background: var(--text-error);
+}
+
+/* 미달 명단(카드 펼침) */
+.covault-dash-behind {
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 6px;
+}
+.covault-dash-behind-row {
+	font-size: 12px;
+	padding: 2px 6px;
+}
+
+/* 마감 주의 카드(교사) */
+.covault-dash-alert-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 6px;
+	border-radius: 6px;
+	font-size: 13px;
+}
+.covault-dash-alert-row.is-overdue .covault-cr-score {
+	color: var(--text-error);
+}
+.covault-dash-alert-row.is-soon .covault-cr-score {
+	color: var(--color-orange);
+}
+
+/* 성적부 표 뷰 — 좁은 패널에선 가로 스크롤 */
+.covault-dash-tablewrap {
+	overflow-x: auto;
+}
+.covault-dash-gradetable {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+.covault-dash-gradetable th,
+.covault-dash-gradetable td {
+	padding: 4px 6px;
+	text-align: right;
+	white-space: nowrap;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.covault-dash-gradetable th {
+	cursor: pointer;
+	font-weight: 600;
+	color: var(--text-muted);
+	user-select: none;
+}
+.covault-dash-gradetable th.is-sorted {
+	color: var(--text-accent);
+}
+.covault-dash-gradetable .covault-dash-gradetable-name,
+.covault-dash-gradetable th:first-child {
+	text-align: left;
+}
+.covault-dash-gradetable td.is-low {
+	color: var(--text-error);
+	font-weight: 600;
+}
+.covault-dash-gradetable tfoot td {
+	font-weight: 600;
+	border-bottom: none;
+	color: var(--text-accent);
+}
+
+/* 정렬 토글 활성 표시 */
+.covault-cr-iconbtn.is-active {
+	color: var(--text-accent);
+}
 .covault-dash-rowactions {
 	display: flex;
 	gap: 4px;
