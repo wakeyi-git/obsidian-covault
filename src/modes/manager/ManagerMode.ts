@@ -5,7 +5,7 @@ import { computeChildRoots } from "../../core/sync/childRoots";
 import { pickSyncByDb, pickSyncOwning } from "../../core/sync/syncLookup";
 import { DbUpdatesWatcher } from "../../core/couch/DbUpdatesWatcher";
 import { chooseTransport } from "../../core/couch/dbUpdatesLogic";
-import { getCouchPassword } from "../../core/secret";
+import { getCouchPassword, getBearerToken, spaceTokenId, memberMirrorTokenId, managerMirrorTokenId } from "../../core/secret";
 import { CoVaultMode } from "../CoVaultMode";
 import { t } from "../../i18n";
 
@@ -76,14 +76,22 @@ export class ManagerMode implements CoVaultMode {
 		// mirror 공간은 학생 폴더(localRoot)를 그대로 folder로 쓰고 spaceId=mirror-<id>로 구분한다.
 		// 별도 동기화 링크는 만들지 않는다(이미 memberSyncs가 그 폴더를 동기화하므로).
 		// 전역 실시간이 켜지면 모든 공유 공간과 토큰이 발급된 모든 개인 mirror가 실시간 대상.
+		// 토큰은 Secret Storage 우선·평문 폴백으로 해석해 런타임 목록(core.sharedSpaces)에만 담는다(평가 S-1).
 		const mirrorSpaces = members
-			.filter((st) => st.realtimeToken)
-			.map((st) => ({ id: `mirror-${st.memberId}`, folder: st.localRoot, token: st.managerMirrorToken ?? st.realtimeToken, kind: "mirror" as const }));
+			.filter((st) => st.realtimeToken || st.realtimeTokenSet)
+			.map((st) => ({
+				id: `mirror-${st.memberId}`,
+				folder: st.localRoot,
+				token:
+					getBearerToken(core.app, managerMirrorTokenId(st.memberId), st.managerMirrorToken) ??
+					getBearerToken(core.app, memberMirrorTokenId(st.memberId), st.realtimeToken),
+				kind: "mirror" as const,
+			}));
 		core.sharedSpaces = [
 			...shared.map((sp) => ({
 				id: sp.id,
 				folder: sp.folder,
-				token: sp.token,
+				token: getBearerToken(core.app, spaceTokenId(sp.id), sp.token),
 				kind: (sp.kind === "homeroom" ? "homeroom" : "share") as "homeroom" | "share",
 			})),
 			...mirrorSpaces,

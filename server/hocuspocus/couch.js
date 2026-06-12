@@ -49,6 +49,27 @@ export class CouchClient {
 		throw new Error(`CouchDB PUT ${db}/${doc._id} -> repeated 409`);
 	}
 
+	/**
+	 * rev 전제조건 put(평가 R-C). putDoc의 409 재시도는 최신 _rev로 같은 body를 덮는 LWW라,
+	 * 호출측의 getDoc→put 사이에 끼어든 쓰기(tombstone·외부 멤버 편집)를 전제조건 검증 없이
+	 * 덮을 수 있다. 이 변형은 호출측이 읽었던 rev(신규면 undefined) 위에만 put하고, 그 사이
+	 * 문서가 바뀌었으면 "conflict"를 반환한다 — 호출측이 전제조건(tombstone·외부 편집 보존)을
+	 * 재검증하고 재시도한다. 클라이언트 PouchService.putWithRev와 동일 계약.
+	 */
+	async putDocWithRev(db, doc, expectedRev) {
+		const body = { ...doc };
+		if (expectedRev) body._rev = expectedRev;
+		else delete body._rev;
+		const put = await fetch(`${this.url(db)}/${encodeURIComponent(doc._id)}`, {
+			method: "PUT",
+			headers: { ...this.headers, "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		if (put.ok) return "ok";
+		if (put.status === 409) return "conflict";
+		throw new Error(`CouchDB PUT ${db}/${doc._id} -> HTTP ${put.status}`);
+	}
+
 	/** 현재 update seq(감시 시작점). */
 	async currentSeq(db) {
 		const res = await fetch(this.url(db), { headers: this.headers });

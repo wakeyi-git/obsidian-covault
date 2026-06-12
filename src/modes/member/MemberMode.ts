@@ -18,6 +18,8 @@ export class MemberMode implements CoVaultMode {
 	private syncs: MirrorSync[] = [];
 	private reconciling = false;
 	private pendingReconcile = false;
+	private stopped = false;
+	private reconcileTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(private core: CoreServices) {}
 
@@ -26,6 +28,12 @@ export class MemberMode implements CoVaultMode {
 	}
 
 	async stop(): Promise<void> {
+		// stop 이후 보류된 reconcile이 고아 인스턴스에서 MirrorSync를 재생성하지 않도록 차단(평가 C-1).
+		this.stopped = true;
+		if (this.reconcileTimer !== null) {
+			clearTimeout(this.reconcileTimer);
+			this.reconcileTimer = null;
+		}
 		for (const sync of this.syncs) await sync.stop();
 		this.syncs = [];
 		this.core.logger.info(t("mode.member_mode_stopped"));
@@ -55,6 +63,7 @@ export class MemberMode implements CoVaultMode {
 	// --- 내부 ---
 
 	private async reconcile(): Promise<void> {
+		if (this.stopped) return;
 		if (this.reconciling) {
 			this.pendingReconcile = true;
 			return;
@@ -106,6 +115,11 @@ export class MemberMode implements CoVaultMode {
 				);
 			}
 
+			// reconcile 도중 stop()이 호출됐으면 새 링크를 시작하지 않는다(아직 미시작이라 버려도 안전).
+			if (this.stopped) {
+				this.syncs = [];
+				return;
+			}
 			for (const sync of this.syncs) await sync.start();
 			this.core.logger.ok(t("mode.member_mode_started_personal_shared", { count: linkSpaces.length }), true);
 		} catch (e) {
@@ -123,8 +137,13 @@ export class MemberMode implements CoVaultMode {
 	}
 
 	private scheduleReconcile(): void {
-		// 콜백 재진입 방지: 다음 틱에 reconcile
-		setTimeout(() => void this.reconcile(), 100);
+		if (this.stopped) return;
+		// 콜백 재진입 방지: 다음 틱에 reconcile. stop() 시 취소할 수 있게 추적한다.
+		if (this.reconcileTimer !== null) clearTimeout(this.reconcileTimer);
+		this.reconcileTimer = setTimeout(() => {
+			this.reconcileTimer = null;
+			void this.reconcile();
+		}, 100);
 	}
 
 	/** 개인 mirror DB(로컬)에서 shares 문서를 읽는다. 없으면 빈 목록. */

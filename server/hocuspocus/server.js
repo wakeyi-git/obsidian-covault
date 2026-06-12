@@ -387,24 +387,35 @@ const server = new Server({
 		}
 
 		const now = Date.now();
-		await couch.putDoc(claims.d, {
-			_id: id,
-			type: "note",
-			schemaVersion: 1,
-			workspaceId: claims.c,
-			// 소유자 표기는 기존 문서를 보존, 신규면 공간 id(공유 공간 문서의 관례)를 쓴다.
-			memberId: existing?.memberId ?? room.spaceId,
-			path: room.dbPath,
-			content,
-			contentHash,
-			mtime: now,
-			deleted: false,
-			version: (existing?.version ?? 0) + 1,
-			lastModifiedBy: claims.m, // 마지막 변경을 일으킨 연결의 주체
-			lastModifiedRole: claims.r,
-			lastModifiedDeviceId: RT_DEVICE_ID,
-			updatedAt: new Date(now).toISOString(),
-		});
+		// rev 전제조건 put(평가 R-C): getDoc(existing)→put 사이에 끼어든 쓰기(교사 tombstone·외부
+		// 멤버 편집)를 LWW로 덮지 않는다. 충돌이면 throw → 디바운서 재시도가 위의 전제조건 검사
+		// (tombstone 스킵·외부 편집 버전 보존)를 처음부터 다시 수행한다. sqliteAhead 표시가 남아
+		// 재시도 전까지 SQLite가 미반영 편집을 보존한다.
+		const putRes = await couch.putDocWithRev(
+			claims.d,
+			{
+				_id: id,
+				type: "note",
+				schemaVersion: 1,
+				workspaceId: claims.c,
+				// 소유자 표기는 기존 문서를 보존, 신규면 공간 id(공유 공간 문서의 관례)를 쓴다.
+				memberId: existing?.memberId ?? room.spaceId,
+				path: room.dbPath,
+				content,
+				contentHash,
+				mtime: now,
+				deleted: false,
+				version: (existing?.version ?? 0) + 1,
+				lastModifiedBy: claims.m, // 마지막 변경을 일으킨 연결의 주체
+				lastModifiedRole: claims.r,
+				lastModifiedDeviceId: RT_DEVICE_ID,
+				updatedAt: new Date(now).toISOString(),
+			},
+			existing?._rev,
+		);
+		if (putRes === "conflict") {
+			throw new Error(`snapshot rev conflict on ${claims.d}/${id} — will retry with fresh preconditions`);
+		}
 		sqliteAhead.delete(documentName); // CouchDB 반영 완료 — 이 시점부터 note가 정본
 		lastCouchHash.set(documentName, contentHash);
 		noteCouchOk();

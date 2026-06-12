@@ -59,10 +59,15 @@ export function exportSettings(s: CoVaultSettings): string {
 			delete st.password; // 학생 비밀번호는 내보내지 않음
 			delete st.realtimeToken; // mirror 실시간 토큰(베어러)도 내보내지 않음
 			delete st.managerMirrorToken;
+			delete st.realtimeTokenSet; // Secret Storage 이전 마커는 기기별 상태(평가 S-1)
+			delete st.managerMirrorTokenSet;
 		}
 	}
 	if (Array.isArray(copy.sharedSpaces)) {
-		for (const sp of copy.sharedSpaces) delete sp.token; // 공간 실시간 토큰(베어러)도 내보내지 않음
+		for (const sp of copy.sharedSpaces) {
+			delete sp.token; // 공간 실시간 토큰(베어러)도 내보내지 않음
+			delete sp.tokenSet; // Secret Storage 이전 마커는 기기별 상태(평가 S-1)
+		}
 	}
 	const payload: PortablePayload = {
 		_meta: { app: "covault", version: 1, exportedAt: new Date().toISOString() },

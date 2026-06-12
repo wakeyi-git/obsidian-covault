@@ -42,7 +42,9 @@ export async function sweepTombstones(ctx: MirrorContext, maxAgeDays: number): P
 		const doc = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
 		if (!doc?.deleted || doc.contentStripped || !doc.content) continue; // 그 사이 변경 — 건너뜀
 		// version·mtime·contentHash·lastModified*는 유지(부활 판정·에코 차단 보존). content만 비운다.
-		await ctx.pouch.put({ ...doc, content: "", contentStripped: true });
+		// rev 검증 put — get과 put 사이에 원격이 노트를 부활시키면 stale tombstone이 덮지 않도록 skip.
+		const res = await ctx.pouch.putWithRev({ ...doc, content: "", contentStripped: true }, doc._rev);
+		if (res === "conflict") continue;
 		await ctx.versions.prune(dbPath);
 		stripped++;
 	}

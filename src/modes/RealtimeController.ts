@@ -3,7 +3,15 @@ import { CoVaultSettings, MemberConfig, SharedSpace } from "../settings/types";
 import { RealtimeManager } from "../core/realtime/RealtimeManager";
 import { mintSpaceToken, tokenExp } from "../core/realtime/spaceToken";
 import { t } from "../i18n";
-import { getYjsSecret } from "../core/secret";
+import {
+	getYjsSecret,
+	getBearerToken,
+	persistBearerToken,
+	clearBearerToken,
+	spaceTokenId,
+	memberMirrorTokenId,
+	managerMirrorTokenId,
+} from "../core/secret";
 
 /**
  * RealtimeController 의존성. settings는 load/import에서 교체되므로 getter로 제공.
@@ -41,8 +49,8 @@ export class RealtimeController {
 		const on = s.realtimeEnabled && !!yjsSecret;
 		const ttl = this.ttl(s);
 		for (const sp of s.sharedSpaces) {
-			if (on)
-				sp.token = await mintSpaceToken(yjsSecret, {
+			if (on) {
+				const tok = await mintSpaceToken(yjsSecret, {
 					workspaceId: s.workspaceId,
 					spaceId: sp.id,
 					remoteDb: sp.remoteDb || `share_${sp.id}`,
@@ -50,7 +58,19 @@ export class RealtimeController {
 					role: "manager",
 					exp: ttl,
 				});
-			else delete sp.token;
+				// 베어러 토큰은 data.json 평문 대신 Secret Storage에 저장(평가 S-1). 미지원이면 평문 폴백.
+				if (persistBearerToken(this.d.app, spaceTokenId(sp.id), tok)) {
+					sp.token = undefined;
+					sp.tokenSet = true;
+				} else {
+					sp.token = tok;
+					sp.tokenSet = false;
+				}
+			} else {
+				clearBearerToken(this.d.app, spaceTokenId(sp.id));
+				delete sp.token;
+				delete sp.tokenSet;
+			}
 		}
 		for (const st of s.members) await this.mintMirror(st);
 	}
@@ -87,7 +107,7 @@ export class RealtimeController {
 				spaceId: `mirror-${member.memberId}`,
 				remoteDb: member.remoteDb || `mirror_${member.memberId}`,
 			};
-			member.realtimeToken = await mintSpaceToken(yjsSecret, {
+			const memberTok = await mintSpaceToken(yjsSecret, {
 				...claims,
 				memberId: member.memberId,
 				role: "member",
@@ -95,16 +115,54 @@ export class RealtimeController {
 			});
 			// 운영자 본인은 별도 클레임 토큰을 쓴다 — 스냅샷 주체(lastModifiedBy)가 올바르게 찍히고,
 			// 유출 시 주체 식별이 가능해진다(평가 L-10).
-			member.managerMirrorToken = await mintSpaceToken(yjsSecret, {
+			const managerTok = await mintSpaceToken(yjsSecret, {
 				...claims,
 				memberId: s.userId,
 				role: "manager",
 				exp: this.ttl(s),
 			});
+			// data.json 평문 대신 Secret Storage(평가 S-1). 미지원이면 평문 폴백.
+			if (persistBearerToken(this.d.app, memberMirrorTokenId(member.memberId), memberTok)) {
+				member.realtimeToken = undefined;
+				member.realtimeTokenSet = true;
+			} else {
+				member.realtimeToken = memberTok;
+				member.realtimeTokenSet = false;
+			}
+			if (persistBearerToken(this.d.app, managerMirrorTokenId(member.memberId), managerTok)) {
+				member.managerMirrorToken = undefined;
+				member.managerMirrorTokenSet = true;
+			} else {
+				member.managerMirrorToken = managerTok;
+				member.managerMirrorTokenSet = false;
+			}
 		} else {
+			if (member.memberId) {
+				clearBearerToken(this.d.app, memberMirrorTokenId(member.memberId));
+				clearBearerToken(this.d.app, managerMirrorTokenId(member.memberId));
+			}
 			delete member.realtimeToken;
+			delete member.realtimeTokenSet;
 			delete member.managerMirrorToken;
+			delete member.managerMirrorTokenSet;
 		}
+	}
+
+	/** 공유 공간의 교사 본인용 토큰 조회(Secret Storage 우선, 평문 폴백). */
+	spaceToken(sp: SharedSpace): string | undefined {
+		return getBearerToken(this.d.app, spaceTokenId(sp.id), sp.token);
+	}
+
+	/** 구성원 mirror 토큰 조회(shares 배포용). */
+	memberMirrorToken(member: MemberConfig): string | undefined {
+		if (!member.memberId) return undefined;
+		return getBearerToken(this.d.app, memberMirrorTokenId(member.memberId), member.realtimeToken);
+	}
+
+	/** 운영자 본인용 mirror 토큰 조회(실시간 공간 목록용). 없으면 구성원 토큰으로 폴백하지 않는다 — 호출측 판단. */
+	managerMirrorToken(member: MemberConfig): string | undefined {
+		if (!member.memberId) return undefined;
+		return getBearerToken(this.d.app, managerMirrorTokenId(member.memberId), member.managerMirrorToken);
 	}
 
 	/**
@@ -116,11 +174,11 @@ export class RealtimeController {
 		if (!s.realtimeEnabled || s.role !== "manager") return;
 		const exps: number[] = [];
 		for (const sp of s.sharedSpaces) {
-			const e = tokenExp(sp.token);
+			const e = tokenExp(this.spaceToken(sp));
 			if (e != null) exps.push(e);
 		}
 		for (const st of s.members) {
-			for (const tk of [st.realtimeToken, st.managerMirrorToken]) {
+			for (const tk of [this.memberMirrorToken(st), this.managerMirrorToken(st)]) {
 				const e = tokenExp(tk);
 				if (e != null) exps.push(e);
 			}

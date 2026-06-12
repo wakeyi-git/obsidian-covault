@@ -32,7 +32,8 @@ export function computeSyncSummary(rows: DashboardRow[], s: CoVaultSettings): Sy
 		!!s.realtimeEnabled &&
 		!!s.yjsServerUrl &&
 		shared > 0 &&
-		s.sharedSpaces.some((sp) => !sp.token);
+		// 토큰은 Secret Storage(tokenSet 플래그) 또는 평문 폴백(token) 어느 쪽이든 있으면 발급된 것(평가 S-1).
+		s.sharedSpaces.some((sp) => !sp.token && !sp.tokenSet);
 
 	const autoSyncOff = !s.autoSync;
 

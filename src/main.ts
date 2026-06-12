@@ -13,7 +13,7 @@ import { RoleSetupModal } from "./ui/RoleSetupModal";
 import { VersionHistoryModal } from "./ui/VersionHistoryModal";
 import { SetupWizardModal } from "./ui/SetupWizardModal";
 import { RealtimeManager } from "./core/realtime/RealtimeManager";
-import { getCouchPassword } from "./core/secret";
+import { getCouchPassword, migratePlaintextTokens } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
@@ -344,6 +344,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	// --- 설정 ---
 	async loadSettings(): Promise<void> {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		// data.json에 평문으로 남은 실시간 베어러 토큰을 Secret Storage로 1회 이전(평가 S-1).
+		if (migratePlaintextTokens(this.app, this.settings)) await this.saveSettings();
 	}
 
 	/** 활성 CouchDB 비밀번호(Secret Storage 우선, 평문 폴백). */

@@ -5,7 +5,7 @@ import { CouchAdmin } from "../core/couch/CouchAdmin";
 import { InviteModal } from "../ui/InviteModal";
 import { BulkInviteModal } from "../ui/BulkInviteModal";
 import { InvitePayload, genPassword } from "../core/invite/invite";
-import { getMemberPassword, setMemberPassword } from "../core/secret";
+import { getMemberPassword, setMemberPassword, getBearerToken, memberMirrorTokenId } from "../core/secret";
 import { isValidCouchName } from "../core/path/path";
 import { SHARES_DOC_ID, RTCONFIG_DOC_ID, SharesDoc } from "../core/model/types";
 import { t } from "../i18n";
@@ -191,8 +191,10 @@ export class MemberController {
 				realtime: rtOn,
 			});
 		}
-		if (rtOn && st.realtimeToken) {
-			spaces.push({ id: `mirror-${st.memberId}`, name: st.memberName, remoteDb: st.remoteDb, folder: "", token: st.realtimeToken, kind: "mirror", realtime: true });
+		// 구성원 mirror 토큰은 Secret Storage 우선·평문 폴백으로 읽는다(평가 S-1).
+		const mirrorToken = getBearerToken(this.d.app, memberMirrorTokenId(st.memberId), st.realtimeToken);
+		if (rtOn && mirrorToken) {
+			spaces.push({ id: `mirror-${st.memberId}`, name: st.memberName, remoteDb: st.remoteDb, folder: "", token: mirrorToken, kind: "mirror", realtime: true });
 		}
 		const r = await admin.putDoc(st.remoteDb, { _id: SHARES_DOC_ID, type: "shares", spaces });
 		if (!r.ok) this.d.logger.error(t("command.failed_to_write_shares", { id: st.memberId, err: r.error ?? "" }));

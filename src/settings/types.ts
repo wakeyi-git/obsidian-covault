@@ -17,8 +17,10 @@ export interface SharedSpace {
 	provisioned?: boolean;
 	/** 공간 종류. "homeroom"=학급 운영 대시보드를 담는 전원 공유 공간. "group"=구성원 신청으로 만든 그룹 공간. 미설정=일반 모둠 공유. */
 	kind?: "homeroom" | "group";
-	/** 이 공간의 실시간 서명 토큰(HMAC 모드). 실시간 사용 시 배포에서 발급되어 shares 문서로 학생에 전달된다. */
+	/** 이 공간의 실시간 서명 토큰(HMAC 모드, 교사 본인용). Secret Storage 미지원 기기의 평문 폴백(평가 S-1). */
 	token?: string;
+	/** 토큰이 Secret Storage에 저장되어 있음(spaceTokenId 키). 평문 token 대신 이 플래그로 발급 여부를 판단. */
+	tokenSet?: boolean;
 	/** 마지막 배포 시각(epoch ms). */
 	lastDeployedAt?: number;
 	/** 마지막 배포 시점의 멤버 스냅샷 — 이후 멤버가 바뀌면 ‘재배포 필요’ 배지. */
@@ -47,11 +49,17 @@ export interface MemberConfig {
 	username: string; // 학생 CouchDB 계정명. 기본 memberId
 	password?: string; // 프로비저닝 시 생성 (교사 기기 한정 비밀)
 	provisioned?: boolean; // CouchDB 계정/DB/권한 생성 완료 여부
-	/** 개인 mirror 1:1 실시간 서명 토큰(HMAC, 구성원 클레임). 전역 실시간 사용 시 배포에서 발급되어 학생 shares로 전달(교사 기기 한정). */
+	/** 개인 mirror 1:1 실시간 서명 토큰(HMAC, 구성원 클레임). 배포 시 학생 shares로 전달.
+	 *  Secret Storage 미지원 기기의 평문 폴백(평가 S-1). */
 	realtimeToken?: string;
+	/** 구성원 mirror 토큰이 Secret Storage에 저장되어 있음(memberMirrorTokenId 키). */
+	realtimeTokenSet?: boolean;
 	/** 운영자 본인용 mirror 토큰(r=manager). 배포되지 않음 — 구성원 토큰을 공용하면 스냅샷
-	 *  lastModifiedBy가 항상 구성원으로 찍혀 감사 추적이 부정확해진다(평가 L-10). */
+	 *  lastModifiedBy가 항상 구성원으로 찍혀 감사 추적이 부정확해진다(평가 L-10).
+	 *  Secret Storage 미지원 기기의 평문 폴백(평가 S-1). */
 	managerMirrorToken?: string;
+	/** 운영자 mirror 토큰이 Secret Storage에 저장되어 있음(managerMirrorTokenId 키). */
+	managerMirrorTokenSet?: boolean;
 	/** 이 구성원만 실시간 편집 차단(전역 실시간이 켜져 있어도 토큰 미발급 → 파일 동기화만, 라이브 세션 제외). */
 	realtimeBlocked?: boolean;
 }

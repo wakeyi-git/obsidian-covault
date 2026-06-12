@@ -37,6 +37,8 @@ interface ExcalidrawLikeView extends View {
 /** 실시간 스냅샷을 받을 대상(담당 MirrorSync). main이 경로로 해결해 준다. */
 export interface SnapshotTarget {
 	snapshotNote(localPath: string, content: string): Promise<unknown>;
+	/** 바인딩이 에디터 내용을 Y.Text로 교체하기 전, 미업로드 로컬 편집을 버전 히스토리에 보존(평가 R-A). */
+	preserveLocalEdit(localPath: string, content: string): Promise<void>;
 }
 
 const COLORS = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
@@ -74,6 +76,9 @@ export class RealtimeManager {
 	// 서버 거부(인증 실패·재인가 종료) 재시도 백오프(2s→60s 지수). 동기화 성공 시 해제.
 	// 서버가 지속 거부(예: CouchDB 미연동으로 시드 실패)할 때 즉시 재접속 루프 + 알림 폭주를 막는다.
 	private retryState = new Map<string, { failures: number; until: number }>();
+	// 백오프 재평가 타이머(평가 C-2). dispose 후 잔존 타이머가 세션을 재생성하지 않도록 추적·취소한다.
+	private retryTimers = new Set<number>();
+	private disposed = false;
 	// CoVault가 읽기 전용으로 잠근 에디터/그림(정책 해제 시 우리가 잠근 것만 푼다 — 타 플러그인 보호).
 	private lockedViews = new WeakSet<EditorView>();
 	private lockedExcalidraw = new WeakSet<ExcalidrawLikeView>();
@@ -381,7 +386,12 @@ export class RealtimeManager {
 		if (silent) this.core.logger.info(t("realtime.realtime_reauth_reconnect", { path: dbPath }));
 		else this.core.logger.warn(t("realtime.realtime_auth_failed", { path: dbPath, reason }), st.failures === 1);
 		void this.endSession(path).then(() => {
-			window.setTimeout(() => this.invalidateParticipants(path), delay);
+			if (this.disposed) return;
+			const timer = window.setTimeout(() => {
+				this.retryTimers.delete(timer);
+				if (!this.disposed) this.invalidateParticipants(path);
+			}, delay);
+			this.retryTimers.add(timer);
 		});
 	}
 
@@ -464,6 +474,15 @@ export class RealtimeManager {
 			}
 			if (session.bound.has(cm)) continue;
 			try {
+				// 바인딩이 에디터 내용을 Y.Text로 교체하기 전에, 아직 업로드되지 않은 로컬 편집을
+				// 버전 히스토리로 보존한다(평가 R-A). 오프라인 편집 직후 온라인 복귀로 세션에
+				// 진입하면 vault에만 있는 편집이 유일본인데, 교체 후엔 업로드도 차단되고 종료
+				// 스냅샷이 Y.Text 기준으로 덮으므로 여기서 보존하지 않으면 흔적 없이 사라진다.
+				const localContent = cm.state.doc.toString();
+				const yContent = ytext.toString();
+				if (yContent.length > 0 && localContent.length > 0 && yContent !== localContent) {
+					void this.getSyncForPath(session.file)?.preserveLocalEdit(session.file, localContent).catch(() => {});
+				}
 				bindView(cm, ytext, session.awareness);
 				session.bound.add(cm);
 				// 뷰 우하단에 참가자 칩(Excalidraw와 동일) — 포인터 없이도 편집자 이름 상시 표시.
@@ -701,6 +720,9 @@ export class RealtimeManager {
 	}
 
 	async dispose(): Promise<void> {
+		this.disposed = true;
+		for (const timer of this.retryTimers) window.clearTimeout(timer);
+		this.retryTimers.clear();
 		for (const path of [...this.sessions.keys()]) await this.endSession(path);
 		this.teardownSocketIfIdle();
 	}

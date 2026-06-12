@@ -7,7 +7,8 @@ import { ConflictManager, ConflictInfo, ResolveChoice } from "./ConflictManager"
 import { RestoreManager, DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "./RestoreManager";
 import { PurgeSnapshot } from "./recentPurge";
 import { DeleteModifyItem } from "./deleteModifyQueue";
-import { VersionDoc } from "../model/types";
+import { VersionDoc, NoteDoc, noteId } from "../model/types";
+import { sha256 } from "../hash/hash";
 import { Uploader, UploadResult } from "./Uploader";
 import { LocalWatcher } from "./LocalWatcher";
 import { LocalApplier } from "./LocalApplier";
@@ -385,6 +386,22 @@ export class MirrorSync {
 	/** 실시간 스냅샷: Yjs 내용을 vault 미접촉으로 로컬 DB에 기록(→ replication이 원격 전파). 기술문서 §19.2. */
 	snapshotNote(localPath: string, content: string): Promise<UploadResult> {
 		return this.uploader.uploadContent(localPath, content);
+	}
+
+	/**
+	 * 실시간 세션 진입 직전, 아직 업로드되지 않은 로컬 편집을 버전 히스토리에 보존(평가 R-A).
+	 * 바인딩이 에디터 내용을 Y.Text로 교체하고 세션 동안 업로드도 차단되므로, vault에만 있던
+	 * 오프라인 편집은 이 스냅샷이 유일한 보존본이다(서버의 외부 편집 보존은 CouchDB에 도착한
+	 * 편집만 보호한다). 이미 업로드된 내용(해시 일치)이면 기록하지 않는다.
+	 */
+	async preserveLocalEdit(localPath: string, content: string): Promise<void> {
+		const ctx = this.ctx;
+		if (!ctx.isMarkdown(localPath) || ctx.isExcluded(localPath)) return;
+		const dbPath = ctx.toDbPath(localPath);
+		if (dbPath == null || !ctx.isValidDbPath(dbPath)) return;
+		const note = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
+		if (note && !note.deleted && note.contentHash === (await sha256(content))) return; // 이미 업로드됨
+		await ctx.versions.snapshot(dbPath, content, "conflict", note?.version ?? 0);
 	}
 
 	/** 피드백 라우팅용: 이 링크가 해당 로컬 경로를 담당하는가(localRoot 안 + 제외 아님). */

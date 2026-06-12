@@ -53,6 +53,9 @@ export class Uploader {
 			if (existing?.deleted && existing.deletedByRole === "manager") return "skipped-deleted";
 			if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
+			// 재시도 진입 = 직전 put 사이에 다른 쓰기가 끼어듦. 끼어든 게 다른 기기의 새 내용이면
+			// 덮기 전에 버전 히스토리에 보존한다(tombstonePath와 동형 — 평가 D-1).
+			if (attempt > 0) await this.preserveInterveningNote(dbPath, existing, newHash);
 			const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
 			if ((await ctx.pouch.putWithRev(doc, existing?._rev)) === "conflict") continue;
 			await ctx.versions.snapshot(dbPath, content, "modify", doc.version); // 실시간 편집도 버전 기록(dedupe 있음)
@@ -77,6 +80,8 @@ export class Uploader {
 			if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
 			if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
+			// 재시도 진입 시 끼어든 다른 기기의 새 내용을 보존(평가 D-1, uploadContent와 동일).
+			if (attempt > 0) await this.preserveInterveningNote(dbPath, existing, newHash);
 			const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
 			if ((await ctx.pouch.putWithRev(doc, existing?._rev)) === "conflict") continue;
 			await ctx.versions.snapshot(dbPath, content, "modify", doc.version); // 버전 히스토리(편집 시점)
@@ -124,6 +129,8 @@ export class Uploader {
 			if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
 			if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
+			// 첨부는 버전 히스토리가 없어 끼어든 원격 바이너리가 유일본일 수 있다 — _충돌/에 보존(평가 D-1).
+			if (attempt > 0) await this.preserveInterveningAsset(dbPath, existing, newHash);
 			const doc = await ctx.buildAssetDoc(dbPath, data, existing?.version ?? 0);
 			if ((await ctx.pouch.putAssetWithRev(doc, data, existing?._rev)) === "conflict") continue;
 			this.markUploaded(dbPath);
@@ -131,6 +138,39 @@ export class Uploader {
 		}
 		ctx.logger.warn(t("sync.upload_retry_conflict", { path: dbPath }));
 		return "skipped-conflict";
+	}
+
+	/**
+	 * 업로드 재시도에 끼어든 다른 기기의 새 노트 내용을 덮기 전에 버전 히스토리로 보존(평가 D-1).
+	 * tombstonePath는 같은 상황에서 스냅샷 후 덮지만 uploadNote/uploadContent에는 이 단계가 없어,
+	 * pull과 로컬 업로드가 ms 단위로 겹칠 때 끼어든 내용이 흔적 없이 선형 덮어쓰기될 수 있었다.
+	 */
+	private async preserveInterveningNote(dbPath: string, existing: NoteDoc | null, newHash: string): Promise<void> {
+		if (!existing || existing.deleted || existing.content == null) return;
+		if (existing.lastModifiedDeviceId === this.ctx.settings.deviceId) return; // 내 기기 쓰기 — 보존 불필요
+		if (existing.contentHash === newHash) return; // 같은 내용 — 보존할 것 없음
+		await this.ctx.versions.snapshot(dbPath, existing.content, "conflict", existing.version ?? 0);
+	}
+
+	/**
+	 * preserveInterveningNote의 첨부 버전. 첨부는 버전 히스토리가 없으므로
+	 * 끼어든 원격 바이너리를 _충돌/ 사본으로 보존한다. 보존 실패가 업로드를 막지는 않는다.
+	 */
+	private async preserveInterveningAsset(dbPath: string, existing: AssetDoc | null, newHash: string): Promise<void> {
+		const ctx = this.ctx;
+		if (!existing || existing.deleted) return;
+		if (existing.lastModifiedDeviceId === ctx.settings.deviceId) return;
+		if (existing.contentHash === newHash) return;
+		const data = await ctx.pouch.getAssetBinary(assetId(dbPath)).catch(() => null);
+		if (data == null) return;
+		try {
+			await ctx.writeVaultBinary(ctx.conflictLocalPath(dbPath), data);
+			ctx.logger.warn(
+				t("sync.attachment_conflict_held_preserve_local_keeping", { path: ctx.toLocalPath(dbPath) }),
+			);
+		} catch {
+			/* 보존 실패는 업로드를 막지 않는다 */
+		}
 	}
 
 	/**
