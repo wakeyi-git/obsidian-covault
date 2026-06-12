@@ -75,9 +75,14 @@ export class InviteModal extends Modal {
 		codeEl.readOnly = true;
 		codeEl.rows = 3;
 
+		// 코드 자체가 자격증명임을 만료 정보와 함께 명시(평가 S-2). exp는 발급 시 TTL로 채워진다.
 		contentEl.createEl("p", {
 			cls: "covault-invite-warn",
-			text: t("invite.this_invite_contains_the_member_s"),
+			text: this.payload.exp
+				? t("invite.this_invite_contains_password_expires", {
+						date: new Date(this.payload.exp * 1000).toLocaleDateString(),
+					})
+				: t("invite.this_invite_contains_the_member_s"),
 		});
 		contentEl.createEl("p", {
 			cls: "setting-item-description",

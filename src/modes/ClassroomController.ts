@@ -126,7 +126,7 @@ export class ClassroomController {
 			return null;
 		}
 		const ts = Date.now();
-		const path = noticeFilePath(folder, ts, title, category === "lesson" ? "수업" : "알림장");
+		const path = noticeFilePath(folder, ts, title, category === "lesson" ? t("dashboard.subfolder_lesson") : t("dashboard.subfolder_notice")); // 로케일 반영(U-2)
 		await ensureParentFolders(this.d.app, path);
 		if (this.d.app.vault.getAbstractFileByPath(path)) {
 			this.d.logger.warn(t("dashboard.notice_file_exists"), true);
@@ -557,7 +557,7 @@ export class ClassroomController {
 		const date = new Date().toISOString().slice(0, 10);
 		const tplPath = def.templatePaths[0] || s.assignmentTemplate;
 		const templateContent = tplPath ? (await this.readVaultText(tplPath)) ?? defaultTemplate("assignment") : defaultTemplate("assignment");
-		const templateName = tplPath?.split("/").pop() || "과제.md";
+		const templateName = tplPath?.split("/").pop() || `${t("dashboard.template_name_assignment")}.md`;
 		const fileName = assignmentFileName(slug, templateName);
 		const subst = (memberId: string, memberName: string): string =>
 			substituteTemplate(applyNoticeVars(templateContent, { title: def.title, date }), { memberId, memberName, workspaceId: s.workspaceId, date });
@@ -938,9 +938,9 @@ export class ClassroomController {
 		return docs.filter((d) => !d.deleted).sort((a, b) => a.createdAtMs - b.createdAtMs);
 	}
 
-	/** 채널의 첨부 폴더(학급=<학급>/_대화첨부, DM=대상/본인 폴더 아래). 정할 수 없으면 null. */
+	/** 채널의 첨부 폴더(전체=<홈 공간>/<첨부 폴더>, DM=대상/본인 폴더 아래). 정할 수 없으면 null. */
 	private channelAttachDir(channel: string): string | null {
-		const ATTACH = "_대화첨부";
+		const ATTACH = t("chat.attach_folder"); // 로케일 반영(평가 U-2). 기존 첨부는 메시지에 경로가 저장되어 불변.
 		if (channel === CLASS_CHANNEL) {
 			const home = this.d.homeroomFolder();
 			return home ? `${home}/${ATTACH}` : null;

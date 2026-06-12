@@ -1,6 +1,7 @@
 // 삭제 파일 복구의 순수 결정 로직(obsidian-free → 단위 테스트 가능).
 // RestoreManager가 vault/DB I/O를 담당하고, 여기서는 "복구 가능 여부"와 "대상 경로 결정"만 계산한다.
 import { insertLabelBeforeExt } from "../path/path";
+import { t } from "../../i18n";
 
 export type RestoreCollision = "skip" | "overwrite" | "keep-both";
 
@@ -33,6 +34,6 @@ export function restoreTargetPath(
 		case "overwrite":
 			return localPath;
 		case "keep-both":
-			return insertLabelBeforeExt(localPath, "복구본");
+			return insertLabelBeforeExt(localPath, t("recovery.restored_copy_label")); // 로케일 반영(평가 U-2)
 	}
 }

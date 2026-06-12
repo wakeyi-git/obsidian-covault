@@ -5,7 +5,7 @@ import { HocuspocusProvider, HocuspocusProviderWebsocket } from "@hocuspocus/pro
 import { Awareness } from "y-protocols/awareness";
 import { EditorView } from "@codemirror/view";
 import { CoreServices } from "../CoreServices";
-import { bindView, unbindView, setEditorReadOnly } from "./editorBinding";
+import { bindView, unbindView, setEditorReadOnly, isViewBound } from "./editorBinding";
 import { PresenceChips } from "./presenceChips";
 import { clientColor } from "./clientColor";
 import { ExcalidrawBinding, ExcalidrawImperativeApi } from "./excalidrawBinding";
@@ -472,7 +472,7 @@ export class RealtimeManager {
 				);
 				continue;
 			}
-			if (session.bound.has(cm)) continue;
+			if (session.bound.has(cm) && isViewBound(cm)) continue; // bound여도 실측 — state 재생성으로 사라졌으면 재바인딩(R-D)
 			try {
 				// 바인딩이 에디터 내용을 Y.Text로 교체하기 전에, 아직 업로드되지 않은 로컬 편집을
 				// 버전 히스토리로 보존한다(평가 R-A). 오프라인 편집 직후 온라인 복귀로 세션에

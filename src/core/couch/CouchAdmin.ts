@@ -136,22 +136,32 @@ export class CouchAdmin {
 		const user = await this.ensureUser(username, password);
 		if (!user.ok) return user;
 
-		// 2) mirror DB 생성 (이미 있으면 412/409 무시)
-		const putDb = await this.req("PUT", encodeURIComponent(remoteDb));
-		if (putDb.status >= 400 && putDb.status !== 412 && putDb.status !== 409) {
-			return {
-				ok: false,
-				error: t("couch.failed_to_create_db_http", {
-					status: putDb.status,
-					reason: this.reasonOf(putDb),
-				}),
-			};
-		}
+		// 2) mirror DB 생성 + _security: 학생 본인 + (있으면) 실시간 서비스 계정.
+		//    새 DB의 보안 설정 실패 시 롤백(무방비 DB 잔존 방지 — 평가 S-3).
+		return this.createDbWithSecurity(remoteDb, [username, ...extraMembers], (status, reason) =>
+			t("couch.failed_to_create_db_http", { status, reason }),
+		);
+	}
 
-		// 3) _security: 학생 본인 + (있으면) 실시간 서비스 계정 (서버 admin은 항상 접근)
-		const sec = await this.setSecurity(remoteDb, [username, ...extraMembers]);
-		if (!sec.ok) return sec;
-		return { ok: true };
+	/**
+	 * DB 생성 + _security 설정(평가 S-3). CouchDB는 _security가 비어 있는 DB를 인증된 모든
+	 * 사용자에게 개방하므로, "DB 생성 성공 → setSecurity 실패"로 끝나면 다른 구성원이 그 DB를
+	 * 읽고 쓸 수 있는 창이 남는다. **이번 호출이 새로 만든 DB(201)** 에 한해 보안 실패 시
+	 * 삭제로 롤백한다 — 기존 DB(412/409)는 데이터가 있을 수 있어 건드리지 않는다(멱등 재시도용).
+	 */
+	private async createDbWithSecurity(
+		remoteDb: string,
+		members: string[],
+		createError: (status: number, reason: string) => string,
+	): Promise<{ ok: boolean; error?: string }> {
+		const putDb = await this.req("PUT", encodeURIComponent(remoteDb));
+		const created = putDb.status < 300; // 201 = 이번에 새로 생성됨
+		if (putDb.status >= 400 && putDb.status !== 412 && putDb.status !== 409) {
+			return { ok: false, error: createError(putDb.status, this.reasonOf(putDb)) };
+		}
+		const sec = await this.setSecurity(remoteDb, members);
+		if (!sec.ok && created) await this.deleteDatabase(remoteDb); // 롤백 실패는 원인 오류를 우선 보고
+		return sec;
 	}
 
 	/**
@@ -159,11 +169,9 @@ export class CouchAdmin {
 	 * 관리자는 server-admin이라 항상 접근 가능하며, 다기기에서 같은 DB로 동기화/백업하는 용도.
 	 */
 	async provisionPersonalDb(remoteDb: string, username: string): Promise<{ ok: boolean; error?: string }> {
-		const putDb = await this.req("PUT", encodeURIComponent(remoteDb));
-		if (putDb.status >= 400 && putDb.status !== 412 && putDb.status !== 409) {
-			return { ok: false, error: t("couch.failed_to_create_db_http", { status: putDb.status, reason: this.reasonOf(putDb) }) };
-		}
-		return this.setSecurity(remoteDb, [username]);
+		return this.createDbWithSecurity(remoteDb, [username], (status, reason) =>
+			t("couch.failed_to_create_db_http", { status, reason }),
+		);
 	}
 
 	/**
@@ -171,19 +179,11 @@ export class CouchAdmin {
 	 * 학생 계정은 개인 프로비저닝으로 이미 존재한다고 가정.
 	 */
 	async provisionSharedSpace(remoteDb: string, memberUsernames: string[]): Promise<{ ok: boolean; error?: string }> {
-		const putDb = await this.req("PUT", encodeURIComponent(remoteDb));
-		if (putDb.status >= 400 && putDb.status !== 412 && putDb.status !== 409) {
-			return {
-				ok: false,
-				error: t("couch.failed_to_create_shared_db_http", {
-					status: putDb.status,
-					reason: this.reasonOf(putDb),
-				}),
-			};
-		}
 		// validate 배포는 분리됐다 — 정책(읽기전용·참여자)이 DB마다 달라 호출측(redeployValidate)이
 		// buildValidateSource로 만든 소스를 putValidateDesignDoc(db, source)로 배포한다.
-		return this.setSecurity(remoteDb, memberUsernames);
+		return this.createDbWithSecurity(remoteDb, memberUsernames, (status, reason) =>
+			t("couch.failed_to_create_shared_db_http", { status, reason }),
+		);
 	}
 
 	/**

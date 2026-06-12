@@ -1,5 +1,5 @@
 import { App } from "obsidian";
-import { CoVaultSettings, MemberConfig, SharedSpace } from "../settings/types";
+import { CoVaultSettings, MemberConfig, SharedSpace, accountsOf } from "../settings/types";
 import { Logger } from "../core/log/Logger";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
 import { InviteModal } from "../ui/InviteModal";
@@ -25,6 +25,8 @@ export interface MemberDeps {
 	mintMirror(member: MemberConfig): Promise<void>;
 	/** 공유 공간의 구성원용 실시간 토큰 발급(RealtimeController.mintMemberToken). 발급 불가면 undefined. */
 	mintMemberToken(space: SharedSpace, memberId: string): Promise<string | undefined>;
+	/** validate 정책 재배포(DeploymentController). 기기 계정 추가/회수 시 acct 맵 갱신용(평가 S-2). */
+	redeployValidate(opts?: { dbs?: string[] }): Promise<void>;
 }
 
 /**
@@ -112,18 +114,24 @@ export class MemberController {
 			this.d.logger.warn(t("command.invalid_id_or_db_name", { id: member.memberId }), true);
 			return null;
 		}
-		let memberPw = getMemberPassword(this.d.app, member.memberId, member.password);
+		// 재초대 = 항상 회전(평가 S-2). 첫 적용 기기가 비밀번호를 스스로 회전하므로 저장된 비밀번호는
+		// 이미 무효일 수 있다 — 죽은 초대를 발급하지 않도록 프로비저닝된 구성원은 새로 생성한다.
+		// (그 구성원의 기존 기기는 새 초대를 다시 적용해야 한다. 기기 추가는 inviteDevice가 담당.)
+		let memberPw = member.provisioned ? genPassword() : getMemberPassword(this.d.app, member.memberId, member.password);
 		if (!memberPw) memberPw = genPassword();
+		if (member.provisioned) this.d.logger.warn(t("command.reinvite_rotates_password"), true);
 
 		this.d.logger.info(t("command.provisioning_member", { id: member.memberId, db: member.remoteDb }));
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
 		// 실시간 서비스 계정이 설정돼 있으면 mirror DB _security에 함께 넣는다(미러 룸 시드/스냅샷용).
+		// 기기 계정도 함께(평가 S-2) — 재프로비저닝이 기존 기기 계정의 접근을 끊지 않도록.
 		const svc = s.rtServiceUsername?.trim();
+		const deviceUsers = (member.deviceAccounts ?? []).map((a) => a.username);
 		const res = await admin.provisionMember({
 			username: member.username,
 			password: memberPw,
 			remoteDb: member.remoteDb,
-			extraMembers: svc ? [svc] : [],
+			extraMembers: [...deviceUsers, ...(svc ? [svc] : [])],
 		});
 		if (!res.ok) {
 			this.d.logger.error(t("command.provisioning_failed", { err: res.error ?? "" }), true);
@@ -170,6 +178,103 @@ export class MemberController {
 			else member.password = undefined;
 			this.d.logger.warn(t("invite.password_reissue_failed_keeping_the_previous"), true);
 		}
+	}
+
+	/**
+	 * 기기 추가 초대(평가 S-2 — 기기별 계정). 전용 계정 <memberId>-d<n>을 만들어 초대를 발급한다.
+	 * 적용 기기가 비밀번호를 즉시 회전하므로 초대는 일회성이고, 기존 기기에는 영향이 없다.
+	 */
+	async inviteDevice(member: MemberConfig): Promise<boolean> {
+		const s = this.d.settings();
+		const adminPw = this.d.couchPassword();
+		if (s.role !== "manager" || !s.couchdbUrl || !s.username || !adminPw) {
+			this.d.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
+			return false;
+		}
+		if (!member.provisioned || !member.memberId) {
+			this.d.logger.warn(t("device.invite_needs_provisioned"), true);
+			return false;
+		}
+		await this.d.openLog();
+		const username = this.nextDeviceUsername(member);
+		if (!isValidCouchName(username)) {
+			this.d.logger.warn(t("command.invalid_id_or_db_name", { id: username }), true);
+			return false;
+		}
+		const pw = genPassword();
+		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
+		const user = await admin.ensureUser(username, pw);
+		if (!user.ok) {
+			this.d.logger.error(t("command.provisioning_failed", { err: user.error ?? "" }), true);
+			return false;
+		}
+		member.deviceAccounts = [...(member.deviceAccounts ?? []), { username, createdAt: Date.now() }];
+		await this.refreshAccountAccess(admin, member);
+		await this.d.saveSettings();
+		this.d.logger.ok(t("device.invite_issued", { username }), true);
+		const iat = Math.floor(Date.now() / 1000);
+		const ttlDays = s.inviteTtlDays ?? 0;
+		new InviteModal(this.d.app, {
+			v: 1,
+			couchdbUrl: s.couchdbUrl,
+			workspaceId: s.workspaceId,
+			memberId: member.memberId,
+			memberName: member.memberName,
+			remoteDb: member.remoteDb,
+			username,
+			password: pw,
+			iat,
+			...(ttlDays > 0 ? { exp: iat + ttlDays * 86400 } : {}),
+		}).open();
+		return true;
+	}
+
+	/** 기기 계정 회수(평가 S-2). 계정 삭제 + _security/validate에서 제거 — 그 기기의 동기화가 중단된다. */
+	async revokeDevice(member: MemberConfig, username: string): Promise<boolean> {
+		const s = this.d.settings();
+		const adminPw = this.d.couchPassword();
+		if (s.role !== "manager" || !s.couchdbUrl || !s.username || !adminPw) {
+			this.d.logger.warn(t("command.enter_the_admin_account_couchdb_url"), true);
+			return false;
+		}
+		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
+		const del = await admin.deleteUser(username);
+		if (!del.ok) {
+			this.d.logger.error(t("device.revoke_failed", { username, err: del.error ?? "" }), true);
+			return false;
+		}
+		member.deviceAccounts = (member.deviceAccounts ?? []).filter((a) => a.username !== username);
+		await this.refreshAccountAccess(admin, member);
+		await this.d.saveSettings();
+		this.d.logger.ok(t("device.revoked", { username }), true);
+		return true;
+	}
+
+	/** 다음 기기 계정명 <memberId>-d<n>(기존과 충돌하지 않는 첫 번호, d2부터). */
+	private nextDeviceUsername(member: MemberConfig): string {
+		const taken = new Set(accountsOf(member));
+		for (let n = 2; ; n++) {
+			const candidate = `${member.memberId}-d${n}`;
+			if (!taken.has(candidate)) return candidate;
+		}
+	}
+
+	/** 계정 구성 변경 후 접근 재설정: mirror·공유 공간 _security + validate acct 맵(평가 S-2). */
+	private async refreshAccountAccess(admin: CouchAdmin, member: MemberConfig): Promise<void> {
+		const s = this.d.settings();
+		const svc = s.rtServiceUsername?.trim();
+		if (member.remoteDb) {
+			await admin.setSecurity(member.remoteDb, [...accountsOf(member), ...(svc ? [svc] : [])]);
+		}
+		for (const sp of s.sharedSpaces) {
+			if (!sp.provisioned || !sp.remoteDb || !sp.members.includes(member.memberId)) continue;
+			const users = sp.members.flatMap((sid) => {
+				const st = s.members.find((x) => x.memberId === sid);
+				return st ? accountsOf(st) : [];
+			});
+			await admin.setSecurity(sp.remoteDb, [...users, ...(svc ? [svc] : [])]);
+		}
+		await this.d.redeployValidate(); // acct 맵 갱신(지문 비교로 멱등)
 	}
 
 	/** 한 학생의 shares + rtconfig 문서 기록(공유 공간 멤버십 + 개인 mirror 실시간 공간). */

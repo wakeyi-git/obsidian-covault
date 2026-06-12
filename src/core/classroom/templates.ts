@@ -5,6 +5,7 @@
  * 기본)을 복사하고, 플러그인이 파일 프론트매터를 읽어 NoticeDoc(목록 메타)을 동기화한다. 과제 템플릿은
  * 배포 시 각 학생 작업 파일로 복사되는 본문(치환 변수 {{memberName}} 등)이다.
  */
+import { t } from "../../i18n";
 
 /** 내장 기본 알림장 템플릿. 프론트매터 `covault: notice` + 초안 플래그. */
 export const DEFAULT_NOTICE_TEMPLATE = `---
@@ -63,10 +64,15 @@ export function defaultTemplate(kind: NoticeTemplateKind): string {
 	return DEFAULT_NOTICE_TEMPLATE;
 }
 
-/** 유형별 기본 템플릿 저장 경로(설정이 비었을 때 "기본 템플릿 만들기"가 쓰는 위치). */
+/** 유형별 기본 템플릿 저장 경로(설정이 비었을 때 "기본 템플릿 만들기"가 쓰는 위치). 로케일 반영(평가 U-2). */
 export function defaultTemplatePath(kind: NoticeTemplateKind): string {
-	const name = kind === "lesson" ? "수업" : kind === "assignment" ? "과제" : "알림장";
-	return `_템플릿/${name}.md`;
+	const name =
+		kind === "lesson"
+			? t("dashboard.template_name_lesson")
+			: kind === "assignment"
+				? t("dashboard.template_name_assignment")
+				: t("dashboard.template_name_notice");
+	return `${t("dashboard.template_folder")}/${name}.md`;
 }
 
 /** 템플릿 본문의 {{title}}·{{week}}·{{date}} 치환(알림장/수업 생성 시). */

@@ -107,6 +107,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			openLog: () => this.nav.openLog(),
 			mintMirror: (m) => this.realtimeCtl.mintMirror(m),
 			mintMemberToken: (sp, memberId) => this.realtimeCtl.mintMemberToken(sp, memberId),
+			redeployValidate: (opts) => this.deploymentCtl.redeployValidate(opts),
 		});
 		this.registerEditorExtension(realtimeEditorExtension());
 
@@ -434,6 +435,14 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	 */
 	rotateMemberPassword(member: MemberConfig): Promise<void> {
 		return this.memberCtl.rotateMemberPassword(member);
+	}
+
+	inviteDevice(member: MemberConfig): Promise<boolean> {
+		return this.memberCtl.inviteDevice(member);
+	}
+
+	revokeDevice(member: MemberConfig, username: string): Promise<boolean> {
+		return this.memberCtl.revokeDevice(member, username);
 	}
 
 	// --- 공유 공간 배포 (Manager) ---

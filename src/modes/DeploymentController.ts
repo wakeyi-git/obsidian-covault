@@ -1,12 +1,13 @@
 import { App, TFile, TFolder } from "obsidian";
 import { Logger } from "../core/log/Logger";
-import { CoVaultSettings, SharedSpace, MemberConfig } from "../settings/types";
+import { CoVaultSettings, SharedSpace, MemberConfig, accountsOf } from "../settings/types";
 import { CouchAdmin } from "../core/couch/CouchAdmin";
 import {
 	ValidatePolicy,
 	buildValidateSource,
 	policyFingerprint,
 	allowMapFromRtParts,
+	accountsMapFromMembers,
 	VALIDATE_SOURCE_WARN_BYTES,
 } from "../core/couch/validatePolicy";
 import { isValidCouchName } from "../core/path/path";
@@ -111,6 +112,7 @@ export class DeploymentController {
 					readOnly: !!s.sharedReadOnly,
 					svcUsername: s.rtServiceUsername?.trim() || undefined,
 					allowByPath: allowMapFromRtParts(rtparts, s.members),
+					accounts: accountsMapFromMembers(s.members), // v4 — 기기별 계정 정규화(평가 S-2)
 				};
 				const fp = await policyFingerprint(policy);
 				if ((s.validatePolicyByDb ?? {})[sp.remoteDb] === fp) continue; // 이미 최신
@@ -243,9 +245,11 @@ export class DeploymentController {
 		}
 
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, this.d.couchPassword());
-		const memberUsers = space.members
-			.map((sid) => s.members.find((st) => st.memberId === sid)?.username)
-			.filter((u): u is string => !!u);
+		// 기기 계정 포함(평가 S-2) — 구성원의 모든 계정이 공유 DB에 접근해야 한다.
+		const memberUsers = space.members.flatMap((sid) => {
+			const st = s.members.find((x) => x.memberId === sid);
+			return st ? accountsOf(st) : [];
+		});
 		// 실시간 서버 서비스 계정을 _security에 포함 → Hocuspocus가 rtpart 조회·note 스냅샷을 admin 없이 수행.
 		const svc = await this.ensureRtServiceAccount(admin);
 		if (svc) memberUsers.push(svc);
@@ -359,13 +363,14 @@ export class DeploymentController {
 		if (svc) {
 			for (const sp of s.sharedSpaces) {
 				if (!sp.provisioned || !sp.remoteDb) continue;
-				const memberUsers = sp.members
-					.map((sid) => s.members.find((st) => st.memberId === sid)?.username)
-					.filter((u): u is string => !!u);
+				const memberUsers = sp.members.flatMap((sid) => {
+					const st = s.members.find((x) => x.memberId === sid);
+					return st ? accountsOf(st) : []; // 기기 계정 포함(평가 S-2)
+				});
 				await admin.setSecurity(sp.remoteDb, [...memberUsers, svc]);
 			}
 			for (const st of s.members) {
-				if (st.provisioned && st.remoteDb && st.username) await admin.setSecurity(st.remoteDb, [st.username, svc]);
+				if (st.provisioned && st.remoteDb && st.username) await admin.setSecurity(st.remoteDb, [...accountsOf(st), svc]);
 			}
 		}
 		// 실시간 인가 기본값(rtcontrol) 전파 — 서버가 즉시 재인가한다.

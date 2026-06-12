@@ -93,11 +93,14 @@ export class ServerResetController {
 			else this.d.logger.error(t("command.failed_to_delete_db", { db: member.remoteDb, err: r.error ?? "" }), true);
 			await this.dropCache(member.remoteDb);
 		}
-		if (member.username) {
-			const r = await admin.deleteUser(member.username);
-			if (r.ok) this.d.logger.ok(t("command.account_deleted", { user: member.username }), true);
-			else this.d.logger.error(t("command.failed_to_delete_account", { user: member.username, err: r.error ?? "" }), true);
+		// 기본 계정 + 기기 계정(평가 S-2) 모두 삭제 — 고아 계정이 서버에 남지 않게.
+		for (const username of [member.username, ...(member.deviceAccounts ?? []).map((a) => a.username)]) {
+			if (!username) continue;
+			const r = await admin.deleteUser(username);
+			if (r.ok) this.d.logger.ok(t("command.account_deleted", { user: username }), true);
+			else this.d.logger.error(t("command.failed_to_delete_account", { user: username, err: r.error ?? "" }), true);
 		}
+		member.deviceAccounts = [];
 	}
 
 	/** 한 공동 공간의 서버 데이터(공유 DB) 삭제. */
@@ -151,10 +154,14 @@ export class ServerResetController {
 
 		if (deleteAccounts) {
 			for (const st of s.members) {
-				if (!st.username) continue;
-				const r = await admin.deleteUser(st.username);
-				if (r.ok) this.d.logger.ok(t("command.account_deleted", { user: st.username }));
-				else this.d.logger.error(t("command.failed_to_delete_account", { user: st.username, err: r.error ?? "" }));
+				// 기본 계정 + 기기 계정(평가 S-2) 모두 삭제.
+				for (const username of [st.username, ...(st.deviceAccounts ?? []).map((a) => a.username)]) {
+					if (!username) continue;
+					const r = await admin.deleteUser(username);
+					if (r.ok) this.d.logger.ok(t("command.account_deleted", { user: username }));
+					else this.d.logger.error(t("command.failed_to_delete_account", { user: username, err: r.error ?? "" }));
+				}
+				st.deviceAccounts = [];
 			}
 		}
 

@@ -41,6 +41,7 @@ function ctl(s: CoVaultSettings): MemberController {
 		requestApply: () => {},
 		openLog: async () => {},
 		mintMirror: async () => {},
+		redeployValidate: async () => {},
 		// 멤버별 토큰 발급(실제는 RealtimeController가 m/r 클레임으로 서명) — 테스트는 결정적 문자열로 대체.
 		mintMemberToken: async (sp, memberId) => `member-token:${sp.id}:${memberId}`,
 	});

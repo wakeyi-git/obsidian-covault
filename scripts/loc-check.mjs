@@ -15,8 +15,8 @@ const GENERAL_CAP = 500;
 const OVERRIDES = {
 	// main.ts: M-12 완료 — PanelHost를 컨트롤러 컴포지션(src/panelHost.ts)으로 조립해 1178→719.
 	// 남은 것은 수명주기·DI 배선·SettingsHost 1줄 위임. 이 값은 실측 ratchet(성장 차단).
-	"src/main.ts": 738, // +실시간 토큰 Secret Storage 로드 마이그레이션(평가 S-1)
-	"src/settings/SettingsTab.ts": 1137, // 범위 밖(+그룹 관리·실시간 서비스 계정·검증 메시지·통합 변경 감지 토글)
+	"src/main.ts": 747, // +토큰 Secret Storage(S-1)·기기별 계정 위임(S-2) 배선
+	"src/settings/SettingsTab.ts": 1148, // 범위 밖(+그룹 관리·실시간 서비스 계정·검증 메시지·통합 변경 감지 토글·기기 관리 버튼 S-2)
 	"src/modes/ClassroomController.ts": 1087, // 범위 밖(+그룹 대화·대화 기능, +과제 보관/해제 전파, +시간표 프론트매터 직접 반영)
 	"src/core/realtime/RealtimeManager.ts": 735, // 범위 밖(게이트 로직은 main에 있음) — +세션 진입 pending 보존·dispose 백오프 타이머 정리(평가 R-A·C-2)
 	// 문서 모델: 타입 선언 + 타입 가드(평가 H-8) 위주라 캡을 너그럽게 둔다.

@@ -1,7 +1,8 @@
 import { App, Notice } from "obsidian";
 import { Logger } from "../core/log/Logger";
 import { CoVaultSettings } from "../settings/types";
-import { InvitePayload, parseInvite, isInviteExpired } from "../core/invite/invite";
+import { InvitePayload, parseInvite, isInviteExpired, genPassword } from "../core/invite/invite";
+import { rotateOwnPassword } from "../core/couch/selfAccount";
 import { persistCouchPassword } from "../core/secret";
 import { t } from "../i18n";
 
@@ -76,6 +77,19 @@ export class OnboardingController {
 			this.d.logger.error(t("panel.invite_auth_failed_401_your_manager"), true);
 		} else if (status === 403) {
 			this.d.logger.warn(t("panel.invite_permission_error_403_check_this"), true);
+		} else if (status === 200) {
+			// 적용 즉시 비밀번호 회전(평가 S-2) — QR/코드에 평문으로 배포된 비밀번호를 무효화해
+			// 초대를 일회성으로 만든다. 기기별 계정이라 같은 구성원의 다른 기기에는 영향이 없다.
+			const next = genPassword();
+			const rot = await rotateOwnPassword(s.couchdbUrl, s.username, payload.password, next);
+			if (rot.ok) {
+				persistCouchPassword(this.d.app, s, next);
+				await this.d.saveSettings();
+				this.d.logger.ok(t("command.invite_password_rotated"), true);
+			} else {
+				// 회전 실패는 온보딩을 막지 않는다 — 초대 비밀번호로 계속 동작하되, 코드가 살아있음을 알린다.
+				this.d.logger.warn(t("command.invite_password_rotate_failed", { error: rot.error ?? "" }), true);
+			}
 		}
 
 		await this.d.startMode();

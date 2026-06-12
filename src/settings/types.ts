@@ -40,6 +40,22 @@ export interface GroupConfig {
 	requestedBy?: string;
 }
 
+/**
+ * 구성원의 추가 기기 계정(평가 S-2 — 기기별 계정). 초대마다 전용 CouchDB 계정을 만들어
+ * 적용 즉시 그 기기가 비밀번호를 회전한다 → 초대 코드가 일회성이 되고, 기기 단위 회수가 가능하다.
+ */
+export interface DeviceAccount {
+	/** CouchDB 계정명. 관례 <memberId>-d<n>. */
+	username: string;
+	/** 발급 시각(epoch ms) — 표시·정리용. */
+	createdAt: number;
+}
+
+/** 한 구성원의 모든 CouchDB 계정명(기본 계정 + 기기 계정). _security·validate 정책에 쓴다. */
+export function accountsOf(m: Pick<MemberConfig, "username" | "deviceAccounts">): string[] {
+	return [m.username, ...(m.deviceAccounts ?? []).map((a) => a.username)].filter(Boolean);
+}
+
 /** 교사가 관리하는 학생 1명. 기술문서 §12.1. */
 export interface MemberConfig {
 	memberId: string;
@@ -62,6 +78,8 @@ export interface MemberConfig {
 	managerMirrorTokenSet?: boolean;
 	/** 이 구성원만 실시간 편집 차단(전역 실시간이 켜져 있어도 토큰 미발급 → 파일 동기화만, 라이브 세션 제외). */
 	realtimeBlocked?: boolean;
+	/** 추가 기기 계정(평가 S-2). 두 번째 기기부터 초대마다 전용 계정 — 일회성 초대·기기 단위 회수. */
+	deviceAccounts?: DeviceAccount[];
 }
 
 /**
@@ -278,7 +296,7 @@ export const DEFAULT_SETTINGS: CoVaultSettings = {
 	conflictPolicy: "preserve-local",
 	deletePolicy: "archive",
 	deleteReconcileMax: 0,
-	inviteTtlDays: 14,
+	inviteTtlDays: 7, // 평가 S-2: 평문 비밀번호가 든 초대의 노출 창 축소(14→7일)
 	versionHistory: true,
 	versionMaxCount: 10,
 	versionMaxAgeDays: 30,

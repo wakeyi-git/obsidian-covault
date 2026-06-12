@@ -111,11 +111,8 @@ describe("policyFingerprint / allowMapFromRtParts", () => {
 		expect(await policyFingerprint(a)).not.toBe(await policyFingerprint(c));
 	});
 
-	it("allowMap: memberId→username 매핑, 미매핑·삭제 문서 제외, 빈 배열 유지", () => {
-		const members = [
-			{ memberId: "m1", username: "student_a" },
-			{ memberId: "m2", username: "student_b" },
-		];
+	it("allowMap(v4): memberId 그대로 임베드, 명단 밖·삭제 문서 제외, 빈 배열 유지", () => {
+		const members = [{ memberId: "m1" }, { memberId: "m2" }];
 		const map = allowMapFromRtParts(
 			[
 				{ dbPath: "토론.md", memberIds: ["m2", "m1", "ghost"] },
@@ -124,6 +121,47 @@ describe("policyFingerprint / allowMapFromRtParts", () => {
 			],
 			members,
 		);
-		expect(map).toEqual({ "토론.md": ["student_a", "student_b"], "잠금.md": [] });
+		expect(map).toEqual({ "토론.md": ["m1", "m2"], "잠금.md": [] });
+	});
+
+	it("지문은 accounts 맵 변경에도 반응한다(기기 계정 추가 → 재배포)", async () => {
+		const base: ValidatePolicy = { readOnly: false, allowByPath: {}, accounts: { student_a: "m1" } };
+		const withDevice: ValidatePolicy = { ...base, accounts: { student_a: "m1", "m1-d2": "m1" } };
+		expect(await policyFingerprint(base)).not.toBe(await policyFingerprint(withDevice));
+	});
+});
+
+describe("validate v4 — 기기별 계정(acct 정규화, 평가 S-2)", () => {
+	// m1의 계정: student_a(기본) + m1-d2(기기). 허용 목록·소유 필드는 memberId 기준.
+	const policy: ValidatePolicy = {
+		readOnly: true,
+		svcUsername: "covault-rt",
+		allowByPath: { "모둠활동/토론.md": ["m1"], "잠금.md": [] },
+		accounts: { student_a: "m1", "m1-d2": "m1", student_b: "m2" },
+	};
+	const validate = compile(policy);
+	const device = { name: "m1-d2", roles: [] };
+
+	it("기기 계정도 기본 계정과 동일하게 참여 파일 note 쓰기 허용", () => {
+		expect(() => validate({ type: "note", _id: "note:모둠활동/토론.md" }, null, member)).not.toThrow();
+		expect(() => validate({ type: "note", _id: "note:모둠활동/토론.md" }, null, device)).not.toThrow();
+		expect(() => validate({ type: "note", _id: "note:모둠활동/토론.md" }, null, other)).toThrow();
+	});
+
+	it("asset 합집합 허용도 기기 계정에 적용", () => {
+		expect(() => validate({ type: "asset", _id: "asset:그림.png" }, null, device)).not.toThrow();
+		expect(() => validate({ type: "asset", _id: "asset:그림.png" }, null, other)).toThrow();
+	});
+
+	it("response 소유 검사: byUser(memberId) 문서를 같은 구성원의 다른 기기에서 갱신 가능", () => {
+		expect(() => validate({ type: "response", byUser: "m1" }, null, device)).not.toThrow();
+		expect(() => validate({ type: "response", byUser: "m1" }, null, member)).not.toThrow();
+		expect(() => validate({ type: "response", byUser: "m1" }, null, other)).toThrow();
+	});
+
+	it("grouprequest: 기기 A(기본 계정)가 만든 신청을 기기 B에서 soft-취소 가능 — 타인은 불가", () => {
+		const old = { type: "grouprequest", byUsername: "student_a", status: "pending" };
+		expect(() => validate({ ...old, deleted: true }, old, device)).not.toThrow();
+		expect(() => validate({ ...old, deleted: true }, old, other)).toThrow();
 	});
 });

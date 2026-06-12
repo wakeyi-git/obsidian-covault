@@ -48,3 +48,14 @@ export function unbindView(view: EditorView): void {
 	view.dispatch({ effects: rtCompartment.reconfigure([]) });
 	view.dom.classList.remove("covault-rt");
 }
+
+/**
+ * 이 뷰의 **현재 상태**에 실시간 바인딩(yCollab)이 실제로 구성되어 있는가(평가 R-D).
+ * Obsidian이 읽기↔편집 모드 전환 등으로 EditorState를 재생성하면 Compartment가 초기값([])으로
+ * 돌아가 바인딩이 사라지는데, 호출측의 bound Set에는 남아 재바인딩이 영구 스킵될 수 있다 —
+ * 에디터는 정상처럼 보이지만 동기화되지 않는 좀비 상태. Set 멤버십 대신 상태를 실측한다.
+ */
+export function isViewBound(view: EditorView): boolean {
+	const ext = rtCompartment.get(view.state);
+	return Array.isArray(ext) ? ext.length > 0 : ext != null;
+}

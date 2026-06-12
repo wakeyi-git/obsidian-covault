@@ -17,8 +17,8 @@ import { sha256 } from "../hash/hash";
  * 거부 사유는 `covault:shared-read-only`로 고정 — 클라이언트(onDenied)가 식별해 안내하는 프로토콜.
  */
 
-/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포). */
-export const VALIDATE_DOC_VERSION = 3;
+/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포). v4 = 기기별 계정(acct 정규화). */
+export const VALIDATE_DOC_VERSION = 4;
 
 /** onDenied가 식별하는 거부 사유 문자열(서버↔클라이언트 프로토콜 — 변경 금지). */
 export const READONLY_FORBIDDEN_REASON = "covault:shared-read-only";
@@ -28,17 +28,43 @@ export interface ValidatePolicy {
 	readOnly: boolean;
 	/** 실시간 서버 서비스 계정(항상 허용 — 서버 스냅샷 경로). 없으면 생략. */
 	svcUsername?: string;
-	/** dbPath → 허용 username 목록(실시간 세션 참여자). 빈 배열 = 아무도(명시적 차단). */
+	/** dbPath → 허용 **memberId** 목록(실시간 세션 참여자). 빈 배열 = 아무도(명시적 차단).
+	 *  v4: 계정명 대신 memberId를 임베드하고, 계정→memberId 매핑은 accounts로 분리(기기별 계정 지원). */
 	allowByPath: Record<string, string[]>;
+	/** CouchDB username → memberId(평가 S-2 — 기기별 계정). 소유·참여 검사를 memberId 기준으로 정규화한다.
+	 *  기본 계정(username=memberId 관례)도 포함해, username을 따로 정한 구성원의 잠재 불일치도 함께 해소. */
+	accounts?: Record<string, string>;
 }
 
 /** 키·값 정렬된 사본(지문 결정성 + 임베드 결정성). */
-function normalized(policy: ValidatePolicy): { ro: boolean; svc?: string; allow: Record<string, string[]> } {
+function normalized(policy: ValidatePolicy): {
+	ro: boolean;
+	svc?: string;
+	allow: Record<string, string[]>;
+	acct: Record<string, string>;
+} {
 	const allow: Record<string, string[]> = {};
 	for (const key of Object.keys(policy.allowByPath).sort()) {
 		allow[key] = [...policy.allowByPath[key]].sort();
 	}
-	return { ro: !!policy.readOnly, ...(policy.svcUsername ? { svc: policy.svcUsername } : {}), allow };
+	const acct: Record<string, string> = {};
+	for (const key of Object.keys(policy.accounts ?? {}).sort()) {
+		acct[key] = (policy.accounts ?? {})[key];
+	}
+	return { ro: !!policy.readOnly, ...(policy.svcUsername ? { svc: policy.svcUsername } : {}), allow, acct };
+}
+
+/** settings.members → username→memberId 맵(기본 계정 + 기기 계정 — 평가 S-2). */
+export function accountsMapFromMembers(
+	members: Array<{ memberId: string; username?: string; deviceAccounts?: Array<{ username: string }> }>,
+): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const m of members) {
+		if (!m.memberId) continue;
+		if (m.username) out[m.username] = m.memberId;
+		for (const d of m.deviceAccounts ?? []) if (d.username) out[d.username] = m.memberId;
+	}
+	return out;
 }
 
 /** 임베드 소스가 과대해지면 경고할 기준(현실적으로 1,000파일×5명 ≈ 60KB 수준). */
@@ -51,35 +77,38 @@ export const VALIDATE_SOURCE_WARN_BYTES = 200 * 1024;
 export function buildValidateSource(policy: ValidatePolicy): string {
 	const n = normalized(policy);
 	const anyAllowed = [...new Set(Object.values(n.allow).flat())].sort();
-	const embedded = JSON.stringify({ ro: n.ro, svc: n.svc ?? null, allow: n.allow, any: anyAllowed });
+	const embedded = JSON.stringify({ ro: n.ro, svc: n.svc ?? null, allow: n.allow, any: anyAllowed, acct: n.acct });
 	return (
 		"function (newDoc, oldDoc, userCtx) {\n" +
 		"  if (userCtx && userCtx.roles && userCtx.roles.indexOf('_admin') >= 0) return;\n" +
+		`  var POLICY = ${embedded};\n` +
+		// cn: 계정명 → memberId 정규화(v4 — 기기별 계정). 미등록 이름은 그대로(레거시 username=memberId 관례 호환).
+		"  function cn(x) { return (POLICY.acct && POLICY.acct[x]) || x; }\n" +
+		"  var me = cn(userCtx && userCtx.name);\n" +
 		"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
 		"  var teacherOnly = ['notice','timetable','routine','assignment','chatgroup','rtpart','rtcontrol','roster'];\n" +
 		"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
 		"  if (t === 'response') {\n" +
 		"    var owner = newDoc._deleted ? (oldDoc && oldDoc.byUser) : newDoc.byUser;\n" +
-		"    if (owner && owner !== userCtx.name) throw({ forbidden: 'own doc only' });\n" +
+		"    if (owner && cn(owner) !== me) throw({ forbidden: 'own doc only' });\n" +
 		"  }\n" +
 		"  if (t === 'grouprequest') {\n" +
 		"    var reqOwner = newDoc._deleted ? (oldDoc && oldDoc.byUsername) : newDoc.byUsername;\n" +
-		"    if (!reqOwner || reqOwner !== userCtx.name) throw({ forbidden: 'own request only' });\n" +
-		"    if (oldDoc && oldDoc.byUsername && oldDoc.byUsername !== userCtx.name) throw({ forbidden: 'own request only' });\n" +
+		"    if (!reqOwner || cn(reqOwner) !== me) throw({ forbidden: 'own request only' });\n" +
+		"    if (oldDoc && oldDoc.byUsername && cn(oldDoc.byUsername) !== me) throw({ forbidden: 'own request only' });\n" +
 		"    if (!newDoc._deleted && newDoc.status !== 'pending') throw({ forbidden: 'status is manager-only' });\n" +
 		"  }\n" +
-		`  var POLICY = ${embedded};\n` +
 		"  if (POLICY.ro && (t === 'note' || t === 'asset')) {\n" +
 		"    var u = userCtx && userCtx.name;\n" +
 		"    if (POLICY.svc && u === POLICY.svc) return;\n" +
 		"    if (t === 'asset') {\n" +
-		"      if (POLICY.any.indexOf(u) >= 0) return;\n" +
+		"      if (POLICY.any.indexOf(me) >= 0) return;\n" +
 		`      throw({ forbidden: '${READONLY_FORBIDDEN_REASON}' });\n` +
 		"    }\n" +
 		"    var id = newDoc._id || (oldDoc && oldDoc._id) || '';\n" +
 		"    var p = id.indexOf('note:') === 0 ? id.slice(5) : null;\n" +
 		"    var allowed = p !== null ? POLICY.allow[p] : null;\n" +
-		"    if (allowed && allowed.indexOf(u) >= 0) return;\n" +
+		"    if (allowed && allowed.indexOf(me) >= 0) return;\n" +
 		`    throw({ forbidden: '${READONLY_FORBIDDEN_REASON}' });\n` +
 		"  }\n" +
 		"}"
@@ -95,21 +124,18 @@ export async function policyFingerprint(policy: ValidatePolicy): Promise<string>
 }
 
 /**
- * rtpart 문서들 → dbPath별 허용 username 맵. memberId→username 매핑(settings.members),
- * 미매핑 memberId·삭제 문서는 제외. memberIds가 빈 배열이면 "아무도"(빈 배열 유지 — 명시적 차단).
+ * rtpart 문서들 → dbPath별 허용 **memberId** 맵(v4). 명단에 없는 memberId·삭제 문서는 제외.
+ * memberIds가 빈 배열이면 "아무도"(빈 배열 유지 — 명시적 차단). 계정 매핑은 ValidatePolicy.accounts가 담당.
  */
 export function allowMapFromRtParts(
 	rtparts: Array<{ dbPath?: string; memberIds?: string[]; deleted?: boolean }>,
-	members: Array<{ memberId: string; username: string }>,
+	members: Array<{ memberId: string }>,
 ): Record<string, string[]> {
-	const byId = new Map(members.filter((m) => m.memberId && m.username).map((m) => [m.memberId, m.username]));
+	const known = new Set(members.map((m) => m.memberId).filter(Boolean));
 	const out: Record<string, string[]> = {};
 	for (const d of rtparts) {
 		if (!d || d.deleted || !d.dbPath || !Array.isArray(d.memberIds)) continue;
-		out[d.dbPath] = d.memberIds
-			.map((id) => byId.get(id))
-			.filter((u): u is string => !!u)
-			.sort();
+		out[d.dbPath] = d.memberIds.filter((id) => known.has(id)).sort();
 	}
 	return out;
 }

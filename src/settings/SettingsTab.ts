@@ -2,6 +2,7 @@ import { App, Notice, Plugin, PluginSettingTab, Setting, SettingGroup } from "ob
 import { CoVaultSettings, MemberConfig, SharedSpace, GroupConfig } from "./types";
 import { ExportModal, ImportModal } from "../ui/BackupModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
+import { DeviceAccountsModal } from "../ui/DeviceAccountsModal";
 import { GroupEditModal } from "../ui/GroupEditModal";
 import { resolveMemberNames } from "../core/classroom/people";
 import { MemberBulkImportModal } from "../ui/MemberBulkImportModal";
@@ -66,6 +67,10 @@ export interface SettingsHost extends Plugin {
 	/** 프로비저닝되지 않은 모든 구성원을 일괄 초대. 프로비저닝된 수를 반환. */
 	inviteAllMembers(): Promise<number>;
 	rotateMemberPassword(member: MemberConfig): Promise<void>;
+	/** 기기 추가 초대(전용 계정 발급 — 평가 S-2). */
+	inviteDevice(member: MemberConfig): Promise<boolean>;
+	/** 기기 계정 회수(계정 삭제 + 접근 제거). */
+	revokeDevice(member: MemberConfig, username: string): Promise<boolean>;
 	ingestInvite(code: string): Promise<void>;
 	deployShared(space: SharedSpace): Promise<void>;
 	/** 구성원 서버 데이터(미러 DB + 계정) 삭제. */
@@ -645,6 +650,12 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					.setButtonText(t("invite.reissue_password"))
 					.setTooltip(t("invite.replaces_the_password_with_a_new"))
 					.onClick(() => this.runAsync(b, async () => { await this.host.rotateMemberPassword(st); this.display(); })),
+			);
+			head.addButton((b) =>
+				b
+					.setButtonText(t("device.manage_button", { n: (st.deviceAccounts ?? []).length }))
+					.setTooltip(t("device.manage_tooltip"))
+					.onClick(() => new DeviceAccountsModal(this.host, st).open()),
 			);
 		}
 		head
