@@ -142,8 +142,11 @@ export class MirrorApplier {
 		this.loggedConflicts.delete(doc.path);
 		await this.conflicts.cleanupCopy(doc.path); // 해소 전파로 들어온 갱신이면 남은 원격본 정리
 		ctx.guard.mark(localPath, doc.contentHash);
-		await ctx.writeVaultFile(localPath, doc.content);
+		// compare-and-swap(평가 D-2): 위의 readVaultFile 이후 끼어든 로컬 편집(아직 pending에 안 잡힌
+		// 저장)을 보존 없이 덮지 않는다 — 실패하면 다음 change에서 pending 보존 규칙으로 재평가된다.
+		const applied = await ctx.writeVaultFileIf(localPath, local, doc.content);
 		ctx.guard.releaseAfterDelay(localPath);
+		if (!applied) return "skipped-pending";
 		ctx.status.lastDownloadAt = Date.now();
 		ctx.logger.ok(t("sync.applied_remote_local", { path: localPath }));
 		return "applied";

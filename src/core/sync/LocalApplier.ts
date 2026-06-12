@@ -68,6 +68,12 @@ export class LocalApplier {
 		// changes feed의 doc은 어떤 타입의 문서든 올 수 있다 — `as any` 캐스팅 대신 타입 가드로 좁힌다.
 		const doc: unknown = change.doc;
 		const type = docType(doc);
+		// 충돌 집계 증분 갱신(평가 P-1) — conflicts:true라 winner doc에 _conflicts가 실려 온다.
+		if (change.id.startsWith("note:") || change.id.startsWith("asset:")) {
+			const conflicts = (change.doc as { _conflicts?: string[] } | undefined)?._conflicts;
+			if (!change.deleted && conflicts && conflicts.length > 0) this.ctx.conflictIds.add(change.id);
+			else this.ctx.conflictIds.delete(change.id);
+		}
 		try {
 			if (change.deleted) {
 				// PouchDB hard-remove(purge)가 전파됨 → 아카이브 사본 정리

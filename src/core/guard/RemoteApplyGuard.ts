@@ -25,6 +25,14 @@ export class RemoteApplyGuard {
 		return this.marks.get(localPath) === contentHash;
 	}
 
+	/**
+	 * 이 경로에 mark가 살아 있는가(해시 무관 — 평가 P-3). watcher가 "최근 applier 쓰기가 없던 경로"의
+	 * 이벤트에서 해시 계산을 통째로 건너뛰는 빠른 사전 판정용 — echo 판별(해시 비교)은 mark가 있을 때만 필요하다.
+	 */
+	isMarked(localPath: string): boolean {
+		return this.marks.has(localPath);
+	}
+
 	/** 일정 시간 후 mark 해제 (이벤트가 비동기로 도착하는 점 대비). */
 	releaseAfterDelay(localPath: string): void {
 		const existing = this.timers.get(localPath);

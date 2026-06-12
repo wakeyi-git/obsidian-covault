@@ -20,10 +20,10 @@
  */
 import { Server } from "@hocuspocus/server";
 import BetterSqlite3 from "better-sqlite3";
-import * as Y from "yjs";
-import crypto from "crypto";
 import { rejectPlaceholder, parseRoom, verifyToken } from "./auth.js";
 import { CouchClient } from "./couch.js";
+// 문서 로드 시드·스냅샷·언로드 로직은 docLifecycle.js로 분리(의존성 주입 → vitest 검증 가능).
+import { createDocLifecycle, isSnapshotTarget } from "./docLifecycle.js";
 
 const host = process.env.HOST || "0.0.0.0";
 const port = parseInt(process.env.PORT || "1234", 10);
@@ -60,23 +60,6 @@ const selectDoc = db.prepare('SELECT data FROM "documents" WHERE name = $name OR
 const upsertDoc = db.prepare('INSERT INTO "documents" ("name", "data") VALUES ($name, $data) ON CONFLICT(name) DO UPDATE SET data = $data');
 const deleteDocRow = db.prepare('DELETE FROM "documents" WHERE name = $name');
 
-/** 교사 삭제 tombstone 여부 — 교사 삭제는 실시간 세션·스냅샷보다 우선한다(부활 방지). 구성원 삭제는 세션 보호가 우선. */
-function isManagerTombstone(note) {
-	return !!note?.deleted && note.deletedByRole === "manager";
-}
-
-/** 서버 스냅샷의 deviceId — note가 이 값이 아니면 마지막 변경은 클라이언트(파일 동기화)에서 왔다. */
-const RT_DEVICE_ID = "covault-rt-server";
-
-function sha256Hex(s) {
-	return crypto.createHash("sha256").update(s, "utf8").digest("hex");
-}
-
-/** CouchDB 스냅샷/시드 대상: 마크다운 문서만. .excalidraw.md는 클라이언트가 세션 종료 시 저장한다. */
-function isSnapshotTarget(dbPath) {
-	const lower = dbPath.toLowerCase();
-	return lower.endsWith(".md") && !lower.endsWith(".excalidraw.md");
-}
 
 // ---------------------------------------------------------------------------
 // 파일 단위 인가 — 플러그인 src/core/realtime/participants.ts 의 memberAllowed()와 동일 규칙.
@@ -101,26 +84,6 @@ async function authorize(claims, room) {
 // ---------------------------------------------------------------------------
 const activeDocs = new Map(); // documentName -> { db, dbPath }
 const watchers = new Map(); // db -> { abort: AbortController, count: number }
-/**
- * SQLite가 CouchDB 스냅샷보다 앞서 있는 문서. onStoreDocument가 SQLite 저장 직후 표시하고
- * CouchDB 반영 성공 시 해제한다. 언로드 시 앞서 있지 않으면(=CouchDB가 정본) SQLite 행을 지워
- * 다음 세션이 CouchDB에서 시드되게 한다 — 세션 사이의 평문 동기화 편집이 옛 SQLite 상태에
- * 되돌려지는 사고(데이터 유실)를 막는다.
- */
-const sqliteAhead = new Set(); // documentName
-/**
- * 서버가 마지막으로 확인/기록한 CouchDB note의 contentHash. 스냅샷 직전 note가 이 값과 다르면
- * 세션 중 비실시간 멤버가 파일 동기화로 편집한 것 — Y 문서엔 병합되지 않으므로 그대로 덮으면
- * 그 편집이 유실된다. 덮기 전에 버전 문서(version:)로 보존해 버전 히스토리에서 복구 가능하게 한다.
- */
-const lastCouchHash = new Map(); // documentName -> contentHash
-
-/** 버전 문서 id용 단조 증가 타임스탬프(같은 ms 충돌 방지) — 클라이언트 VersionStore와 동형. */
-let lastVersionMs = 0;
-function nextVersionMs() {
-	lastVersionMs = Math.max(Date.now(), lastVersionMs + 1);
-	return lastVersionMs;
-}
 
 /**
  * CouchDB 스냅샷 실패 가시성 — 연속 실패 수와 마지막 오류를 헬스 엔드포인트에 노출한다.
@@ -149,6 +112,19 @@ function noteTokenExp(documentName, expSec) {
 	if (prev == null || expSec < prev) docMinExp.set(documentName, expSec);
 }
 let hocuspocusInstance = null; // onListen에서 채워짐(closeConnections용)
+
+// 문서 수명주기(로드 시드·스냅샷·언로드) — SQLite·CouchDB·연결 종료를 주입(테스트는 docLifecycle.test).
+const lifecycle = createDocLifecycle({
+	couch,
+	sqlite: {
+		get: (name) => selectDoc.get({ name })?.data ?? null,
+		put: (name, data) => upsertDoc.run({ name, data }),
+		del: (name) => deleteDocRow.run({ name }),
+	},
+	closeConnections: (name) => hocuspocusInstance?.closeConnections(name),
+	noteCouchOk,
+	noteCouchFail,
+});
 
 function onControlChange(dbName, changedIds) {
 	if (!hocuspocusInstance) return;
@@ -252,57 +228,7 @@ const server = new Server({
 	async onLoadDocument({ document, documentName, context }) {
 		const room = context?.room ?? parseRoom(documentName);
 		const claims = context?.claims;
-		const row = selectDoc.get({ name: documentName });
-		if (!couch || !room || !claims || !isSnapshotTarget(room.dbPath)) {
-			if (row?.data) Y.applyUpdate(document, row.data);
-			return;
-		}
-		try {
-			const note = await couch.getDoc(claims.d, `note:${room.dbPath}`);
-			// 교사 삭제 tombstone: SQLite 잔존 Y-doc까지 지우고 로드 거부 — 삭제된 파일의 방을 다시 열어
-			// 옛 상태가 부활하는 것을 막는다(시드 경로의 !deleted 검사는 SQLite 복원 경로를 못 막았다).
-			if (isManagerTombstone(note)) {
-				deleteDocRow.run({ name: documentName });
-				console.log(`[seed] "${documentName}" load refused — note tombstoned by manager`);
-				throw new Error("document deleted");
-			}
-			// 로드 시점의 note 해시를 기억 — 스냅샷 직전 note가 이 값과 다르면 외부 편집(보존 대상).
-			if (note && !note.deleted && note.contentHash) lastCouchHash.set(documentName, note.contentHash);
-			if (row?.data) {
-				Y.applyUpdate(document, row.data);
-				// SQLite 복원본은 마지막 세션 시점의 상태다. 그 사이 평문 파일 동기화로 note가
-				// 갱신됐다면(다른 기기 deviceId + 내용 불일치) CouchDB note가 정본 — Y.Text를
-				// note 내용으로 재시드해, 옛 세션 상태가 최신 편집을 되돌려 덮는 것을 막는다.
-				if (note && !note.deleted && typeof note.content === "string") {
-					const ytext = document.getText("content");
-					const current = ytext.toString();
-					const differs = sha256Hex(current) !== (note.contentHash ?? sha256Hex(note.content));
-					if (differs && note.lastModifiedDeviceId !== RT_DEVICE_ID) {
-						document.transact(() => {
-							ytext.delete(0, current.length);
-							ytext.insert(0, note.content);
-						});
-						console.warn(
-							`[seed] "${documentName}" persisted Y state was stale — re-seeded from CouchDB note (v${note.version ?? "?"}, last device ${note.lastModifiedDeviceId ?? "?"})`,
-						);
-					} else if (differs) {
-						// 마지막 note가 서버 스냅샷인데 내용이 다르다 = 이전 세션의 마지막 스냅샷이
-						// CouchDB에 못 갔다(서버 재시작 등). SQLite가 정본 — 언로드 시 보존 표시.
-						sqliteAhead.add(documentName);
-					}
-				}
-				return;
-			}
-			if (note && !note.deleted && typeof note.content === "string" && note.content.length > 0) {
-				// Y.Text 키 "content"는 클라이언트 RealtimeManager.startSession()의 ydoc.getText("content")와 일치해야 한다.
-				document.getText("content").insert(0, note.content);
-				console.log(`[seed] "${documentName}" seeded from CouchDB note (${note.content.length} chars)`);
-			}
-		} catch (e) {
-			// 시드/검증 실패 시 빈 문서로 열면 스냅샷이 기존 내용을 비울 수 있다 → fail-closed로 연결 거부.
-			console.error(`[seed] failed for "${documentName}": ${e?.message ?? e}`);
-			throw new Error("document seed failed");
-		}
+		await lifecycle.loadDocument({ document, documentName, room, claims });
 	},
 
 	/** 활성 문서 등록 + 해당 DB의 rtpart/rtcontrol 감시 시작. */
@@ -319,111 +245,10 @@ const server = new Server({
 	 * throw 시 Hocuspocus v4가 디바운서에 남겨 재시도하며, 종료 시 pending store를 flush한다.
 	 */
 	async onStoreDocument({ document, documentName, context, lastContext }) {
-		upsertDoc.run({ name: documentName, data: Buffer.from(Y.encodeStateAsUpdate(document)) });
-
 		const ctx = lastContext ?? context;
 		const room = ctx?.room ?? parseRoom(documentName);
 		const claims = ctx?.claims;
-		if (!couch || !room || !claims || !isSnapshotTarget(room.dbPath)) return;
-		// 여기서부터 CouchDB 반영 전까지는 SQLite가 앞선 상태 — 실패(throw → 디바운서 재시도) 시
-		// 표시가 남아 언로드 때 SQLite 행을 보존한다(미반영 편집의 유일한 사본).
-		sqliteAhead.add(documentName);
-
-		const content = document.getText("content").toString();
-		if (content.length === 0) return; // 빈 내용으로 기존 문서를 덮어쓰지 않음(데이터 손실 방지)
-		const contentHash = sha256Hex(content);
-		const id = `note:${room.dbPath}`;
-		try {
-		// 조회 실패는 throw → 디바운서가 재시도. (이전엔 null로 폴백해 tombstone 위에 새 문서를 쓸 수 있었다.)
-		const existing = await couch.getDoc(claims.d, id);
-		// 교사 삭제 tombstone: 스냅샷으로 되살리지 않는다 — SQLite 잔존 상태를 지우고 연결을 닫아 세션 종료.
-		if (isManagerTombstone(existing)) {
-			deleteDocRow.run({ name: documentName });
-			hocuspocusInstance?.closeConnections(documentName);
-			console.log(`[snapshot] "${documentName}" skipped — note tombstoned by manager; session closed`);
-			noteCouchOk();
-			return;
-		}
-		if (existing && !existing.deleted && existing.contentHash === contentHash) {
-			sqliteAhead.delete(documentName); // CouchDB가 이미 같은 내용 — 앞섬 해제
-			lastCouchHash.set(documentName, contentHash);
-			noteCouchOk();
-			return;
-		}
-
-		// 세션 중 외부 편집 보존: note가 서버가 마지막으로 알던 내용과 다르고 새 스냅샷과도 다르면,
-		// 비실시간 멤버의 파일 동기화 편집이 끼어든 것이다. Y 문서엔 자동 병합되지 않으므로 그대로
-		// 덮으면 유실 — 덮기 전에 버전 문서(kind: conflict)로 보존해 버전 히스토리에서 복구하게 한다.
-		const known = lastCouchHash.get(documentName);
-		if (
-			existing &&
-			!existing.deleted &&
-			typeof existing.content === "string" &&
-			known != null &&
-			existing.contentHash !== known &&
-			existing.contentHash !== contentHash
-		) {
-			const ms = nextVersionMs();
-			await couch.putDoc(claims.d, {
-				_id: `version:${room.dbPath}:${String(ms).padStart(14, "0")}`,
-				type: "version",
-				schemaVersion: 1,
-				workspaceId: claims.c,
-				memberId: existing.memberId ?? room.spaceId,
-				path: room.dbPath,
-				versionOf: existing.version ?? 0,
-				content: existing.content,
-				contentHash: existing.contentHash,
-				kind: "conflict",
-				createdAt: new Date(ms).toISOString(),
-				createdAtMs: ms,
-				createdBy: existing.lastModifiedBy ?? "unknown",
-				role: existing.lastModifiedRole ?? "member",
-				deviceId: existing.lastModifiedDeviceId ?? "unknown",
-			});
-			console.warn(
-				`[snapshot] "${documentName}" external edit by ${existing.lastModifiedBy ?? "?"} preserved as version (v${existing.version ?? "?"}) before overwrite`,
-			);
-		}
-
-		const now = Date.now();
-		// rev 전제조건 put(평가 R-C): getDoc(existing)→put 사이에 끼어든 쓰기(교사 tombstone·외부
-		// 멤버 편집)를 LWW로 덮지 않는다. 충돌이면 throw → 디바운서 재시도가 위의 전제조건 검사
-		// (tombstone 스킵·외부 편집 버전 보존)를 처음부터 다시 수행한다. sqliteAhead 표시가 남아
-		// 재시도 전까지 SQLite가 미반영 편집을 보존한다.
-		const putRes = await couch.putDocWithRev(
-			claims.d,
-			{
-				_id: id,
-				type: "note",
-				schemaVersion: 1,
-				workspaceId: claims.c,
-				// 소유자 표기는 기존 문서를 보존, 신규면 공간 id(공유 공간 문서의 관례)를 쓴다.
-				memberId: existing?.memberId ?? room.spaceId,
-				path: room.dbPath,
-				content,
-				contentHash,
-				mtime: now,
-				deleted: false,
-				version: (existing?.version ?? 0) + 1,
-				lastModifiedBy: claims.m, // 마지막 변경을 일으킨 연결의 주체
-				lastModifiedRole: claims.r,
-				lastModifiedDeviceId: RT_DEVICE_ID,
-				updatedAt: new Date(now).toISOString(),
-			},
-			existing?._rev,
-		);
-		if (putRes === "conflict") {
-			throw new Error(`snapshot rev conflict on ${claims.d}/${id} — will retry with fresh preconditions`);
-		}
-		sqliteAhead.delete(documentName); // CouchDB 반영 완료 — 이 시점부터 note가 정본
-		lastCouchHash.set(documentName, contentHash);
-		noteCouchOk();
-		console.log(`[snapshot] "${documentName}" -> ${claims.d}/${id} (v${(existing?.version ?? 0) + 1})`);
-		} catch (e) {
-			noteCouchFail(e); // 헬스 엔드포인트에 실패 누적 노출 — throw는 유지(디바운서 재시도)
-			throw e;
-		}
+		await lifecycle.storeDocument({ document, documentName, room, claims });
 	},
 
 	/** 활성 문서 해제 + 감시 정리. 스냅샷이 CouchDB에 안착했으면 SQLite 행도 지운다(다음 세션은 note에서 시드). */
@@ -432,17 +257,8 @@ const server = new Server({
 		if (!info) return;
 		activeDocs.delete(documentName);
 		releaseWatcher(info.db);
-		lastCouchHash.delete(documentName);
 		docMinExp.delete(documentName);
-		if (couch && isSnapshotTarget(info.dbPath)) {
-			if (sqliteAhead.has(documentName)) {
-				// 마지막 스냅샷이 CouchDB에 못 갔다 — SQLite 행이 미반영 편집의 유일한 사본이므로 보존.
-				sqliteAhead.delete(documentName);
-				console.warn(`[snapshot] "${documentName}" unloaded with CouchDB snapshot pending — keeping SQLite state`);
-			} else {
-				deleteDocRow.run({ name: documentName });
-			}
-		}
+		lifecycle.handleUnload(documentName, info.dbPath);
 	},
 });
 

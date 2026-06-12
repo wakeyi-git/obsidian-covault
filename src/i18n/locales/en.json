@@ -1,5 +1,6 @@
 {
 	"chat": {
+		"load_more": "Show earlier messages",
 		"attach_folder": "_chat-attachments",
 		"chat": "Chat",
 		"class_channel": "Everyone",
@@ -17,7 +18,7 @@
 		"shared_folder_hint": "Links open for the other side only if the note/file is in a shared folder.",
 		"reply": "Reply",
 		"replying_to": "Replying to {name}",
-		"reply_deleted": "Original deleted",
+		"reply_deleted": "Earlier message or deleted",
 		"feedback_not_found": "Feedback not found.",
 		"attach_feedback": "Reference feedback",
 		"no_feedback_here": "No feedback on the current note.",

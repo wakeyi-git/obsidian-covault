@@ -7,7 +7,7 @@ import { ConflictManager, ConflictInfo, ResolveChoice } from "./ConflictManager"
 import { RestoreManager, DeletedItem, RestoreResult, RestoreOptions, DeleteModifyChoice } from "./RestoreManager";
 import { PurgeSnapshot } from "./recentPurge";
 import { DeleteModifyItem } from "./deleteModifyQueue";
-import { VersionDoc, NoteDoc, noteId } from "../model/types";
+import { VersionDoc, NoteDoc, noteId, assetId } from "../model/types";
 import { sha256 } from "../hash/hash";
 import { Uploader, UploadResult } from "./Uploader";
 import { LocalWatcher } from "./LocalWatcher";
@@ -181,6 +181,8 @@ export class MirrorSync {
 
 		// 로컬 DB 변경을 vault에 반영(원격에서 replication으로 들어온 것 포함)
 		this.localApplier.start();
+		// 충돌 카운트 초기 채움(1회 전수) — 이후 LocalApplier의 changes가 증분 유지(평가 P-1).
+		void this.refreshConflictIds();
 		if (this.transportFn() === "event") {
 			// 이벤트 구동: live replication 없이 통합 변경 감지(_db_updates)가 syncOnce()를 깨운다.
 			// 로컬 쓰기는 notifyLocalWrite → requestPush(디바운스)로 원격에 전파한다.
@@ -402,6 +404,33 @@ export class MirrorSync {
 		const note = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
 		if (note && !note.deleted && note.contentHash === (await sha256(content))) return; // 이미 업로드됨
 		await ctx.versions.snapshot(dbPath, content, "conflict", note?.version ?? 0);
+	}
+
+	/**
+	 * 충돌 문서 수(증분 집계 — 평가 P-1). 대시보드 5초 폴링용 — listConflicts()의 전 문서 적재 없이
+	 * O(집계 크기)로 답한다. 상세 목록(충돌 탭)은 여전히 listConflicts()가 담당.
+	 * (집계는 _conflicts 기준이라, 모든 리프가 live와 동일한 극단 케이스는 상세 목록보다 1~2건 많을 수 있다.)
+	 */
+	conflictCount(): number {
+		let n = 0;
+		for (const id of this.ctx.conflictIds) {
+			if (id.startsWith("asset:") && !this.ctx.settings.syncAssets) continue; // listAssets와 동일 규칙
+			n++;
+		}
+		return n;
+	}
+
+	/** 충돌 집계 초기화(시작 시 1회 전수). 실패해도 동기화를 막지 않는다 — 카운트만 0에서 출발. */
+	private async refreshConflictIds(): Promise<void> {
+		try {
+			const ids: string[] = [];
+			for (const { doc } of await this.ctx.pouch.listConflicts()) ids.push(noteId(doc.path));
+			for (const { doc } of await this.ctx.pouch.listAssetConflicts()) ids.push(assetId(doc.path));
+			this.ctx.conflictIds.clear();
+			for (const id of ids) this.ctx.conflictIds.add(id);
+		} catch {
+			/* 초기 집계 실패 — changes가 점진적으로 채운다 */
+		}
 	}
 
 	/** 피드백 라우팅용: 이 링크가 해당 로컬 경로를 담당하는가(localRoot 안 + 제외 아님). */

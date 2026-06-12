@@ -60,6 +60,13 @@ export class ClassroomStore {
 		return p.allDocsByPrefix<T>(prefix);
 	}
 
+	/** prefix 문서의 최근 limit건(deleted 제외, 오래된→최신) — 채팅 최근 N건(평가 P-2). */
+	async listRecentByPrefix<T extends PouchDocBase & { deleted?: boolean }>(prefix: string, limit: number): Promise<T[]> {
+		const p = this.homeroom();
+		if (!p) return [];
+		return p.recentDocsByPrefix<T>(prefix, limit);
+	}
+
 	/** soft delete(tombstone) — deleted=true로 표시해 동기화. */
 	async softDelete<T extends PouchDocBase & { deleted?: boolean }>(doc: T): Promise<boolean> {
 		return this.put({ ...doc, deleted: true });

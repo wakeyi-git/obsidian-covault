@@ -56,12 +56,8 @@ export class RecoveryController {
 	async getDashboardRows(): Promise<DashboardRow[]> {
 		const rows: DashboardRow[] = [];
 		for (const sync of this.d.getSyncs()) {
-			let conflicts = 0;
-			try {
-				conflicts = (await sync.listConflicts()).length;
-			} catch {
-				/* 조회 실패는 0으로 */
-			}
+			// 증분 집계(평가 P-1) — 5초 폴링이 링크별 전 문서를 본문 포함으로 적재하지 않는다.
+			const conflicts = sync.conflictCount();
 			rows.push({
 				memberName: sync.memberName,
 				memberId: sync.memberId,

@@ -924,17 +924,28 @@ export class ClassroomController {
 		return true;
 	}
 
-	/** 채널 메시지 목록(오래된→최신). */
-	async listMessages(channel: string): Promise<MessageDoc[]> {
+	/**
+	 * 채널 메시지 목록(오래된→최신). limit 지정 시 **최근 limit건만** 조회한다(평가 P-2) —
+	 * 채널이 수천 건으로 자라도 폴링·렌더 비용이 창 크기로 유계. 미지정이면 전체(내보내기 등).
+	 */
+	async listMessages(channel: string, limit?: number): Promise<MessageDoc[]> {
 		let docs: MessageDoc[];
+		const prefix = messagePrefix(channel);
 		if (channel === CLASS_CHANNEL) {
-			docs = await this.d.classroom.listByPrefix<MessageDoc>(messagePrefix(CLASS_CHANNEL));
+			docs = limit
+				? await this.d.classroom.listRecentByPrefix<MessageDoc>(prefix, limit)
+				: await this.d.classroom.listByPrefix<MessageDoc>(prefix);
 		} else {
 			const sync = this.channelSync(channel);
 			// 이 채널의 정확한 prefix(message:dm:<id>: / message:group:<db>:<path>:)로 조회. 교사·학생이 같은
 			// channel을 쓰므로 양쪽 일치. (이전엔 messagePrefix("dm:")가 "message:dm::"를 만들어 매칭 실패했다.)
-			docs = sync ? await sync.ctx.pouch.allDocsByPrefix<MessageDoc>(messagePrefix(channel)) : [];
+			docs = !sync
+				? []
+				: limit
+					? await sync.ctx.pouch.recentDocsByPrefix<MessageDoc>(prefix, limit)
+					: await sync.ctx.pouch.allDocsByPrefix<MessageDoc>(prefix);
 		}
+		// recent 경로는 이미 deleted 제외·시간순이지만, 동일 ms 내 순서 보정을 위해 정렬은 유지(≤limit건이라 저렴).
 		return docs.filter((d) => !d.deleted).sort((a, b) => a.createdAtMs - b.createdAtMs);
 	}
 

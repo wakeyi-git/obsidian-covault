@@ -235,6 +235,40 @@ export class PouchService {
 		return out;
 	}
 
+	/**
+	 * prefix 문서 중 **id 내림차순 최근 limit건**(deleted 제외, 반환은 오래된→최신) — 채팅 최근 N건(평가 P-2).
+	 * 메시지 id는 base36 타임스탬프 prefix라 id 순서 = 시간 순서. deleted(tombstone)를 건너뛰며
+	 * limit을 채울 때까지 페이지를 내려간다 — 채널 전체를 적재하지 않는다.
+	 */
+	async recentDocsByPrefix<T extends PouchDocBase & { deleted?: boolean }>(prefix: string, limit: number): Promise<T[]> {
+		const out: T[] = [];
+		let startkey = `${prefix}￿`;
+		let skip = 0;
+		while (out.length < limit) {
+			const page = Math.max(limit - out.length + 10, 30);
+			const res = await this.localDb().allDocs<T>({
+				include_docs: true,
+				descending: true,
+				startkey,
+				endkey: prefix,
+				limit: page,
+				skip, // 두 번째 페이지부터 경계 키 자신 제외
+			});
+			if (res.rows.length === 0) break;
+			for (const row of res.rows) {
+				const d = row.doc as T | undefined;
+				if (d && !d.deleted) {
+					out.push(d);
+					if (out.length >= limit) break;
+				}
+			}
+			if (res.rows.length < page) break; // 더 없음
+			startkey = res.rows[res.rows.length - 1].key;
+			skip = 1;
+		}
+		return out.reverse();
+	}
+
 	/** prefix로 시작하는 로컬 문서 전체(예: 피드백 feedback:<dbPath>:). */
 	async allDocsByPrefix<T extends PouchDocBase>(prefix: string): Promise<T[]> {
 		const res = await this.localDb().allDocs<T>({

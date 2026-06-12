@@ -30,5 +30,8 @@ jobs:
       - name: Check file size caps (loc-check)
         run: npm run loc-check
 
+      - name: Lint (async hygiene)
+        run: npm run lint
+
       - name: Build
         run: npm run build

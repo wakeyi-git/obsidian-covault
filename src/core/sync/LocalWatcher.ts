@@ -73,9 +73,15 @@ export class LocalWatcher {
 		// 세션 종료 시 스냅샷만 업로드된다.
 		if (this.ctx.core.isRealtimeActive(localPath)) return;
 
-		const hash = await this.currentHash(localPath);
-		if (hash == null) return;
-		if (this.ctx.guard.shouldIgnore(localPath, hash)) return; // applier echo → 무시 (§16.2)
+		// 해시 계산은 guard 표시가 살아 있는(=방금 applier가 쓴) 경로에서만 — echo 판별에만 필요하다
+		// (평가 P-3). 폴더 이동·git checkout 같은 대량 사용자 이벤트는 guard 미표시라, 이벤트마다
+		// 즉시 파일 읽기+해시가 무제한 동시 실행되던 폭주가 사라진다(실제 해시·업로드는 디바운스 후
+		// flushUpload가 동시성 한도 안에서 수행).
+		if (this.ctx.guard.isMarked(localPath)) {
+			const hash = await this.currentHash(localPath);
+			if (hash == null) return;
+			if (this.ctx.guard.shouldIgnore(localPath, hash)) return; // applier echo → 무시 (§16.2)
+		}
 
 		this.ctx.markPending(dbPath);
 		this.scheduleUpload(localPath, dbPath);
@@ -112,12 +118,12 @@ export class LocalWatcher {
 			if (oldDb != null && !this.ctx.isExcluded(oldPath)) {
 				await this.uploader.tombstonePath(oldDb);
 			}
-			// 새 경로가 범위 안이면 업로드(md/asset 공통)
+			// 새 경로가 범위 안이면 업로드(md/asset 공통). 폴더 단위 이동의 파일 폭주도 동시성 한도로 직렬화(P-3).
 			const newDb = this.ctx.toDbPath(newPath);
 			if (newDb != null && !this.ctx.isExcluded(newPath)) {
 				this.ctx.markPending(newDb);
 				try {
-					await this.uploader.uploadPath(newPath);
+					await this.withUploadSlot(() => this.uploader.uploadPath(newPath));
 				} finally {
 					this.ctx.clearPending(newDb);
 				}
@@ -188,13 +194,33 @@ export class LocalWatcher {
 
 	private async flushUpload(localPath: string, dbPath: string): Promise<void> {
 		try {
-			await this.uploader.uploadPath(localPath);
+			// 동시성 한도(평가 P-3) — 대량 작업에서 디바운스 타이머가 같은 시각에 만료해도
+			// 읽기+해시+put이 한꺼번에 실행되지 않는다(메인 스레드 정체·메모리 스파이크 방지).
+			await this.withUploadSlot(() => this.uploader.uploadPath(localPath));
 		} catch (e) {
 			this.ctx.logger.error(
 				t("sync.upload_failed", { path: localPath, err: errMessage(e) }),
 			);
 		} finally {
 			this.ctx.clearPending(dbPath);
+		}
+	}
+
+	// --- 업로드 동시성 제한(평가 P-3) ---
+	private static readonly MAX_CONCURRENT_UPLOADS = 3;
+	private activeUploads = 0;
+	private uploadWaiters: Array<() => void> = [];
+
+	private async withUploadSlot<T>(fn: () => Promise<T>): Promise<T> {
+		if (this.activeUploads >= LocalWatcher.MAX_CONCURRENT_UPLOADS) {
+			await new Promise<void>((resolve) => this.uploadWaiters.push(resolve));
+		}
+		this.activeUploads++;
+		try {
+			return await fn();
+		} finally {
+			this.activeUploads--;
+			this.uploadWaiters.shift()?.();
 		}
 	}
 }

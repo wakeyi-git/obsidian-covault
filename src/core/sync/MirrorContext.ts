@@ -31,6 +31,12 @@ export interface LinkStatus {
 export class MirrorContext {
 	/** 이 링크의 실시간 상태(대시보드용). 컴포넌트들이 직접 갱신한다. */
 	readonly status: LinkStatus = { state: "idle" };
+	/**
+	 * 충돌 문서 id(note:/asset:) 증분 집계(평가 P-1). 시작 시 1회 전수 채움(MirrorSync) 후
+	 * LocalApplier의 changes(conflicts:true)가 증분 유지한다 — 대시보드 카운트 폴링이
+	 * 5초마다 전 문서를 본문 포함으로 적재하던 비용을 제거한다.
+	 */
+	readonly conflictIds = new Set<string>();
 
 	/** 사용자용 버전 히스토리(마크다운 스냅샷). 보고서 §1 P1. */
 	readonly versions: VersionStore = new VersionStore(this);
@@ -236,6 +242,31 @@ export class MirrorContext {
 		} else {
 			await this.app.vault.create(localPath, content);
 		}
+	}
+
+	/**
+	 * compare-and-swap 쓰기(평가 D-2). 호출측이 읽은 시점의 내용(expected)과 디스크가 같을 때만 덮는다.
+	 * applier의 읽기→쓰기 사이 ms 창에 사용자 편집이 끼어들면(아직 watcher pending으로 안 잡힌 저장)
+	 * 보존 없이 덮여 사라질 수 있었다 — process 콜백 안에서 재확인해 다르면 변경하지 않고 false를
+	 * 반환한다(다음 change/전체 동기화가 pending 보존 규칙으로 재평가). expected=null은 "파일 없음"
+	 * 기대(생성) — 그 사이 생겼거나, 있다고 기대했는데 사라졌으면 중단한다.
+	 */
+	async writeVaultFileIf(localPath: string, expected: string | null, content: string): Promise<boolean> {
+		await this.ensureParentFolder(localPath);
+		const existing = this.app.vault.getAbstractFileByPath(localPath);
+		if (existing instanceof TFile) {
+			if (expected == null) return false; // 기대: 없음 — 읽기 이후 생성됨
+			let applied = false;
+			await this.app.vault.process(existing, (data) => {
+				if (data !== expected) return data; // 끼어든 편집 — 그대로 둔다
+				applied = true;
+				return content;
+			});
+			return applied;
+		}
+		if (expected != null) return false; // 기대: 있음 — 읽기 이후 삭제됨
+		await this.app.vault.create(localPath, content);
+		return true;
 	}
 
 	private async ensureParentFolder(localPath: string): Promise<void> {

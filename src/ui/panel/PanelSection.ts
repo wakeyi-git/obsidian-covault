@@ -86,8 +86,8 @@ export interface NoticeHost {
 export interface MessageHost {
 	/** 메시지 전송(channel="class"·"dm:<id>"·"group:..."). replyTo=답글 대상 _id. */
 	sendMessage(channel: string, body: string, replyTo?: string): Promise<boolean>;
-	/** 채널 메시지 목록(오래된→최신). */
-	listMessages(channel: string): Promise<MessageDoc[]>;
+	/** 채널 메시지 목록(오래된→최신). limit 지정 시 최근 limit건만(평가 P-2). */
+	listMessages(channel: string, limit?: number): Promise<MessageDoc[]>;
 	/** 메시지 삭제(본인 메시지). */
 	deleteMessage(channel: string, doc: MessageDoc): Promise<void>;
 	/** vault 파일을 채널 첨부 폴더로 복사하고 임베드/링크 마크다운 반환(실패 시 null). */

@@ -1979,3 +1979,9 @@
 .covault-dash-reply-row {
 	margin-left: 16px;
 }
+
+/* 채팅 "이전 메시지 보기"(평가 P-2) — 목록 상단 중앙 정렬 */
+.covault-chat-more {
+	display: block;
+	margin: 0 auto 8px;
+}

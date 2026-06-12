@@ -34,6 +34,11 @@ export class ChatSection implements PanelSection {
 	private replyTo: MessageDoc | null = null; // 작성 중 답글 대상
 	private replyBanner: HTMLElement | null = null;
 	private loggedGroupError = false; // 그룹 목록 로드 실패 로그는 1회만(폴링 반복 방지)
+	// 최근 N건 창(평가 P-2) — 채널이 수천 건으로 자라도 조회·렌더가 창 크기로 유계.
+	private static readonly PAGE = 100;
+	private limit = ChatSection.PAGE;
+	private loadedChannel: string | null = null;
+	private renderedIds: string[] = []; // 증분(append-only) 렌더 판정용
 
 	constructor(private host: PanelHost) {}
 
@@ -294,6 +299,13 @@ export class ChatSection implements PanelSection {
 	private async reload(): Promise<void> {
 		const list = this.listEl;
 		if (!list) return;
+		// 채널이 바뀌면 창·증분 상태 초기화(평가 P-2).
+		if (this.channel !== this.loadedChannel) {
+			this.loadedChannel = this.channel;
+			this.limit = ChatSection.PAGE;
+			this.renderedIds = [];
+			this.lastSig = "";
+		}
 		// 학급 채널은 학급 공동 공간이 필요.
 		if (this.channel === CLASS_CHANNEL && !this.host.homeroomReady()) {
 			if (this.lastSig === "no-home") return;
@@ -302,19 +314,50 @@ export class ChatSection implements PanelSection {
 			this.empty(list, t("chat.class_needs_homeroom"));
 			return;
 		}
-		const msgs = await this.host.listMessages(this.channel);
-		const sig = `${this.channel}|${msgs.length}|${msgs[msgs.length - 1]?._id ?? ""}|${msgs[msgs.length - 1]?._rev ?? ""}`;
+		// +1건 더 요청해 "이전 메시지" 존재 여부를 판정(전체 카운트 없이).
+		const fetched = await this.host.listMessages(this.channel, this.limit + 1);
+		const hasMore = fetched.length > this.limit;
+		const msgs = hasMore ? fetched.slice(fetched.length - this.limit) : fetched;
+		const sig = `${this.channel}|${this.limit}|${msgs.length}|${msgs[0]?._id ?? ""}|${msgs[msgs.length - 1]?._id ?? ""}|${msgs[msgs.length - 1]?._rev ?? ""}`;
 		if (sig === this.lastSig) return; // 변화 없으면 재렌더 생략(폴링 깜빡임 방지)
 		this.lastSig = sig;
+		this.msgs = msgs;
+		const me = this.host.settings.userId;
+		const ids = msgs.map((m) => m._id);
+
+		// append-only(기존 렌더가 새 목록의 prefix) → 꼬리만 추가(평가 P-2). 창이 차서 미끄러지거나
+		// 삭제·이전 메시지 로드로 머리가 바뀌면 전체 재구성 — 창 크기(≤PAGE)로 유계라 저렴하다.
+		const isAppend =
+			this.renderedIds.length > 0 &&
+			this.renderedIds.length < ids.length &&
+			this.renderedIds.every((id, i) => ids[i] === id);
+		const nearBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 60;
+		if (isAppend) {
+			for (const m of msgs.slice(this.renderedIds.length)) this.renderMessage(list, m, m.byUser === me);
+			this.renderedIds = ids;
+			if (nearBottom) list.scrollTop = list.scrollHeight;
+			return;
+		}
+
+		const firstRender = this.renderedIds.length === 0;
+		const prevScroll = list.scrollTop;
 		list.empty();
 		if (msgs.length === 0) {
+			this.renderedIds = [];
 			this.empty(list, t("chat.no_messages"));
 			return;
 		}
-		this.msgs = msgs;
-		const me = this.host.settings.userId;
+		if (hasMore) {
+			const more = list.createEl("button", { cls: "covault-chat-more", text: t("chat.load_more") });
+			more.onclick = () => {
+				this.limit += ChatSection.PAGE;
+				void this.reload();
+			};
+		}
 		for (const m of msgs) this.renderMessage(list, m, m.byUser === me);
-		list.scrollTop = list.scrollHeight;
+		this.renderedIds = ids;
+		// 첫 렌더·하단 근처면 최신으로, 아니면 읽던 위치 유지(폴링 중 스크롤 리셋 방지).
+		list.scrollTop = firstRender || nearBottom ? list.scrollHeight : prevScroll;
 	}
 
 	private renderMessage(parent: HTMLElement, m: MessageDoc, mine: boolean): void {

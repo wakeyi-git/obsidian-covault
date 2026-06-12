@@ -1,5 +1,6 @@
 {
 	"chat": {
+		"load_more": "이전 메시지 보기",
 		"attach_folder": "_대화첨부",
 		"chat": "대화",
 		"class_channel": "전체 채널",
@@ -17,7 +18,7 @@
 		"shared_folder_hint": "공유 폴더에 있는 노트/파일만 상대에게 열립니다.",
 		"reply": "답글",
 		"replying_to": "{name}에게 답글",
-		"reply_deleted": "원본이 삭제됨",
+		"reply_deleted": "이전 메시지 또는 삭제됨",
 		"feedback_not_found": "피드백을 찾을 수 없습니다.",
 		"attach_feedback": "피드백 참조",
 		"no_feedback_here": "현재 노트에 피드백이 없습니다.",
