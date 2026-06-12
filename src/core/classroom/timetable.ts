@@ -51,3 +51,19 @@ export function placeLessonSlot(lessons: Record<string, string>, uid: string, ce
 	}
 	return { lessons: next, changed };
 }
+
+/**
+ * 수업(uid)의 연결을 시간표 lessons 맵에서 제거한다(순수). 프론트매터에서 day/period를 비우거나
+ * week를 다른 주로 옮겼을 때, 더 이상 가리키지 않는 칸을 비우는 데 쓴다. 변경이 없으면 changed=false.
+ */
+export function removeLessonSlot(lessons: Record<string, string>, uid: string): { lessons: Record<string, string>; changed: boolean } {
+	const next = { ...lessons };
+	let changed = false;
+	for (const [k, v] of Object.entries(next)) {
+		if (v === uid) {
+			delete next[k];
+			changed = true;
+		}
+	}
+	return { lessons: next, changed };
+}

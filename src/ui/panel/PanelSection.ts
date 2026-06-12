@@ -66,8 +66,8 @@ export interface CoreHost {
 export interface NoticeHost {
 	/** 새 알림장(교사): 초안 본문 파일을 만들어 편집창에서 연다(프론트매터로 작성·게시). */
 	newNotice(): Promise<boolean>;
-	/** 수업 안내 생성(교사) → uid 반환(시간표 칸 연결용). 초안 파일을 편집창에서 연다. weekKey=주간 태그. */
-	createLesson(title: string, weekKey?: string): Promise<string | null>;
+	/** 수업 안내 생성(교사) → uid 반환(시간표 칸 연결용). 초안 파일을 편집창에서 연다. weekKey=주간 태그, slot=칸의 요일/교시 라벨(프론트매터 day/period로 기록). */
+	createLesson(title: string, weekKey?: string, slot?: { day: string; period: string }): Promise<string | null>;
 	/** 게시(알림장/수업) 삭제(교사): 메타 + 본문 파일 삭제. */
 	deleteNotice(notice: NoticeDoc): Promise<void>;
 	/** 게시/게시 취소(교사): 메타 + 파일 프론트매터 published 갱신. */

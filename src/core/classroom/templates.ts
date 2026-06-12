@@ -20,12 +20,14 @@ responses: true
 작성을 마치면 위 속성의 \`published\`를 켜거나 대시보드의 **게시** 버튼을 눌러 구성원에게 공개합니다.
 `;
 
-/** 내장 기본 수업 안내 템플릿. 프론트매터 `covault: lesson` + 주(週) 키. */
+/** 내장 기본 수업 안내 템플릿. 프론트매터 `covault: lesson` + 주(週)·요일·교시 키(day/period를 채우면 시간표 칸에 배치). */
 export const DEFAULT_LESSON_TEMPLATE = `---
 covault: lesson
 title: "{{title}}"
 published: false
 week: "{{week}}"
+day: ""
+period: ""
 ---
 
 ## 학습 목표

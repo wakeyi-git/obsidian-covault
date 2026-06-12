@@ -15,7 +15,7 @@ import {
 	noticeFieldsFromFrontmatter,
 	NoticeTemplateKind,
 } from "../core/classroom/templates";
-import { defaultTimetableDays, DEFAULT_PERIODS, resolveTimetableSlot, placeLessonSlot } from "../core/classroom/timetable";
+import { defaultTimetableDays, DEFAULT_PERIODS, resolveTimetableSlot, placeLessonSlot, removeLessonSlot } from "../core/classroom/timetable";
 import { assignmentWorkDir, assignmentFileName, substituteTemplate, slugify, rubricMax } from "../core/classroom/assignments";
 import {
 	NoticeDoc,
@@ -110,7 +110,12 @@ export class ClassroomController {
 	 * 초안 본문 파일 생성(교사) + 프론트매터(covault/uid/published 등) 주입. 성공 시 {uid, path}.
 	 * 게시 메타(NoticeDoc)는 즉시 1회 upsert하고, 이후 편집창에서의 프론트매터 변경은 syncNoticeFromFile이 반영.
 	 */
-	private async createDraft(category: "notice" | "lesson", title: string, weekKey?: string): Promise<{ uid: string; path: string } | null> {
+	private async createDraft(
+		category: "notice" | "lesson",
+		title: string,
+		weekKey?: string,
+		slot?: { day: string; period: string },
+	): Promise<{ uid: string; path: string } | null> {
 		if (this.d.settings().role !== "manager") {
 			this.d.logger.warn(t("command.available_in_manager_mode_only"), true);
 			return null;
@@ -138,7 +143,13 @@ export class ClassroomController {
 			if (fm.published === undefined) fm.published = false;
 			if (category === "notice" && fm.pinned === undefined) fm.pinned = false;
 			if (category === "notice" && fm.responses === undefined) fm.responses = true;
-			if (category === "lesson") fm.week = weekKey ?? "";
+			if (category === "lesson") {
+				fm.week = weekKey ?? "";
+				// 시간표 칸의 요일/교시를 프론트매터에 기록 — 이후 이 값을 고치는 것이 곧 칸 이동/해제다.
+				// 칸 없이 만든 수업도 키를 노출해(빈 값) 편집창에서 채우면 배치되도록 한다.
+				fm.day = slot?.day ?? fm.day ?? "";
+				fm.period = slot?.period ?? fm.period ?? "";
+			}
 		});
 		await this.putNoticeDoc(uid, path, {
 			category,
@@ -160,9 +171,9 @@ export class ClassroomController {
 		return true;
 	}
 
-	/** 새 수업 안내: 초안 파일을 만들어 편집창에서 연다. uid 반환(시간표 칸 연결용). */
-	async createLesson(title: string, weekKey?: string): Promise<string | null> {
-		const r = await this.createDraft("lesson", title || this.defaultPostTitle("lesson"), weekKey);
+	/** 새 수업 안내: 초안 파일을 만들어 편집창에서 연다. uid 반환(시간표 칸 연결용). slot=칸의 요일/교시 라벨(프론트매터에 기록). */
+	async createLesson(title: string, weekKey?: string, slot?: { day: string; period: string }): Promise<string | null> {
+		const r = await this.createDraft("lesson", title || this.defaultPostTitle("lesson"), weekKey, slot);
 		if (!r) return null;
 		await this.openVaultPath(r.path);
 		return r.uid;
@@ -214,8 +225,9 @@ export class ClassroomController {
 		await this.putNoticeDoc(uid, file.path, fields);
 		// 직접 uid를 바꿔 생긴 중복(같은 파일을 가리키는 옛 uid 문서)을 폐기 — 다음 저장 때 자가 치유.
 		await this.retireStaleNoticesForPath(file.path, uid);
-		// 수업이 프론트매터에 day/period를 가지면 해당 주 시간표 칸에 자동 배치(외부/Cowork 작성 수업도 배치 가능).
-		if (fields.category === "lesson" && fields.weekKey && (fm.day !== undefined || fm.period !== undefined)) {
+		// 수업의 프론트매터 week/day/period가 시간표 배치의 원천 — 칸 배치·이동·주 변경·해제를 직접 반영한다.
+		// day/period 키가 아예 없는 수업(구버전·외부 작성)은 건드리지 않아 대시보드에서 맺은 연결을 보존한다.
+		if (fields.category === "lesson" && (fm.day !== undefined || fm.period !== undefined)) {
 			await this.placeLessonInTimetable(uid, fields.weekKey, fm.day, fm.period);
 		}
 	}
@@ -317,25 +329,33 @@ export class ClassroomController {
 	}
 
 	/**
-	 * 수업(uid)을 그 주 시간표의 day/period 칸에 연결(교사). 유효한 칸이 아니면 미배치 유지.
+	 * 수업(uid)의 시간표 배치를 프론트매터(week/day/period) 기준으로 동기화(교사).
+	 * 가리키는 칸에 연결하고, 더 이상 가리키지 않는 칸(다른 주·다른 칸, 또는 값을 비운 경우)은 해제한다.
 	 *
 	 * 여러 수업 파일이 동시에 저장되면(예: 외부/Cowork가 한꺼번에 생성) 한 주의 TimetableDoc을 동시에
 	 * read-modify-write 하다가 서로 덮어써 일부 배치가 유실된다(put이 충돌 시 last-write-wins). 이를 막기 위해
 	 * 배치 쓰기를 **직렬화**해 항상 최신 문서를 읽고 한 칸씩 누적 반영한다.
 	 */
 	private placeQueue: Promise<unknown> = Promise.resolve();
-	private placeLessonInTimetable(uid: string, weekKey: string, dayRaw: unknown, periodRaw: unknown): Promise<void> {
+	private placeLessonInTimetable(uid: string, weekKey: string | undefined, dayRaw: unknown, periodRaw: unknown): Promise<void> {
 		const run = this.placeQueue.then(() => this.doPlaceLessonInTimetable(uid, weekKey, dayRaw, periodRaw));
 		this.placeQueue = run.catch(() => {}); // 한 건 실패가 큐를 끊지 않도록
 		return run;
 	}
 
-	private async doPlaceLessonInTimetable(uid: string, weekKey: string, dayRaw: unknown, periodRaw: unknown): Promise<void> {
-		const existing = await this.d.classroom.get<TimetableDoc>(timetableId(weekKey));
+	private async doPlaceLessonInTimetable(uid: string, weekKey: string | undefined, dayRaw: unknown, periodRaw: unknown): Promise<void> {
+		const existing = weekKey ? await this.d.classroom.get<TimetableDoc>(timetableId(weekKey)) : null;
 		const days = existing?.days ?? defaultTimetableDays();
 		const periods = existing?.periods ?? [...DEFAULT_PERIODS];
-		const cellKey = resolveTimetableSlot(dayRaw, periodRaw, days, periods);
-		if (!cellKey) return;
+		// 칸을 못 정하면(week 누락, day/period 비움·오타) 목표 칸 없음 → 아래 정리에서 기존 연결만 해제.
+		const cellKey = weekKey ? resolveTimetableSlot(dayRaw, periodRaw, days, periods) : null;
+		// 1) 목표가 아닌 시간표에 남은 연결 해제 — 주(week) 이동, day/period 비움이 칸에 직접 반영되도록.
+		for (const tt of await this.d.classroom.listByPrefix<TimetableDoc>(TIMETABLE_ID_PREFIX)) {
+			if (cellKey && tt.weekKey === weekKey) continue; // 목표 주는 아래 배치가 처리(칸 이동 포함)
+			const r = removeLessonSlot(tt.lessons ?? {}, uid);
+			if (r.changed) await this.d.classroom.put({ ...tt, lessons: r.lessons, updatedAtMs: Date.now(), updatedBy: this.d.settings().userId });
+		}
+		if (!cellKey || !weekKey) return;
 		const doc: TimetableDoc =
 			existing ?? {
 				_id: timetableId(weekKey),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveTimetableSlot, placeLessonSlot } from "./timetable";
+import { resolveTimetableSlot, placeLessonSlot, removeLessonSlot } from "./timetable";
 
 const DAYS = ["월", "화", "수", "목", "금"];
 const PERIODS = ["1", "2", "3", "4", "5", "6"];
@@ -53,6 +53,23 @@ describe("placeLessonSlot", () => {
 
 	it("이미 그 칸이면 변경 없음", () => {
 		const r = placeLessonSlot({ "0:2": "u1" }, "u1", "0:2");
+		expect(r.changed).toBe(false);
+	});
+});
+
+describe("removeLessonSlot", () => {
+	it("해당 uid의 연결만 제거(다른 수업 보존)", () => {
+		const r = removeLessonSlot({ "0:1": "u1", "0:4": "u2" }, "u1");
+		expect(r).toEqual({ lessons: { "0:4": "u2" }, changed: true });
+	});
+
+	it("여러 칸에 남은 같은 uid도 모두 제거", () => {
+		const r = removeLessonSlot({ "0:1": "u1", "2:3": "u1" }, "u1");
+		expect(r).toEqual({ lessons: {}, changed: true });
+	});
+
+	it("연결이 없으면 변경 없음", () => {
+		const r = removeLessonSlot({ "0:1": "u2" }, "u1");
 		expect(r.changed).toBe(false);
 	});
 });

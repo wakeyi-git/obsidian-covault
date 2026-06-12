@@ -10,6 +10,9 @@ describe("templates", () => {
 	it("내장 기본 템플릿은 유형별 covault 마커를 포함", () => {
 		expect(defaultTemplate("notice")).toContain("covault: notice");
 		expect(defaultTemplate("lesson")).toContain("covault: lesson");
+		// 수업 템플릿은 시간표 배치용 day/period 키를 노출(채우면 칸에 배치).
+		expect(defaultTemplate("lesson")).toContain("day:");
+		expect(defaultTemplate("lesson")).toContain("period:");
 		// 과제 템플릿은 프론트매터 마커 없이 본문 치환 변수만.
 		expect(defaultTemplate("assignment")).toContain("{{memberName}}");
 		expect(defaultTemplate("assignment")).not.toContain("covault:");
