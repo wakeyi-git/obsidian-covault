@@ -11,7 +11,8 @@ function fakeCtl(methods: Record<string, (...a: unknown[]) => unknown>): never {
 }
 
 function makeDeps(settingsRef: { current: CoVaultSettings }, calls: string[]): PanelHostDeps {
-	class Classroom {
+	// NoticeController 더블 — pick의 .bind(src)가 this를 유지하는지 검증(평가 P2-3 분할 후).
+	class NoticeCtl {
 		tag = "classroom-this";
 		newNotice() {
 			// pick의 .bind(src) 검증 — this가 끊기면 tag가 없다.
@@ -19,7 +20,7 @@ function makeDeps(settingsRef: { current: CoVaultSettings }, calls: string[]): P
 			return Promise.resolve(true);
 		}
 	}
-	const classroomCtl = Object.assign(new Classroom(), {
+	const noticeCtl = Object.assign(new NoticeCtl(), {
 		// PanelHost 멤버를 채우기 위한 나머지 더미들(호출 안 함)
 	});
 	const noop = () => Promise.resolve() as never;
@@ -30,7 +31,10 @@ function makeDeps(settingsRef: { current: CoVaultSettings }, calls: string[]): P
 		feedback: {} as never,
 		classroom: {} as never,
 		settings: () => settingsRef.current,
-		classroomCtl: classroomCtl as never,
+		noticeCtl: noticeCtl as never,
+		assignmentCtl: fakeCtl({}),
+		routineCtl: fakeCtl({}),
+		messageCtl: fakeCtl({}),
 		participantCtl: fakeCtl({}),
 		recoveryCtl: fakeCtl({}),
 		groupRequestCtl: fakeCtl({}),

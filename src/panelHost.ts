@@ -3,7 +3,10 @@ import { Logger } from "./core/log/Logger";
 import { CoVaultSettings } from "./settings/types";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
-import { ClassroomController } from "./modes/ClassroomController";
+import { NoticeController } from "./modes/classroom/NoticeController";
+import { AssignmentController } from "./modes/classroom/AssignmentController";
+import { RoutineController } from "./modes/classroom/RoutineController";
+import { MessageController } from "./modes/classroom/MessageController";
 import { ParticipantController } from "./modes/ParticipantController";
 import { RecoveryController } from "./modes/RecoveryController";
 import { GroupRequestController } from "./modes/GroupRequestController";
@@ -105,8 +108,11 @@ export interface PanelHostDeps {
 	feedback: FeedbackStore;
 	classroom: ClassroomStore;
 	settings(): CoVaultSettings;
-	// 도메인 컨트롤러 — Host와 시그니처 1:1
-	classroomCtl: ClassroomController;
+	// 도메인 컨트롤러 — Host와 시그니처 1:1 (ClassroomController 분할 — 평가 P2-3)
+	noticeCtl: NoticeController;
+	assignmentCtl: AssignmentController;
+	routineCtl: RoutineController;
+	messageCtl: MessageController;
 	participantCtl: ParticipantController;
 	recoveryCtl: RecoveryController;
 	groupRequestCtl: GroupRequestController;
@@ -176,8 +182,8 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 			await jumpToFeedback(d.app, doc, path);
 		},
 
-		// --- 알림장·과제·루틴·대화(콘텐츠) — ClassroomController 1:1 ---
-		...pick(d.classroomCtl, [
+		// --- 알림장·수업·응답 — NoticeController (평가 P2-3 분할) ---
+		...pick(d.noticeCtl, [
 			"newNotice",
 			"createLesson",
 			"deleteNotice",
@@ -186,6 +192,9 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 			"postPrivateResponse",
 			"postPrivateResponseTo",
 			"listPrivateResponses",
+		] as const),
+		// --- 과제 — AssignmentController ---
+		...pick(d.assignmentCtl, [
 			"assignmentDefs",
 			"createAssignment",
 			"updateAssignment",
@@ -198,6 +207,9 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 			"unsubmitAssignment",
 			"returnAssignment",
 			"openVaultPath",
+		] as const),
+		// --- 루틴 — RoutineController ---
+		...pick(d.routineCtl, [
 			"listRoutines",
 			"createRoutine",
 			"updateRoutine",
@@ -208,6 +220,9 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 			"toggleRoutineItem",
 			"listRoutineStates",
 			"listAllRoutineStates",
+		] as const),
+		// --- 대화(메신저) — MessageController ---
+		...pick(d.messageCtl, [
 			"sendMessage",
 			"listMessages",
 			"deleteMessage",
