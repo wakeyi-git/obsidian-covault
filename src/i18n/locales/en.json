@@ -476,6 +476,8 @@
 		"rt_service_password": "Realtime server account password",
 		"rt_service_password_desc": "Password for the dedicated account (kept in Secret Storage). Keep it identical to the server's COUCHDB_PASSWORD. Leave empty to reuse an account you created yourself.",
 		"shared_space": "Shared space {n}",
+		"select_members": "Select members",
+		"members_selected": "{n} selected",
 		"name": "Name",
 		"group_1": "Group 1",
 		"folder": "Folder",

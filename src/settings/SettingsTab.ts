@@ -4,6 +4,7 @@ import { ExportModal, ImportModal } from "../ui/BackupModal";
 import { ConfirmModal } from "../ui/ConfirmModal";
 import { DeviceAccountsModal } from "../ui/DeviceAccountsModal";
 import { GroupEditModal } from "../ui/GroupEditModal";
+import { MemberSelectModal } from "../ui/MemberSelectModal";
 import { resolveMemberNames } from "../core/classroom/people";
 import { MemberBulkImportModal } from "../ui/MemberBulkImportModal";
 import { PathSuggest } from "../ui/PathSuggest";
@@ -591,32 +592,22 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				});
 		}
 
-		const memberHead = new Setting(card).setName(t("panel.members"));
-		const membersWithId = s.members.filter((st) => st.memberId);
-		memberHead.addButton((b) =>
-			b.setButtonText(t("deploy.select_all")).onClick(async () => {
-				sp.members = membersWithId.map((st) => st.memberId);
-				await this.host.saveSettings();
-				this.display();
-			}),
-		);
-		memberHead.addButton((b) =>
-			b.setButtonText(t("deploy.none")).onClick(async () => {
-				sp.members = [];
-				await this.host.saveSettings();
-				this.display();
-			}),
-		);
-		for (const st of membersWithId) {
-			new Setting(card).setName(st.memberName || st.memberId).addToggle((tg) =>
-				tg.setValue(sp.members.includes(st.memberId)).onChange(async (v) => {
-					if (v && !sp.members.includes(st.memberId)) sp.members.push(st.memberId);
-					else if (!v) sp.members = sp.members.filter((m) => m !== st.memberId);
-					await this.host.saveSettings();
-					this.display(); // 배지(재배포 필요) 갱신
+		// 구성원 선택 — 카드마다 다중선택 모달 버튼 하나로(평가 P2-2). 과거엔 공간×구성원 토글 그리드가
+		// O(M×N)으로 늘어 한 토글 변경마다 전체 재렌더했다. 이제 버튼이 현재 선택 수만 표시하고,
+		// 모달에서 스크롤 목록 + 전체/해제로 고른 뒤 저장 시에만 갱신한다.
+		const membersWithId = s.members.filter((st) => st.memberId).map((st) => ({ memberId: st.memberId, memberName: st.memberName || st.memberId }));
+		new Setting(card)
+			.setName(t("panel.members"))
+			.setDesc(t("settings.members_selected", { n: sp.members.length }))
+			.addButton((b) =>
+				b.setButtonText(t("settings.select_members")).onClick(() => {
+					new MemberSelectModal(this.app, t("settings.select_members"), membersWithId, sp.members, async (ids) => {
+						sp.members = ids;
+						await this.host.saveSettings();
+						this.display(); // 선택 수·배지(재배포 필요) 갱신
+					}).open();
 				}),
 			);
-		}
 
 		const status = sharedSpaceStatus(sp);
 		const badge =
