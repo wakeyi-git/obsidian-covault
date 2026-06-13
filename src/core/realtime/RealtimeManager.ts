@@ -10,6 +10,7 @@ import { PresenceChips } from "./presenceChips";
 import { clientColor } from "./clientColor";
 import { ExcalidrawBinding, ExcalidrawImperativeApi } from "./excalidrawBinding";
 import { relUnder, roomName, pickSpace } from "./room";
+import { RetryState, nextRetryState, backoffDelay, inBackoff } from "./retryBackoff";
 import { t } from "../../i18n";
 
 interface Session {
@@ -73,9 +74,8 @@ export class RealtimeManager {
 	// 파일별 참여 허용 캐시(비동기 조회 결과). 파일이 닫히면 비워 재오픈 시 재평가.
 	private participantOk = new Map<string, boolean>();
 	private participantPending = new Set<string>();
-	// 서버 거부(인증 실패·재인가 종료) 재시도 백오프(2s→60s 지수). 동기화 성공 시 해제.
-	// 서버가 지속 거부(예: CouchDB 미연동으로 시드 실패)할 때 즉시 재접속 루프 + 알림 폭주를 막는다.
-	private retryState = new Map<string, { failures: number; until: number }>();
+	// 서버 거부(인증 실패·재인가 종료) 재시도 백오프(retryBackoff.ts — 순수 로직). 동기화 성공 시 해제.
+	private retryState = new Map<string, RetryState>();
 	// 백오프 재평가 타이머(평가 C-2). dispose 후 잔존 타이머가 세션을 재생성하지 않도록 추적·취소한다.
 	private retryTimers = new Set<number>();
 	private disposed = false;
@@ -225,8 +225,7 @@ export class RealtimeManager {
 				if (cached === undefined) this.allowedToStart(path);
 			} else {
 				if (!this.allowedToStart(path)) continue; // 파일별 참여자에 없으면 라이브 미접속(파일 동기화만)
-				const st = this.retryState.get(path);
-				if (st && Date.now() < st.until) continue; // 서버 거부 백오프 중 — noteServerRefusal의 타이머가 재평가한다
+				if (inBackoff(this.retryState.get(path), Date.now())) continue; // 서버 거부 백오프 중 — noteServerRefusal의 타이머가 재평가한다
 				session = this.startSession(path, tgt.kind);
 			}
 			if (!session?.ready) continue;
@@ -378,11 +377,9 @@ export class RealtimeManager {
 	 * 진짜 인증 거부는 첫 실패만 알림(Notice) — 지속 거부 시 알림 폭주로 설정 변경조차 못 하게 되는 것을 막는다.
 	 */
 	private noteServerRefusal(path: string, dbPath: string, reason: string, silent: boolean): void {
-		const st = this.retryState.get(path) ?? { failures: 0, until: 0 };
-		st.failures++;
-		const delay = Math.min(60_000, 2_000 * 2 ** (st.failures - 1));
-		st.until = Date.now() + delay;
+		const st = nextRetryState(this.retryState.get(path), Date.now());
 		this.retryState.set(path, st);
+		const delay = backoffDelay(st.failures);
 		if (silent) this.core.logger.info(t("realtime.realtime_reauth_reconnect", { path: dbPath }));
 		else this.core.logger.warn(t("realtime.realtime_auth_failed", { path: dbPath, reason }), st.failures === 1);
 		void this.endSession(path).then(() => {
