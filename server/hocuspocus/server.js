@@ -60,6 +60,13 @@ const selectDoc = db.prepare('SELECT data FROM "documents" WHERE name = $name OR
 const upsertDoc = db.prepare('INSERT INTO "documents" ("name", "data") VALUES ($name, $data) ON CONFLICT(name) DO UPDATE SET data = $data');
 const deleteDocRow = db.prepare('DELETE FROM "documents" WHERE name = $name');
 
+// 문서별 소량 메타데이터(TEXT 키·값). Excalidraw 신선도 앵커(마지막으로 일치를 확인한 CouchDB note 해시)에
+// 사용한다 — 서버가 excalidraw를 CouchDB 스냅샷하지 않아 Y 상태→파일 해시를 만들 수 없으므로(평가 P1-1 #3).
+db.exec('CREATE TABLE IF NOT EXISTS "covault_meta" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)');
+const selectMeta = db.prepare('SELECT value FROM "covault_meta" WHERE key = $key');
+const upsertMeta = db.prepare('INSERT INTO "covault_meta" ("key", "value") VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = $value');
+const deleteMeta = db.prepare('DELETE FROM "covault_meta" WHERE key = $key');
+
 
 // ---------------------------------------------------------------------------
 // 파일 단위 인가 — 플러그인 src/core/realtime/participants.ts 의 memberAllowed()와 동일 규칙.
@@ -120,6 +127,9 @@ const lifecycle = createDocLifecycle({
 		get: (name) => selectDoc.get({ name })?.data ?? null,
 		put: (name, data) => upsertDoc.run({ name, data }),
 		del: (name) => deleteDocRow.run({ name }),
+		getMeta: (key) => selectMeta.get({ key })?.value ?? null,
+		putMeta: (key, value) => upsertMeta.run({ key, value }),
+		delMeta: (key) => deleteMeta.run({ key }),
 	},
 	closeConnections: (name) => hocuspocusInstance?.closeConnections(name),
 	noteCouchOk,

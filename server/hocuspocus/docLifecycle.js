@@ -47,11 +47,61 @@ export function createDocLifecycle(deps) {
 	/** 서버가 마지막으로 확인/기록한 CouchDB note의 contentHash — 세션 중 외부 편집 감지. */
 	const lastCouchHash = new Map();
 
+	/**
+	 * Excalidraw(.excalidraw.md) 로드: 서버는 excalidraw를 CouchDB 스냅샷하지 않아 Y 상태→파일 해시를
+	 * 만들 수 없다(마크다운의 contentHash 재시드 가드 불가). 대신 CouchDB note(파일 동기화본)의 contentHash를
+	 * 앵커(covault_meta)에 저장해 두고, 세션 사이 비실시간(파일 동기화) 편집으로 note가 바뀌면 SQLite Y 상태를
+	 * stale로 보고 **버린다** → 클라이언트가 현재 디스크 씬에서 다시 시드(seedElection). 평가 P1-1 #3.
+	 *
+	 * 정상 세션 종료(클라이언트가 새 본을 업로드)도 note 해시를 바꾸므로, 다음 세션이 한 번 더 재시드할 수
+	 * 있으나 무해하다(현재 디스크 = 그 세션의 최종 씬이므로 같은 내용으로 재시드). 데이터 유실 방지가 우선.
+	 * note 조회 실패 시엔 신선도 검증을 못 하므로 SQLite를 그대로 복원한다(가용성 우선 — 빈 문서가 디스크를
+	 * 덮을 위험은 클라이언트 빈-내용 가드가 막는다).
+	 */
+	async function loadExcalidraw({ document, documentName, room, claims, row }) {
+		let note;
+		try {
+			note = await couch.getDoc(claims.d, `note:${room.dbPath}`);
+		} catch (e) {
+			log.warn(`[seed] excalidraw note lookup failed for "${documentName}": ${e?.message ?? e} — restoring SQLite as-is`);
+			if (row) Y.applyUpdate(document, row);
+			return;
+		}
+		// 교사 삭제 tombstone: 마크다운과 동일하게 SQLite·앵커를 지우고 로드 거부(부활 방지).
+		if (isManagerTombstone(note)) {
+			sqlite.del(documentName);
+			sqlite.delMeta?.(documentName);
+			log.log(`[seed] "${documentName}" load refused — excalidraw note tombstoned by manager`);
+			throw new Error("document deleted");
+		}
+		const noteHash = note && !note.deleted ? note.contentHash ?? null : null;
+		if (!row) {
+			// SQLite 없음 → 클라이언트가 디스크 씬에서 시드한다(서버는 excalidraw Y를 시드하지 않는다).
+			// 현재 note 해시를 앵커로 남겨, 다음 세션이 외부 편집을 감지하게 한다.
+			if (noteHash) sqlite.putMeta?.(documentName, noteHash);
+			return;
+		}
+		const anchor = sqlite.getMeta?.(documentName) ?? null;
+		if (noteHash && anchor && anchor !== noteHash) {
+			// 세션 사이 외부(파일 동기화) 편집으로 디스크 그림이 바뀜 → SQLite Y 상태는 stale. 적용하지 않고 버린다.
+			sqlite.del(documentName);
+			sqlite.putMeta?.(documentName, noteHash);
+			log.warn(`[seed] "${documentName}" excalidraw SQLite state stale (disk note changed) — discarded; client will re-seed`);
+			return;
+		}
+		Y.applyUpdate(document, row);
+		if (noteHash) sqlite.putMeta?.(documentName, noteHash);
+	}
+
 	/** 문서 로드: SQLite 복원 → 없으면 CouchDB note 문서로 시드(마크다운 전용). 교사 삭제 tombstone이면 로드 거부. */
 	async function loadDocument({ document, documentName, room, claims }) {
 		const row = sqlite.get(documentName);
-		if (!couch || !room || !claims || !isSnapshotTarget(room.dbPath)) {
+		if (!couch || !room || !claims) {
 			if (row) Y.applyUpdate(document, row);
+			return;
+		}
+		if (!isSnapshotTarget(room.dbPath)) {
+			await loadExcalidraw({ document, documentName, room, claims, row });
 			return;
 		}
 		try {
