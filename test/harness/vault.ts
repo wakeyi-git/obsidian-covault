@@ -72,6 +72,7 @@ export class InMemoryVault {
 		e.content = next;
 		e.file.stat.size = byteLen(next);
 		e.file.stat.mtime = Date.now(); // 실제 Obsidian처럼 수정 시각 갱신(증분 스캔이 의존)
+		this.emit("modify", e.file);
 		return next;
 	}
 
@@ -81,6 +82,7 @@ export class InMemoryVault {
 		this.requireParent(p, "create");
 		const file = new TFile(p, byteLen(content));
 		this.files.set(p, { file, content });
+		this.emit("create", file);
 		return file;
 	}
 
@@ -90,6 +92,7 @@ export class InMemoryVault {
 		this.requireParent(p, "createBinary");
 		const file = new TFile(p, data.byteLength);
 		this.files.set(p, { file, binary: data });
+		this.emit("create", file);
 		return file;
 	}
 
@@ -99,6 +102,7 @@ export class InMemoryVault {
 		e.binary = data;
 		e.file.stat.size = data.byteLength;
 		e.file.stat.mtime = Date.now();
+		this.emit("modify", e.file);
 	}
 
 	async createFolder(path: string): Promise<TFolder> {
@@ -111,9 +115,11 @@ export class InMemoryVault {
 	/** trash(file, false) = vault 내 삭제. 테스트에선 단순 제거. */
 	async trash(file: TFile, _system: boolean): Promise<void> {
 		this.files.delete(normalizePath(file.path));
+		this.emit("delete", file);
 	}
 	async delete(file: TFile): Promise<void> {
 		this.files.delete(normalizePath(file.path));
+		this.emit("delete", file);
 	}
 
 	getFiles(): TFile[] {
@@ -133,13 +139,32 @@ export class InMemoryVault {
 		e.file.path = to;
 		e.file.name = to.split("/").pop() ?? to;
 		this.files.set(to, e);
+		this.emit("rename", e.file, from);
 	}
 
-	// --- 이벤트 API 스텁(LocalWatcher 호환) — 테스트는 업로드를 직접 구동하므로 발화는 없다. ---
-	on(_name: string, _cb: (...args: unknown[]) => unknown): { id: number } {
-		return { id: 0 };
+	// --- 이벤트 API(LocalWatcher 호환) — 실제 Obsidian처럼 create/modify/rename/delete를 발화한다.
+	// 리스너를 등록하지 않은 테스트(대부분)에는 영향이 없다(emit이 no-op). seed*는 초기 상태 구성이라 발화하지 않는다.
+	private listeners = new Map<string, Map<number, (...args: any[]) => void>>();
+	private nextRef = 1;
+	on(name: string, cb: (...args: any[]) => unknown): { id: number; name: string } {
+		const id = this.nextRef++;
+		let m = this.listeners.get(name);
+		if (!m) {
+			m = new Map();
+			this.listeners.set(name, m);
+		}
+		m.set(id, cb);
+		return { id, name };
 	}
-	offref(_ref: unknown): void {}
+	offref(ref: { id: number; name: string } | undefined | null): void {
+		if (!ref) return;
+		this.listeners.get(ref.name)?.delete(ref.id);
+	}
+	private emit(name: string, ...args: unknown[]): void {
+		const m = this.listeners.get(name);
+		if (!m) return;
+		for (const cb of [...m.values()]) cb(...args);
+	}
 
 	// --- 테스트 헬퍼 ---
 	has(path: string): boolean {
