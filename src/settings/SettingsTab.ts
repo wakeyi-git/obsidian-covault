@@ -1,17 +1,11 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting, SettingGroup } from "obsidian";
 import { CoVaultSettings, MemberConfig, SharedSpace, GroupConfig } from "./types";
 import { ExportModal, ImportModal } from "../ui/BackupModal";
-import { ConfirmModal } from "../ui/ConfirmModal";
-import { DeviceAccountsModal } from "../ui/DeviceAccountsModal";
-import { GroupEditModal } from "../ui/GroupEditModal";
-import { MemberSelectModal } from "../ui/MemberSelectModal";
-import { resolveMemberNames } from "../core/classroom/people";
-import { MemberBulkImportModal } from "../ui/MemberBulkImportModal";
-import { PathSuggest } from "../ui/PathSuggest";
 import { validateFolderName, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
-import { sharedSpaceStatus } from "./sharedSpaceStatus";
-import { setSecretValue, hasSecretStorage, getYjsSecret, getCouchPassword, persistCouchPassword, YJS_SECRET_ID, RT_SERVICE_PASSWORD_ID } from "../core/secret";
+import { hasSecretStorage, getYjsSecret } from "../core/secret";
+import { renderManager as renderManagerSection, ManagerCtx } from "./managerSection";
+import { noAutoCorrect } from "./settingsUi";
 import { t } from "../i18n";
 
 // SettingGroup.listEl은 Obsidian 런타임에 1.11.0부터 존재하지만(공식 @since 1.11.0),
@@ -221,463 +215,23 @@ export class CoVaultSettingTab extends PluginSettingTab {
 
 	// --- Manager Mode ---
 	private renderManager(s: CoVaultSettings): void {
-		const klass = this.group(t("settings.workspace"));
-		klass.addSetting((set) =>
-			set
-				.setName(t("settings.setup_wizard"))
-				.setDesc(t("settings.setup_wizard_desc"))
-				.addButton((b) => b.setButtonText(t("settings.run_setup_wizard")).setCta().onClick(() => this.host.openSetupWizard())),
-		);
-		this.textSetting(klass, t("settings.workspace_id"), "workspaceId", "ws_2026_1");
-
-		const admin = this.group(t("settings.admin_account"), t("settings.credentials_for_creating_member_accounts_dbs"));
-		this.textSetting(admin, t("settings.display_name"), "displayName", t("common.manager"));
-		this.textSetting(admin, "CouchDB URL", "couchdbUrl", "https://nas.example.com", { applyOnBlur: true });
-		this.textSetting(admin, t("settings.admin_username"), "username", "admin", { applyOnBlur: true });
-		this.passwordSetting(admin);
-		admin.addSetting((set) =>
-			set
-				.setName(t("settings.connection_test"))
-				.setDesc(t("settings.checks_access_and_permissions_for_every"))
-				.addButton((b) =>
-					b.setButtonText(t("common.run_test")).setCta().onClick(() => this.runAsync(b, () => this.host.testConnection())),
-				),
-		);
-		admin.addSetting((set) =>
-			set
-				.setName(t("settings.invite_expiry_days"))
-				.setDesc(t("settings.invite_expiry_days_desc"))
-				.addText((txt) => {
-					txt.setPlaceholder("0").setValue(String(s.inviteTtlDays ?? 0));
-					txt.inputEl.type = "number";
-					txt.onChange(async (v) => {
-						const n = Number(v);
-						s.inviteTtlDays = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-						await this.host.saveSettings();
-					});
-				}),
-		);
-
-		// 학생 목록 (카드)
-		const members = this.group(
-			t("settings.individual_spaces"),
-			s.members.length === 0 ? t("settings.add_your_first_member_with_add") : undefined,
-		);
-		s.members.forEach((st, i) => this.renderMemberCard(members, st, i));
-		const pending = s.members.filter((st) => st.memberId && !st.provisioned).length;
-		members.addSetting((set) => {
-			set
-				.setClass("covault-add-row")
-				.addButton((b) =>
-					b
-						.setButtonText(t("settings.add_member"))
-						.setCta()
-						.onClick(async () => {
-							s.members.push({ memberId: "", memberName: "", remoteDb: "", localRoot: "", username: "" });
-							await this.host.saveSettings();
-							this.display();
-						}),
-				)
-				.addButton((b) =>
-					b.setButtonText(t("settings.paste_roster")).onClick(() =>
-						new MemberBulkImportModal(
-							this.host.app,
-							s.members.map((st) => st.memberId).filter((id) => id),
-							async (added) => {
-								s.members.push(...added);
-								await this.host.saveSettings();
-								this.host.requestApply();
-								this.display();
-							},
-						).open(),
-					),
-				);
-			if (pending > 0) {
-				set.addButton((b) =>
-					b
-						.setButtonText(t("settings.invite_all"))
-						.setTooltip(t("settings.invite_all_pending", { n: pending }))
-						.onClick(() => this.runAsync(b, async () => { await this.host.inviteAllMembers(); this.display(); })),
-				);
-			}
-		});
-
-		// 공유 공간 (모둠/학급)
-		const shared = this.group(t("settings.shared_spaces_group_workspace"), t("settings.pick_members_and_deploy_to_create"));
-		// 공유 파일 읽기 전용 정책(전 공동 공간 공통) — 실시간 탭에도 동일 토글.
-		shared.addSetting((set) =>
-			set
-				.setName(t("realtime.shared_readonly"))
-				.setDesc(t("realtime.shared_readonly_desc"))
-				.addToggle((tg) =>
-					tg.setValue(!!s.sharedReadOnly).onChange(async (v) => {
-						await this.host.setSharedReadOnly(v);
-					}),
-				),
-		);
-		s.sharedSpaces.forEach((sp, i) => this.renderSharedCard(shared, sp, i));
-		shared.addSetting((set) =>
-			set.setClass("covault-add-row").addButton((b) =>
-				b
-					.setButtonText(t("settings.add_shared_space"))
-					.setCta()
-					.onClick(async () => {
-						const id = `g${Date.now().toString(36)}`;
-						s.sharedSpaces.push({ id, name: "", remoteDb: `share_${id}`, folder: "", members: [] });
-						await this.host.saveSettings();
-						this.display();
-					}),
-			),
-		);
-
-		// 명명 그룹 (대화방 + 라이브 세션 참여자 지정). 임시 그룹은 대화방 목록에서 관리하므로 제외.
-		const grp = this.group(t("group.groups"), t("group.manage_hint"));
-		const namedGroups = s.groups.filter((g) => !g.temp);
-		if (namedGroups.length === 0) grp.addSetting((set) => set.setName(t("group.none")).setDisabled(true));
-		for (const g of namedGroups) {
-			grp.addSetting((set) => {
-				set.setName(g.name).setDesc(resolveMemberNames(g.memberIds, s.members).join(", ") || "—");
-				set.addExtraButton((b) => b.setIcon("messages-square").setTooltip(t("group.open_chat")).onClick(() => void this.host.openGroupChat(g.id)));
-				set.addExtraButton((b) => b.setIcon("pencil").setTooltip(t("dashboard.edit")).onClick(() => this.editGroup(g)));
-				set.addExtraButton((b) => b.setIcon("trash-2").setTooltip(t("common.delete")).onClick(() => this.confirmDeleteGroup(g)));
-			});
-		}
-		grp.addSetting((set) =>
-			set.setClass("covault-add-row").addButton((b) => b.setButtonText(t("group.new")).setCta().onClick(() => this.editGroup(null))),
-		);
-		// 구성원 자율 그룹(신청-승인) 정책.
-		grp.addSetting((set) =>
-			set
-				.setName(t("group.auto_approve"))
-				.setDesc(t("group.auto_approve_desc"))
-				.addToggle((tg) =>
-					tg.setValue(!!s.groupAutoApprove).onChange(async (v) => {
-						s.groupAutoApprove = v;
-						await this.host.saveSettings();
-					}),
-				),
-		);
-		grp.addSetting((set) =>
-			set
-				.setName(t("group.max_per_member"))
-				.setDesc(t("group.max_per_member_desc"))
-				.addText((tx) =>
-					tx.setValue(String(s.groupMaxPerMember ?? 3)).onChange(async (v) => {
-						const n = parseInt(v, 10);
-						if (Number.isFinite(n) && n >= 0) {
-							s.groupMaxPerMember = n;
-							await this.host.saveSettings();
-						}
-					}),
-				),
-		);
-
-		// 콘텐츠 템플릿 (알림장·수업·과제)
-		const tpl = this.group(t("settings.content_templates"), t("settings.content_templates_desc"));
-		this.templateRow(tpl, t("settings.notice_template"), "noticeTemplate", "notice");
-		this.templateRow(tpl, t("settings.lesson_template"), "lessonTemplate", "lesson");
-		this.templateRow(tpl, t("settings.assignment_template"), "assignmentTemplate", "assignment");
-
-		// 내 볼트 개인 동기화(개별/공동 공간 제외)
-		// 통합 변경 감지(H-6, 실험적) — 변경 시 모드 재시작으로 즉시 적용.
-		shared.addSetting((set) =>
-			set
-				.setName(t("settings.db_updates_transport"))
-				.setDesc(t("settings.db_updates_transport_desc"))
-				.addToggle((tg) =>
-					tg.setValue(s.managerSyncTransport === "db-updates").onChange((v) =>
-						this.runAsync(tg, async () => {
-							s.managerSyncTransport = v ? "db-updates" : "live";
-							await this.host.saveSettings();
-							await this.host.restartMode();
-						}),
-					),
-				),
-		);
-
-		const personal = this.group(t("settings.personal_sync"), t("settings.personal_sync_desc"));
-		personal.addSetting((set) =>
-			set
-				.setName(t("settings.personal_sync_enable"))
-				.setDesc(t("settings.personal_sync_enable_desc"))
-				.addToggle((tg) =>
-					tg.setValue(!!s.personalSyncEnabled).onChange((v) => this.runAsync(tg, async () => { await this.host.setPersonalSync(v); this.display(); })),
-				),
-		);
-		if (s.personalSyncEnabled && s.personalRemoteDb) {
-			this.readonlySetting(personal, t("settings.personal_sync_db"), s.personalRemoteDb);
-		}
-
-		// 실시간 공동 편집 (Yjs)
-		const rt = this.group(
-			t("settings.realtime_co_editing_yjs"),
-			t("settings.edit_shared_folder_documents_character_by"),
-		);
-		rt.addSetting((set) =>
-			set
-				.setName(t("settings.enable_realtime_editing"))
-				.setDesc(t("settings.enable_realtime_editing_desc"))
-				.addToggle((tg) =>
-					tg.setValue(s.realtimeEnabled).onChange(async (v) => {
-						s.realtimeEnabled = v;
-						await this.host.saveSettings();
-						// 전역 토글이 모든 개인 폴더·공동 공간에 적용 — 토큰 재발급 + 전파.
-						await this.host.redeployRealtime();
-					}),
-				),
-		);
-		this.textSetting(rt, t("settings.yjs_server_url"), "yjsServerUrl", "wss://yjs.example.com");
-		// 고급(보안 시크릿·서비스 계정)은 기본 접힘 — 자주 안 만지므로 첫 화면을 가볍게(평가 P2-2).
-		// 레거시 전역 Yjs 토큰 입력은 제거됨 — 실시간 인증은 공간별 HMAC 토큰(아래 시크릿으로 발급)만 사용.
-		const rtAdv = this.collapsible(rt, t("settings.realtime_advanced"));
-		new Setting(rtAdv)
-			.setName(t("settings.yjs_space_secret_hmac_recommended"))
-			.setDesc(t("settings.when_set_issues_a_signed_token"))
-			.addText((txt) => {
-				txt.setPlaceholder(t("settings.same_as_server_yjs_secret")).setValue(getYjsSecret(this.host.app, s.yjsSecret)).onChange(async (v) => {
-					const val = v.trim();
-					setSecretValue(this.host.app, YJS_SECRET_ID, val);
-					s.yjsSecretSet = !!val;
-					s.yjsSecret = undefined; // 평문 제거(secretStorage로 이전)
-					await this.host.saveSettings();
-				});
-				txt.inputEl.type = "password";
-				noAutoCorrect(txt.inputEl);
-			});
-		new Setting(rtAdv)
-			.setName(t("settings.space_token_expiry_days"))
-			.setDesc(t("settings.0_no_expiry_set_a_value"))
-			.addText((txt) => {
-				txt.setPlaceholder("0").setValue(String(s.yjsTokenTtlDays ?? 0));
-				txt.inputEl.type = "number";
-				txt.onChange(async (v) => {
-					const n = Number(v);
-					s.yjsTokenTtlDays = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-					await this.host.saveSettings();
-				});
-			});
-		// 세션 중 CouchDB 스냅샷은 Hocuspocus 서버(onStoreDocument 디바운스)가 담당한다 — 주기 설정 UI 제거.
-		// 서버가 CouchDB에 접근할 전용 계정(권장). 배포 시 계정을 만들고 share/mirror DB 권한을 부여한다.
-		new Setting(rtAdv)
-			.setName(t("settings.rt_service_account"))
-			.setDesc(t("settings.rt_service_account_desc"))
-			.addText((txt) => {
-				txt.setPlaceholder("covault-rt").setValue(s.rtServiceUsername ?? "");
-				noAutoCorrect(txt.inputEl);
-				txt.onChange(async (v) => {
-					s.rtServiceUsername = v.trim() || undefined;
-					await this.host.saveSettings();
-				});
-			});
-		new Setting(rtAdv)
-			.setName(t("settings.rt_service_password"))
-			.setDesc(t("settings.rt_service_password_desc"))
-			.addText((txt) => {
-				txt.setPlaceholder(s.rtServicePasswordSet ? t("common.set") : "").onChange(async (v) => {
-					const val = v.trim();
-					setSecretValue(this.host.app, RT_SERVICE_PASSWORD_ID, val);
-					s.rtServicePasswordSet = !!val;
-					await this.host.saveSettings();
-				});
-				txt.inputEl.type = "password";
-				noAutoCorrect(txt.inputEl);
-			});
+		renderManagerSection(this.managerCtx(), s); // 매니저 섹션 렌더는 managerSection.ts로 분할(평가 P2-3)
 	}
 
-	private renderSharedCard(group: SettingGroup, sp: SharedSpace, index: number): void {
-		const s = this.host.settings;
-		const card = group.listEl.createDiv({ cls: "covault-member-card" });
-
-		new Setting(card)
-			.setName(sp.name || t("settings.shared_space", { n: index + 1 }))
-			.setHeading()
-			.addButton((b) =>
-				b
-					.setButtonText(sp.provisioned ? t("common.redeploy") : t("common.deploy"))
-					.setCta()
-					.onClick(() => this.runAsync(b, async () => { await this.host.deployShared(sp); this.display(); })),
-			)
-			.addButton((b) =>
-				b
-					.setButtonText(t("common.delete"))
-					.setWarning()
-					.onClick(() =>
-						new ConfirmModal(this.host.app, {
-							title: t("panel.delete_shared_space", { name: sp.name || sp.id }),
-							message: t("panel.removes_this_shared_space_from_the",
-							),
-							warning: true,
-							checkbox: sp.provisioned
-								? { label: t("settings.also_delete_server_data"), desc: t("settings.also_delete_shared_server_desc") }
-								: undefined,
-							onConfirm: async (alsoServer) => {
-								if (alsoServer) await this.host.deleteSharedServer(sp);
-								s.sharedSpaces.splice(index, 1);
-								await this.host.saveSettings();
-								// 구성원 shares에서 이 공간을 제거 → 구성원이 더 이상 동기화하지 않음.
-								await this.host.refreshMemberShares();
-								await this.host.restartMode();
-								this.display();
-							},
-						}).open(),
-					),
-			);
-
-		new Setting(card).setName(t("settings.name")).addText((txt) => {
-			txt.setPlaceholder(t("settings.group_1")).setValue(sp.name).onChange(async (v) => {
-				sp.name = v.trim();
-				if (!sp.folder) sp.folder = v.trim();
-				await this.host.saveSettings();
-			});
-			noAutoCorrect(txt.inputEl);
-			this.applyOnBlur(txt.inputEl);
-		});
-		new Setting(card).setName(t("settings.folder")).addText((txt) => {
-			txt.setPlaceholder(t("settings.group_1")).setValue(sp.folder).onChange(async (v) => {
-				const v2 = v.trim();
-				if (!this.okFolder(v2)) return;
-				sp.folder = v2;
-				await this.host.saveSettings();
-			});
-			noAutoCorrect(txt.inputEl);
-			this.applyOnBlur(txt.inputEl);
-		});
-
-		// 학급 공동 공간 지정 — 알림장·수업안내·과제(공유) 등 학급 운영 기능이 이 공간의 폴더/DB를 기준으로 동작.
-		new Setting(card)
-			.setName(t("settings.homeroom_space"))
-			.setDesc(t("settings.homeroom_space_desc"))
-			.addToggle((tg) =>
-				tg.setValue(sp.kind === "homeroom").onChange(async (v) => {
-					await this.host.setHomeroomSpace(sp, v);
-					this.display();
-				}),
-			);
-
-		// 학급 공동 공간일 때만: 학급 운영 특화 기능(모듈) 활성화 토글.
-		if (sp.kind === "homeroom") {
-			card.createDiv({ cls: "covault-dash-label", text: t("settings.classroom_modules") });
-			const modules: Array<[keyof NonNullable<CoVaultSettings["classroomModules"]>, string]> = [
-				["notices", t("dashboard.notices")],
-				["lessons", t("dashboard.lessons")],
-				["assignments", t("dashboard.assignments")],
-				["routines", t("dashboard.routines")],
-				["gradebook", t("dashboard.gradebook")],
-			];
-			for (const [key, label] of modules) {
-				new Setting(card).setName(label).addToggle((tg) =>
-					tg.setValue(s.classroomModules?.[key] !== false).onChange(async (v) => {
-						s.classroomModules = { ...(s.classroomModules ?? {}), [key]: v };
-						await this.host.saveSettings();
-					}),
-				);
-			}
-			new Setting(card)
-				.setName(t("settings.dashboard_page_size"))
-				.setDesc(t("settings.dashboard_page_size_desc"))
-				.addText((txt) => {
-					txt.setPlaceholder("10").setValue(String(s.dashboardPageSize ?? 10));
-					txt.inputEl.type = "number";
-					txt.onChange(async (v) => {
-						const n = parseInt(v, 10);
-						s.dashboardPageSize = Number.isFinite(n) && n > 0 ? n : 10;
-						await this.host.saveSettings();
-					});
-				});
-		}
-
-		// 구성원 선택 — 카드마다 다중선택 모달 버튼 하나로(평가 P2-2). 과거엔 공간×구성원 토글 그리드가
-		// O(M×N)으로 늘어 한 토글 변경마다 전체 재렌더했다. 이제 버튼이 현재 선택 수만 표시하고,
-		// 모달에서 스크롤 목록 + 전체/해제로 고른 뒤 저장 시에만 갱신한다.
-		const membersWithId = s.members.filter((st) => st.memberId).map((st) => ({ memberId: st.memberId, memberName: st.memberName || st.memberId }));
-		new Setting(card)
-			.setName(t("panel.members"))
-			.setDesc(t("settings.members_selected", { n: sp.members.length }))
-			.addButton((b) =>
-				b.setButtonText(t("settings.select_members")).onClick(() => {
-					new MemberSelectModal(this.app, t("settings.select_members"), membersWithId, sp.members, async (ids) => {
-						sp.members = ids;
-						await this.host.saveSettings();
-						this.display(); // 선택 수·배지(재배포 필요) 갱신
-					}).open();
-				}),
-			);
-
-		const status = sharedSpaceStatus(sp);
-		const badge =
-			status === "unprovisioned"
-				? t("panel.not_deployed")
-				: status === "needs-redeploy"
-					? t("panel.members_changed_redeploy_needed")
-					: t("panel.deployed");
-		const statusEl = card.createEl("div", {
-			cls: "covault-member-status",
-			text: t("panel.db", { db: sp.remoteDb, badge }),
-		});
-		if (status === "needs-redeploy") statusEl.addClass("covault-dash-conflict");
-	}
-
-	private renderMemberCard(group: SettingGroup, st: MemberConfig, index: number): void {
-		const card = group.listEl.createDiv({ cls: "covault-member-card" });
-
-		const head = new Setting(card)
-			.setName(st.memberName || st.memberId || t("settings.member", { n: index + 1 }))
-			.setHeading()
-			.addButton((b) =>
-				b
-					.setButtonText(st.provisioned ? t("settings.reissue_invite") : t("settings.invite"))
-					.setCta()
-					.onClick(() => this.runAsync(b, async () => { await this.host.inviteMember(st); this.display(); })),
-			);
-		if (st.provisioned) {
-			head.addButton((b) =>
-				b
-					.setButtonText(t("invite.reissue_password"))
-					.setTooltip(t("invite.replaces_the_password_with_a_new"))
-					.onClick(() => this.runAsync(b, async () => { await this.host.rotateMemberPassword(st); this.display(); })),
-			);
-			head.addButton((b) =>
-				b
-					.setButtonText(t("device.manage_button", { n: (st.deviceAccounts ?? []).length }))
-					.setTooltip(t("device.manage_tooltip"))
-					.onClick(() => new DeviceAccountsModal(this.host, st).open()),
-			);
-		}
-		head
-			.addButton((b) =>
-				b
-					.setButtonText(t("common.delete"))
-					.setWarning()
-					.onClick(() =>
-						new ConfirmModal(this.host.app, {
-							title: t("panel.delete_member", { name: st.memberName || st.memberId || t("common.member") }),
-							message: t("panel.removes_this_member_from_the_list",
-							),
-							warning: true,
-							checkbox: st.provisioned
-								? { label: t("settings.also_delete_server_data"), desc: t("settings.also_delete_member_server_desc") }
-								: undefined,
-							onConfirm: async (alsoServer) => {
-								if (alsoServer) await this.host.deleteMemberServer(st);
-								this.host.settings.members.splice(index, 1);
-								await this.host.saveSettings();
-								await this.host.restartMode();
-								this.display();
-							},
-						}).open(),
-					),
-			);
-
-		this.memberField(card, t("settings.name"), st, "memberName", t("common.member_a"));
-		this.memberField(card, t("settings.member_id"), st, "memberId", "member_a");
-		// 비우면 초대 시점에 학생 ID로 자동 채움 (계정=ID, DB=mirror_<ID>, 폴더=이름/ID)
-		this.memberField(card, t("settings.mirror_db_auto_if_empty"), st, "remoteDb", t("settings.mirror_memberid"));
-		this.memberField(card, t("settings.folder_auto_if_empty"), st, "localRoot", t("settings.name_or_memberid"));
-
-		card.createEl("div", {
-			cls: "covault-member-status",
-			text: st.provisioned ? t("settings.status_provisioned") : t("settings.status_not_provisioned_pressing_invite_creates"),
-		});
+	/** 매니저 섹션 모듈에 넘길 컨텍스트 — 공용 헬퍼·수명주기를 private 유지한 채 노출(거동 동일). */
+	private managerCtx(): ManagerCtx {
+		return {
+			app: this.app,
+			host: this.host,
+			display: () => this.display(),
+			group: (h, d) => this.group(h, d),
+			collapsible: (g, sm) => this.collapsible(g, sm),
+			textSetting: (g, n, k, ph, o) => this.textSetting(g, n, k, ph, o),
+			readonlySetting: (g, n, v) => this.readonlySetting(g, n, v),
+			runAsync: (b, fn) => this.runAsync(b, fn),
+			okFolder: (v) => this.okFolder(v),
+			applyOnBlur: (el) => this.applyOnBlur(el),
+		};
 	}
 
 	// --- Member Mode ---
@@ -997,29 +551,6 @@ export class CoVaultSettingTab extends PluginSettingTab {
 	}
 
 	/** 명명 그룹 생성/수정 모달. */
-	private editGroup(group: GroupConfig | null): void {
-		const members = this.host.settings.members
-			.filter((m) => m.memberId)
-			.map((m) => ({ memberId: m.memberId, memberName: m.memberName || m.memberId }));
-		new GroupEditModal(this.app, members, group, async (g) => {
-			await this.host.saveGroup(g);
-			this.display();
-		}).open();
-	}
-
-	private confirmDeleteGroup(g: GroupConfig): void {
-		new ConfirmModal(this.app, {
-			title: t("common.delete"),
-			message: t("group.delete_confirm", { name: g.name }),
-			confirmText: t("common.delete"),
-			warning: true,
-			onConfirm: async () => {
-				await this.host.deleteGroup(g.id);
-				this.display();
-			},
-		}).open();
-	}
-
 	/** 폴더 경로 입력 검증: 비었으면 통과(기본값 대체), 잘못된 경로면 Notice 후 false. */
 	private okFolder(value: string): boolean {
 		if (!value) return true;
@@ -1030,45 +561,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		return true;
 	}
 
-	private memberField(card: HTMLElement, name: string, st: MemberConfig, key: keyof MemberConfig, placeholder: string): void {
-		new Setting(card).setName(name).addText((t) => {
-			t.setPlaceholder(placeholder)
-				.setValue(String(st[key] ?? ""))
-				.onChange(async (v) => {
-					const v2 = v.trim();
-					if (key === "localRoot" && !this.okFolder(v2)) return; // 잘못된 폴더 경로는 저장하지 않음
-					(st[key] as unknown as string) = v2;
-					await this.host.saveSettings();
-				});
-			noAutoCorrect(t.inputEl);
-			this.applyOnBlur(t.inputEl); // 칸을 벗어나면 자동 적용
-		});
-	}
-
 	/** 콘텐츠 템플릿 경로 입력 + "기본 템플릿 만들기" 버튼 한 줄. */
-	private templateRow(group: SettingGroup, name: string, key: keyof CoVaultSettings, kind: "notice" | "lesson" | "assignment"): void {
-		const s = this.host.settings;
-		group.addSetting((set) => {
-			set.setName(name)
-				.setDesc(t("settings.template_path_optional_desc"))
-				.addText((txt) => {
-					txt.setPlaceholder(t("settings.blank_uses_built_in")).setValue(String(s[key] ?? "")).onChange(async (v) => {
-						(s[key] as unknown as string) = v.trim();
-						await this.host.saveSettings();
-					});
-					new PathSuggest(this.host.app, txt.inputEl, { extensions: ["md"] });
-					noAutoCorrect(txt.inputEl);
-					this.applyOnBlur(txt.inputEl);
-				})
-				.addButton((b) =>
-					b
-						.setButtonText(t("settings.create_default_template"))
-						.setTooltip(t("settings.create_default_template_desc"))
-						.onClick(() => this.runAsync(b, async () => { await this.host.createTemplateFile(kind); this.display(); })),
-				);
-		});
-	}
-
 	private textSetting(
 		group: SettingGroup,
 		name: string,
@@ -1087,22 +580,6 @@ export class CoVaultSettingTab extends PluginSettingTab {
 					});
 				noAutoCorrect(t.inputEl);
 				if (opts?.applyOnBlur) this.applyOnBlur(t.inputEl);
-			}),
-		);
-	}
-
-	private passwordSetting(group: SettingGroup): void {
-		const s = this.host.settings;
-		group.addSetting((set) =>
-			set.setName(t("settings.admin_password")).addText((txt) => {
-				// Secret Storage 우선 저장(평문 data.json 회피), 미지원 환경만 평문 폴백.
-				txt.setPlaceholder("********").setValue(getCouchPassword(this.host.app, s.password)).onChange(async (v) => {
-					persistCouchPassword(this.host.app, s, v.trim());
-					await this.host.saveSettings();
-				});
-				txt.inputEl.type = "password";
-				noAutoCorrect(txt.inputEl);
-				this.applyOnBlur(txt.inputEl); // 연결 자격증명: 칸을 벗어나면 자동 적용
 			}),
 		);
 	}
@@ -1133,12 +610,4 @@ export class CoVaultSettingTab extends PluginSettingTab {
 			b.setDisabled(false);
 		}
 	}
-}
-
-/** 모바일에서 자격증명/ID가 자동 대문자화·자동완성으로 망가지는 것을 방지. */
-function noAutoCorrect(el: HTMLInputElement): void {
-	el.setAttribute("autocapitalize", "none");
-	el.setAttribute("autocorrect", "off");
-	el.setAttribute("autocomplete", "off");
-	el.spellcheck = false;
 }
