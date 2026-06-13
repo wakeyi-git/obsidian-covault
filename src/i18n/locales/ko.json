@@ -875,6 +875,7 @@
 		"local_changes_error": "로컬 changes 오류: {err}",
 		"failed_to_write_conflict_copy": "충돌본 기록 실패: {path} — {err}",
 		"conflict_already_resolved": "이미 해소된 충돌: {path}",
+		"phantom_conflict_collapsed": "차이 없는 충돌 정리: {path} (리프 {n}건)",
 		"conflict_copy": "(충돌본)",
 		"kept_both_conflict_versions": "충돌 두 버전 보관: {path}",
 		"conflict_resolved": "충돌 해소({choice}): {path}",

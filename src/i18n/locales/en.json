@@ -875,6 +875,7 @@
 		"local_changes_error": "Local changes error: {err}",
 		"failed_to_write_conflict_copy": "Failed to write conflict copy: {path} — {err}",
 		"conflict_already_resolved": "Conflict already resolved: {path}",
+		"phantom_conflict_collapsed": "Collapsed no-diff conflict: {path} ({n} leaves)",
 		"conflict_copy": "(conflict copy)",
 		"kept_both_conflict_versions": "Kept both conflict versions: {path}",
 		"conflict_resolved": "Conflict resolved ({choice}): {path}",

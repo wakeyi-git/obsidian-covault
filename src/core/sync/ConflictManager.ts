@@ -90,7 +90,13 @@ export class ConflictManager {
 			const localPath = ctx.toLocalPath(dbPath);
 			const local = await ctx.readVaultFile(localPath);
 			const remote = await this.pickRemoteLeaf(dbPath, doc, conflictRevs);
-			if (!remote) continue;
+			if (!remote) {
+				// 모든 리프가 라이브와 동일한 "유령 충돌" — 목록에서 조용히 빠지면 충돌 카운트
+				// (conflictCount는 _conflicts 존재만 본다)와 영원히 어긋난다. 내용이 같아 어느 쪽을
+				// 버려도 손실이 없으므로 그 자리에서 리프를 정리해 집계와 일치시킨다.
+				await this.collapseIdentical(dbPath, conflictRevs);
+				continue;
+			}
 			out.push({
 				kind: "note",
 				remoteDb: ctx.remoteDb,
@@ -251,6 +257,26 @@ export class ConflictManager {
 	}
 
 	// --- 내부 ---
+
+	/**
+	 * 유령 충돌 정리: 충돌 리프 제거 + 사본·플래그·증분 집계 해제. 새 리비전을 만들지 않는다
+	 * (winner 내용이 이미 라이브와 동일). 실패해도 목록 조회를 막지 않는다 — 다음 열람 때 재시도.
+	 */
+	private async collapseIdentical(dbPath: string, conflictRevs: string[]): Promise<void> {
+		const ctx = this.ctx;
+		const id = noteId(dbPath);
+		for (const rev of conflictRevs) {
+			try {
+				await ctx.pouch.removeRev(id, rev);
+			} catch {
+				/* 이미 제거됨 등 무시 */
+			}
+		}
+		// changes feed가 따라오기 전에도 카운트가 즉시 맞도록 집계에서 직접 내린다.
+		ctx.conflictIds.delete(id);
+		await this.removeConflictCopy(dbPath);
+		ctx.logger.info(t("sync.phantom_conflict_collapsed", { path: dbPath, n: conflictRevs.length }));
+	}
 
 	/** winner + conflict 리프 중 라이브 파일과 내용이 다른(원격) 리프를 고른다. */
 	private async pickRemoteLeaf(

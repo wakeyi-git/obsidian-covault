@@ -409,7 +409,8 @@ export class MirrorSync {
 	/**
 	 * 충돌 문서 수(증분 집계 — 평가 P-1). 대시보드 5초 폴링용 — listConflicts()의 전 문서 적재 없이
 	 * O(집계 크기)로 답한다. 상세 목록(충돌 탭)은 여전히 listConflicts()가 담당.
-	 * (집계는 _conflicts 기준이라, 모든 리프가 live와 동일한 극단 케이스는 상세 목록보다 1~2건 많을 수 있다.)
+	 * (집계는 _conflicts 기준이라 모든 리프가 live와 동일한 "유령 충돌"도 세지만, 충돌 목록을 열면
+	 * ConflictManager.list()가 해당 리프를 자동 정리(collapseIdentical)해 집계와 다시 일치한다.)
 	 */
 	conflictCount(): number {
 		let n = 0;
