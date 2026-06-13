@@ -19,7 +19,9 @@ class PluginInstallModal extends Modal {
 
 	constructor(
 		app: App,
-		private doc: PluginDeployDoc,
+		// 필드명을 `doc`로 쓰지 않는다 — Obsidian 런타임이 객체에 getter 전용 `doc`(소속 Document)를
+		// 주입해, 파라미터 프로퍼티 `this.doc = …` 할당이 "Cannot set property doc … only a getter"로 깨진다.
+		private deployDoc: PluginDeployDoc,
 		private onChoice: (c: InstallChoice) => void,
 	) {
 		super(app);
@@ -30,15 +32,15 @@ class PluginInstallModal extends Modal {
 		c.createEl("h3", { text: t("plugindeploy.install_title") });
 		c.createEl("p", {
 			cls: "setting-item-description",
-			text: t("plugindeploy.install_body", { name: this.doc.pluginName, version: this.doc.version }),
+			text: t("plugindeploy.install_body", { name: this.deployDoc.pluginName, version: this.deployDoc.version }),
 		});
 		// 신뢰 고지 — 배포된 코드가 이 기기에서 실행된다.
 		c.createEl("p", { cls: "covault-issue is-warn", text: t("plugindeploy.install_trust_warning") });
-		const hasSettings = this.doc.files.some((f) => f.name === SETTINGS_FILE);
+		const hasSettings = this.deployDoc.files.some((f) => f.name === SETTINGS_FILE);
 		if (hasSettings) {
 			c.createEl("p", {
 				cls: "setting-item-description",
-				text: this.doc.managedSettings ? t("plugindeploy.settings_managed") : t("plugindeploy.settings_seed"),
+				text: this.deployDoc.managedSettings ? t("plugindeploy.settings_managed") : t("plugindeploy.settings_seed"),
 			});
 		}
 

@@ -65,6 +65,16 @@ export class MirrorContext {
 		return this.core.guard;
 	}
 
+	/**
+	 * 이 동기화가 '구성원의 읽기전용 공유 공간'인가. 구성원이고 sharedReadOnly이며 개인 mirror가
+	 * 아닌(공유 공간) DB면 true. 서버 validate가 비참여자 쓰기(편집·삭제)를 거부하는 것과 짝 —
+	 * 클라이언트에서 삭제 echo를 tombstone 대신 복원으로 처리하는 데 쓴다(파일별 참여자는 별도 확인).
+	 */
+	get isReadOnlyShared(): boolean {
+		const s = this.settings;
+		return s.role === "member" && !!s.sharedReadOnly && this.remoteDb !== s.remoteDb;
+	}
+
 	// --- 경로 매핑 (기술문서 §9) ---
 
 	/** DB path → 로컬 vault 경로(정규화). */

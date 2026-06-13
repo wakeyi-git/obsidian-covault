@@ -4,6 +4,7 @@ import { MirrorContext } from "./MirrorContext";
 import { Uploader } from "./Uploader";
 import { exceedsAttachmentLimit } from "./attachment";
 import { sha256 } from "../hash/hash";
+import { NoteDoc, AssetDoc, noteId, assetId } from "../model/types";
 import { t } from "../../i18n";
 
 /**
@@ -17,6 +18,8 @@ export class LocalWatcher {
 	private refs: EventRef[] = [];
 	/** 경로별 디바운스 타이머. 각 타이머는 pending 카운트 1을 보유한다(flushUpload 완료 시 해제). */
 	private timers = new Map<string, { timer: ReturnType<typeof setTimeout>; dbPath: string }>();
+	/** 읽기전용 원복 진행 중인 경로(재진입·오토세이브 루프 방지). 잠깐 잠갔다 푼다. */
+	private reverting = new Set<string>();
 	private started = false;
 
 	constructor(
@@ -83,6 +86,13 @@ export class LocalWatcher {
 			if (this.ctx.guard.shouldIgnore(localPath, hash)) return; // applier echo → 무시 (§16.2)
 		}
 
+		// 읽기전용 공유 공간: 구성원의 직접 편집/생성은 올리지 않고 정본으로 되돌린다(편집은 실시간 세션으로만).
+		// "변경 내용이 기기에 보관"되지 않고 변경 전으로 복원된다.
+		if (this.ctx.isReadOnlyShared) {
+			await this.reconcileReadOnly(dbPath, localPath);
+			return;
+		}
+
 		this.ctx.markPending(dbPath);
 		this.scheduleUpload(localPath, dbPath);
 	}
@@ -113,6 +123,15 @@ export class LocalWatcher {
 
 	private async handleRename(oldPath: string, newPath: string): Promise<void> {
 		try {
+			// 읽기전용 공유 공간: 구성원은 이름변경도 할 수 없다 — 옛 경로를 정본으로 복원하고
+			// 새(잘못 생긴) 경로는 정본이 없으니 vault에서 제거한다(이름변경 취소).
+			if (this.ctx.isReadOnlyShared) {
+				const oldDbRo = this.ctx.toDbPath(oldPath);
+				if (oldDbRo != null && !this.ctx.isExcluded(oldPath)) await this.reconcileReadOnly(oldDbRo, oldPath);
+				const newDbRo = this.ctx.toDbPath(newPath);
+				if (newDbRo != null && !this.ctx.isExcluded(newPath)) await this.reconcileReadOnly(newDbRo, newPath);
+				return;
+			}
 			// 옛 경로가 동기화 범위 안이면 tombstone(md/asset 공통)
 			const oldDb = this.ctx.toDbPath(oldPath);
 			if (oldDb != null && !this.ctx.isExcluded(oldPath)) {
@@ -162,17 +181,69 @@ export class LocalWatcher {
 			return;
 		}
 
-		// 일반 삭제 → tombstone
+		// 일반 삭제 → tombstone (단, 읽기전용 공유 공간은 어떤 구성원도 삭제 불가 → 복원)
 		if (this.ctx.isExcluded(localPath)) return;
 		const dbPath = this.ctx.toDbPath(localPath);
 		if (dbPath == null) return;
-		void this.uploader
-			.tombstonePath(dbPath)
-			.catch((e) =>
-				this.ctx.logger.error(
-					t("sync.delete_handling_failed", { path: localPath, err: errMessage(e) }),
-				),
-			);
+		void this.handleDelete(dbPath, localPath).catch((e) =>
+			this.ctx.logger.error(t("sync.delete_handling_failed", { path: localPath, err: errMessage(e) })),
+		);
+	}
+
+	/**
+	 * 삭제 처리: 읽기전용 공유 공간에서는 **어떤 구성원도(실시간 참여자 포함)** 공유 파일을 삭제할 수 없다 —
+	 * 관리자만 제거한다. tombstone을 만들지 않고 로컬 라이브 사본을 복원한다(참조 파일·공동 작업물 보호).
+	 * 읽기전용 공유가 아니면(개인 mirror·비읽기전용 공간) 정상 tombstone.
+	 */
+	private async handleDelete(dbPath: string, localPath: string): Promise<void> {
+		if (this.ctx.isReadOnlyShared) {
+			await this.reconcileReadOnly(dbPath, localPath);
+			return;
+		}
+		await this.uploader.tombstonePath(dbPath);
+	}
+
+	/**
+	 * 읽기전용 공유 공간에서 구성원의 파일 변경(생성·수정·삭제·이름변경)을 정본 상태로 되돌린다 —
+	 * "변경 내용이 기기에 보관"되지 않고 변경 전으로 복원된다(공유 파일은 관리자·실시간 세션만 바꿀 수 있음).
+	 *  - 정본(로컬 pouch 라이브 문서)이 있으면 그 내용으로 vault를 **강제** 복원(편집·삭제 취소).
+	 *    applyDoc/applyAsset의 충돌·pending 분기는 쓰기 없이 반환할 수 있어 정본을 직접 쓴다.
+	 *  - 정본이 없으면(구성원이 새로 만든/이름변경한 파일) vault에서 제거.
+	 * guard.mark/suppressStructural로 watcher 에코를 막고, reverting 가드로 오토세이브 재진입 루프를 막는다.
+	 */
+	private async reconcileReadOnly(dbPath: string, localPath: string): Promise<void> {
+		if (this.reverting.has(localPath)) return; // 재진입/오토세이브 루프 방지
+		this.reverting.add(localPath);
+		const ctx = this.ctx;
+		try {
+			const isMd = ctx.isMarkdown(dbPath);
+			const id = isMd ? noteId(dbPath) : assetId(dbPath);
+			const doc = await ctx.pouch.get<NoteDoc | AssetDoc>(id).catch(() => null);
+			if (doc && !doc.deleted) {
+				ctx.guard.mark(localPath, doc.contentHash);
+				try {
+					if (isMd) {
+						await ctx.writeVaultFile(localPath, (doc as NoteDoc).content ?? "");
+					} else {
+						const data = await ctx.pouch.getAssetBinary(id);
+						if (data != null) await ctx.writeVaultBinary(localPath, data);
+					}
+				} finally {
+					ctx.guard.releaseAfterDelay(localPath);
+				}
+			} else {
+				// 정본 없음 → 구성원이 새로 만든/이름변경한 파일이므로 제거(읽기전용엔 추가 불가).
+				const file = ctx.getFile(localPath);
+				if (file) {
+					ctx.suppressStructural(localPath);
+					await ctx.deleteVaultFile(file);
+				}
+			}
+			ctx.logger.warn(t("sync.readonly_change_reverted", { path: dbPath }), true);
+		} finally {
+			// 잠깐 뒤 가드 해제 — 복원·삭제가 일으킨 에코(오토세이브 포함)가 다시 reconcile을 트리거하지 않게.
+			setTimeout(() => this.reverting.delete(localPath), 1500);
+		}
 	}
 
 	private scheduleUpload(localPath: string, dbPath: string): void {

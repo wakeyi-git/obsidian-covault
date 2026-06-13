@@ -1,64 +1,40 @@
-import { App, MarkdownView, TFile, View } from "obsidian";
-import { errMessage } from "../util/err";
+import { App, MarkdownView, TFile } from "obsidian";
 import * as Y from "yjs";
-import { HocuspocusProvider, HocuspocusProviderWebsocket } from "@hocuspocus/provider";
 import { Awareness } from "y-protocols/awareness";
+import { ProviderFactory, RealtimeProvider, RealtimeSocket, HocuspocusProviderFactory } from "./providerFactory";
 import { EditorView } from "@codemirror/view";
 import { CoreServices } from "../CoreServices";
-import { bindView, unbindView, setEditorReadOnly, isViewBound } from "./editorBinding";
-import { PresenceChips } from "./presenceChips";
+import { setEditorReadOnly } from "./editorBinding";
 import { clientColor } from "./clientColor";
-import { ExcalidrawBinding, ExcalidrawImperativeApi } from "./excalidrawBinding";
 import { relUnder, roomName, pickSpace } from "./room";
 import { RetryState, nextRetryState, backoffDelay, inBackoff } from "./retryBackoff";
+import { EditorBindingStrategy, ExcalidrawLikeView, Session, SnapshotTarget, StrategyContext } from "./realtimeTypes";
+import { MarkdownStrategy } from "./mdStrategy";
+import { ExcalidrawStrategy, getExcalidrawApi } from "./excalidrawStrategy";
 import { t } from "../../i18n";
 
-interface Session {
-	file: string;
-	kind: "md" | "excalidraw";
-	ydoc: Y.Doc;
-	ytext?: Y.Text; // md
-	yElements?: Y.Array<Y.Map<any>>; // excalidraw 요소
-	yAssets?: Y.Map<any>; // excalidraw 이미지 asset
-	provider: HocuspocusProvider;
-	/** 직접 생성해 provider에 주입한 awareness — provider.awareness의 null 타입을 피하고 바인딩에 그대로 쓴다. */
-	awareness: Awareness;
-	ready: boolean; // 서버 동기화 완료(시드는 서버 onLoadDocument 담당) → 바인딩 가능
-	bound: Set<EditorView>; // md: 바인딩된 CM6
-	mdPresence?: Map<EditorView, PresenceChips>; // md: 뷰별 참가자 칩 오버레이
-	exBinding?: ExcalidrawBinding; // excalidraw 바인딩
-}
-
-/** Excalidraw 뷰(타입 느슨). file과 imperative API 접근만 사용. */
-interface ExcalidrawLikeView extends View {
-	file?: TFile;
-	excalidrawAPI?: ExcalidrawImperativeApi;
-}
-
-/** 실시간 스냅샷을 받을 대상(담당 MirrorSync). main이 경로로 해결해 준다. */
-export interface SnapshotTarget {
-	snapshotNote(localPath: string, content: string): Promise<unknown>;
-	/** 바인딩이 에디터 내용을 Y.Text로 교체하기 전, 미업로드 로컬 편집을 버전 히스토리에 보존(평가 R-A). */
-	preserveLocalEdit(localPath: string, content: string): Promise<void>;
-}
-
-const COLORS = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
+export type { SnapshotTarget } from "./realtimeTypes";
 
 /**
  * Yjs 실시간 공동 편집 관리(Hocuspocus). 기술문서 §19. 공유 폴더의 markdown(글자 단위) + Excalidraw(요소 단위) 적용.
  *
- * 열린 에디터를 훑어 공유 파일이면 세션(HocuspocusProvider + Y.Doc)을 띄우고
- * markdown은 CM6(Y.Text), Excalidraw는 imperative API(Y.Map 요소)에 바인딩한다.
- * 모든 세션은 **WebSocket 연결 하나**를 공유한다(HocuspocusProviderWebsocket 멀티플렉싱).
+ * 열린 에디터를 훑어 공유 파일이면 세션(provider + Y.Doc)을 띄우고, kind별 바인딩·종료 스냅샷은
+ * EditorBindingStrategy(md/excalidraw)에 위임한다(평가 P2-3b). provider/소켓 생성은 ProviderFactory로
+ * 주입(P2-1). 모든 세션은 **WebSocket 연결 하나**를 공유한다(멀티플렉싱).
  * 문서 시드·주기 스냅샷은 서버(onLoadDocument/onStoreDocument)가 담당하고, 세션 종료 시
  * vault 쓰기 + CouchDB 업로드(서버 미연동 환경 폴백)만 클라이언트가 수행한다.
  */
 export class RealtimeManager {
 	private sessions = new Map<string, Session>();
 	/** 공유 WebSocket(모든 문서 멀티플렉싱). 첫 세션에서 생성, 마지막 세션 종료 시 닫는다. */
-	private socket: HocuspocusProviderWebsocket | null = null;
+	private socket: RealtimeSocket | null = null;
 	/** 지원하지 않는 excalidraw 형식 경고를 경로당 1회만 내기 위한 집합. */
 	private warnedUnsupportedExcalidraw = new Set<string>();
+	/** kind별 바인딩 전략(평가 P2-3b) — 세션 Y 구조·바인딩·종료 스냅샷의 md/excalidraw 분기를 캡슐화. */
+	private readonly strategies: Record<"md" | "excalidraw", EditorBindingStrategy> = {
+		md: new MarkdownStrategy(),
+		excalidraw: new ExcalidrawStrategy(),
+	};
 
 	constructor(
 		private app: App,
@@ -69,6 +45,8 @@ export class RealtimeManager {
 		private getSyncForPath: (localPath: string) => SnapshotTarget | undefined = () => undefined,
 		/** 이 파일의 라이브 세션에 참여 가능한가(파일별 참여자 게이팅). main이 주입(기본 전원 허용). */
 		private canEditRealtime: (localPath: string) => Promise<boolean> = async () => true,
+		/** provider/소켓 생성 seam(평가 P2-1). 기본=실제 Hocuspocus, 테스트는 fake 주입. */
+		private providerFactory: ProviderFactory = new HocuspocusProviderFactory(),
 	) {}
 
 	// 파일별 참여 허용 캐시(비동기 조회 결과). 파일이 닫히면 비워 재오픈 시 재평가.
@@ -78,6 +56,10 @@ export class RealtimeManager {
 	private retryState = new Map<string, RetryState>();
 	// 백오프 재평가 타이머(평가 C-2). dispose 후 잔존 타이머가 세션을 재생성하지 않도록 추적·취소한다.
 	private retryTimers = new Set<number>();
+	// Excalidraw imperative API 마운트 지연 재시도(경로당 시도 횟수·중복 예약 가드·타이머 추적).
+	private excalidrawRebindAttempts = new Map<string, number>();
+	private excalidrawRebindPending = new Set<string>();
+	private excalidrawRetryTimers = new Set<number>();
 	private disposed = false;
 	// CoVault가 읽기 전용으로 잠근 에디터/그림(정책 해제 시 우리가 잠근 것만 푼다 — 타 플러그인 보호).
 	private lockedViews = new WeakSet<EditorView>();
@@ -87,12 +69,22 @@ export class RealtimeManager {
 		return this.core.settings;
 	}
 
+	/** 바인딩 전략에 넘길 주변 의존성(평가 P2-3b). */
+	private get strategyCtx(): StrategyContext {
+		return {
+			app: this.app,
+			logger: this.core.logger,
+			settings: this.settings,
+			getSyncForPath: this.getSyncForPath,
+		};
+	}
+
 	/**
 	 * 공유 WebSocket 획득(lazy). 빈 소켓(연결된 문서 0개)은 서버 메시지가 없어 재연결 루프를 돌고
 	 * 유휴 연결을 낭비하므로, 마지막 세션이 끝나면 endSession이 닫는다(yjsServerUrl 변경도 그때 반영).
 	 */
-	private getSocket(): HocuspocusProviderWebsocket {
-		if (!this.socket) this.socket = new HocuspocusProviderWebsocket({ url: this.settings.yjsServerUrl });
+	private getSocket(): RealtimeSocket {
+		if (!this.socket) this.socket = this.providerFactory.createSocket(this.settings.yjsServerUrl);
 		return this.socket;
 	}
 
@@ -229,8 +221,16 @@ export class RealtimeManager {
 				session = this.startSession(path, tgt.kind);
 			}
 			if (!session?.ready) continue;
-			if (session.kind === "md" && tgt.kind === "md") this.bindViews(session, tgt.views);
-			else if (session.kind === "excalidraw" && tgt.kind === "excalidraw") this.bindExcalidraw(session, tgt.view);
+			if (session.kind === tgt.kind) {
+				const target = tgt.kind === "md" ? tgt.views : tgt.view;
+				const bound = this.strategies[session.kind].bind(session, target, this.strategyCtx);
+				// Excalidraw 뷰의 imperative API가 아직 마운트 안 됐으면(onSynced가 뷰보다 먼저) 짧게 재시도한다 —
+				// 워크스페이스 이벤트 없이도 준비되는 즉시 바인딩(현장: 탭 전환해야 붙던 문제).
+				if (session.kind === "excalidraw") {
+					if (bound) this.excalidrawRebindAttempts.delete(path);
+					else this.scheduleExcalidrawRebind(path);
+				}
+			}
 		}
 		// 세션을 종료한 경우(참여 취소), 그 파일을 읽기 전용 정책에 맞게 즉시 잠근다.
 		if (degated) this.enforceReadOnly();
@@ -264,9 +264,14 @@ export class RealtimeManager {
 			const view = leaf.view as ExcalidrawLikeView;
 			const file = view?.file;
 			if (!file) continue;
-			const api = this.getExcalidrawApi(view);
-			if (!api) continue;
 			const desired = policy && this.isSupportedExcalidraw(file.path) && !!this.spaceFor(file.path) && !this.isActive(file.path);
+			const api = getExcalidrawApi(this.app, view);
+			if (!api) {
+				// imperative API가 아직 마운트 안 됐는데 잠가야 하면(비참여자 읽기전용) 짧게 재시도 —
+				// 그렇지 않으면 API 준비 전에 enforceReadOnly가 끝나 그림이 편집 가능한 채로 남는다(현장 버그).
+				if (desired) this.scheduleExcalidrawRebind(file.path);
+				continue;
+			}
 			const cur = !!api.getAppState?.()?.viewModeEnabled;
 			if (desired && !cur) {
 				try {
@@ -306,8 +311,8 @@ export class RealtimeManager {
 		const awareness = new Awareness(ydoc);
 		// 'synced'는 재연결마다 재발화하므로 1회 가드(기존 once("sync") 의미 유지).
 		let syncedOnce = false;
-		const provider = new HocuspocusProvider({
-			websocketProvider: this.getSocket(),
+		const provider = this.providerFactory.createProvider({
+			socket: this.getSocket(),
 			name: room,
 			document: ydoc,
 			awareness,
@@ -341,21 +346,17 @@ export class RealtimeManager {
 		const color = clientColor(String(awareness.clientID));
 		awareness.setLocalStateField("user", { name: this.settings.displayName || t("common.user"), color });
 
-		const session: Session =
-			kind === "md"
-				? // Y.Text 키 "content"는 서버(server/hocuspocus/server.js)의 시드/스냅샷 키와 일치해야 한다.
-					{ file: path, kind, ydoc, ytext: ydoc.getText("content"), provider, awareness, ready: false, bound: new Set(), mdPresence: new Map() }
-				: {
-						file: path,
-						kind,
-						ydoc,
-						yElements: ydoc.getArray("elements"),
-						yAssets: ydoc.getMap("assets"),
-						provider,
-						awareness,
-						ready: false,
-						bound: new Set(),
-					};
+		// kind별 Y 구조(ytext / yElements+yAssets)는 전략이 만든다(평가 P2-3b).
+		const session: Session = {
+			file: path,
+			kind,
+			ydoc,
+			provider,
+			awareness,
+			ready: false,
+			bound: new Set(),
+			...this.strategies[kind].initSession(ydoc),
+		};
 		this.sessions.set(path, session);
 		this.core.logger.info(t("realtime.realtime_session_started_room", { path: dbPath, room }));
 		return session;
@@ -369,6 +370,27 @@ export class RealtimeManager {
 		// (여러 클라이언트가 서로 다른 내용을 시드해 문서가 섞이는 문제가 원천 제거됨).
 		session.ready = true;
 		this.syncOpenEditors(); // 이제 바인딩
+	}
+
+	/**
+	 * Excalidraw API가 아직 마운트 안 됐을 때 짧게 재시도(~300ms×15 ≈ 4.5s). 준비되는 즉시 syncOpenEditors가
+	 * 재바인딩한다. 소진하면 경로당 1회만 경고(폭주 방지). 중복 예약은 pending 집합으로 막는다.
+	 */
+	private scheduleExcalidrawRebind(path: string): void {
+		if (this.disposed || this.excalidrawRebindPending.has(path)) return;
+		const attempts = (this.excalidrawRebindAttempts.get(path) ?? 0) + 1;
+		if (attempts > 15) {
+			this.core.logger.warn(t("realtime.realtime_cannot_access_excalidraw_api_check", { file: path }), true);
+			return; // 포기(다음 워크스페이스 이벤트로 다시 시도될 수 있음 — attempts는 endSession에서 초기화).
+		}
+		this.excalidrawRebindAttempts.set(path, attempts);
+		this.excalidrawRebindPending.add(path);
+		const timer = window.setTimeout(() => {
+			this.excalidrawRebindPending.delete(path);
+			this.excalidrawRetryTimers.delete(timer);
+			if (!this.disposed) this.syncOpenEditors();
+		}, 300);
+		this.excalidrawRetryTimers.add(timer);
 	}
 
 	/**
@@ -439,7 +461,7 @@ export class RealtimeManager {
 				.getLeavesOfType("excalidraw")
 				.map((l) => l.view as ExcalidrawLikeView)
 				.find((v) => v?.file?.path === f.path);
-			const api = exView ? this.getExcalidrawApi(exView) : null;
+			const api = exView ? getExcalidrawApi(this.app, exView) : null;
 			log.info(
 				t("realtime.excalidraw_plugin_api_bound", {
 					plugin: plugin ? t("realtime.installed") : t("realtime.not_installed"),
@@ -453,80 +475,6 @@ export class RealtimeManager {
 			log.info(
 				t("realtime.active_editor_cm6_access", {
 					access: cm ? t("realtime.available_edit_mode") : t("realtime.unavailable_open_in_edit_mode_if"),
-				}),
-			);
-		}
-	}
-
-	private bindViews(session: Session, views: MarkdownView[]): void {
-		const ytext = session.ytext;
-		if (!ytext) return;
-		for (const view of views) {
-			const cm = (view.editor as unknown as { cm?: EditorView }).cm;
-			if (!cm) {
-				this.core.logger.warn(
-					t("realtime.realtime_editor_cm6_not_accessible_open", { file: session.file }),
-				);
-				continue;
-			}
-			if (session.bound.has(cm) && isViewBound(cm)) continue; // bound여도 실측 — state 재생성으로 사라졌으면 재바인딩(R-D)
-			try {
-				// 바인딩이 에디터 내용을 Y.Text로 교체하기 전에, 아직 업로드되지 않은 로컬 편집을
-				// 버전 히스토리로 보존한다(평가 R-A). 오프라인 편집 직후 온라인 복귀로 세션에
-				// 진입하면 vault에만 있는 편집이 유일본인데, 교체 후엔 업로드도 차단되고 종료
-				// 스냅샷이 Y.Text 기준으로 덮으므로 여기서 보존하지 않으면 흔적 없이 사라진다.
-				const localContent = cm.state.doc.toString();
-				const yContent = ytext.toString();
-				if (yContent.length > 0 && localContent.length > 0 && yContent !== localContent) {
-					void this.getSyncForPath(session.file)?.preserveLocalEdit(session.file, localContent).catch(() => {});
-				}
-				bindView(cm, ytext, session.awareness);
-				session.bound.add(cm);
-				// 뷰 우하단에 참가자 칩(Excalidraw와 동일) — 포인터 없이도 편집자 이름 상시 표시.
-				const host = (view as unknown as { contentEl?: HTMLElement }).contentEl;
-				if (host && session.mdPresence && !session.mdPresence.has(cm)) {
-					session.mdPresence.set(cm, new PresenceChips(host, session.awareness));
-				}
-			} catch (e) {
-				this.core.logger.error(
-					t("realtime.realtime_binding_failed", {
-						file: session.file,
-						error: errMessage(e),
-					}),
-				);
-			}
-		}
-	}
-
-	/** Excalidraw 그림에 Yjs 바인딩(1회). 첫 진입자(awareness≤1 & 비어있음)면 현재 씬을 시드. */
-	private bindExcalidraw(session: Session, view: ExcalidrawLikeView): void {
-		if (session.exBinding || !session.yElements || !session.yAssets) return;
-		const api = this.getExcalidrawApi(view);
-		if (!api) {
-			this.core.logger.warn(
-				t("realtime.realtime_cannot_access_excalidraw_api_check", { file: session.file }),
-			);
-			return;
-		}
-		const containerEl = (view as unknown as { contentEl?: HTMLElement; containerEl?: HTMLElement }).contentEl
-			?? (view as unknown as { containerEl?: HTMLElement }).containerEl;
-		// Excalidraw collaborator color는 {background, stroke} 객체를 기대(마크다운 yCollab는 문자열) → 여기서 객체로 재설정.
-		const hex = COLORS[Math.abs(hash(this.settings.deviceId)) % COLORS.length];
-		session.awareness.setLocalStateField("user", {
-			name: this.settings.displayName || t("common.user"),
-			color: { background: hex, stroke: hex },
-		});
-		try {
-			session.exBinding = new ExcalidrawBinding(session.yElements, session.yAssets, api, {
-				awareness: session.awareness,
-				containerEl,
-			});
-			this.core.logger.ok(t("realtime.realtime_excalidraw_bound", { file: session.file }));
-		} catch (e) {
-			this.core.logger.error(
-				t("realtime.realtime_binding_failed", {
-					file: session.file,
-					error: errMessage(e),
 				}),
 			);
 		}
@@ -547,20 +495,6 @@ export class RealtimeManager {
 		return p.toLowerCase().endsWith(".md");
 	}
 
-	/** Excalidraw 뷰의 imperative API 획득. 뷰 속성 → ExcalidrawAutomate 순으로 시도. */
-	private getExcalidrawApi(view: ExcalidrawLikeView): ExcalidrawImperativeApi | null {
-		if (view.excalidrawAPI && typeof view.excalidrawAPI.onChange === "function") return view.excalidrawAPI;
-		const plugin = (this.app as any).plugins?.plugins?.["obsidian-excalidraw-plugin"];
-		const ea = plugin?.ea;
-		try {
-			const api = ea?.getAPI?.(view)?.getExcalidrawAPI?.();
-			if (api && typeof api.onChange === "function") return api as ExcalidrawImperativeApi;
-		} catch {
-			/* EA 버전에 따라 미지원 */
-		}
-		return null;
-	}
-
 	/**
 	 * 세션을 종료 영속(스냅샷) 없이 닫는다 — 원격(교사) 삭제 적용 직전에 호출.
 	 * 종료 스냅샷이 tombstone 위에 내용을 다시 올려 삭제를 무효화하는 것을 막는다.
@@ -573,6 +507,9 @@ export class RealtimeManager {
 		const session = this.sessions.get(path);
 		if (!session) return;
 		this.sessions.delete(path);
+		// Excalidraw 재시도 상태 정리(파일이 닫혔으니 재오픈 시 새로 카운트).
+		this.excalidrawRebindAttempts.delete(path);
+		this.excalidrawRebindPending.delete(path);
 
 		// 내 awareness를 명시적으로 제거(null) → 모든 피어가 즉시 커서/이름을 지운다.
 		// (provider.destroy()도 removeAwarenessStates를 브로드캐스트하지만, 명시 제거로 의도를 보존한다.)
@@ -582,86 +519,12 @@ export class RealtimeManager {
 			/* noop */
 		}
 
-		// 바인딩 해제
-		for (const cm of session.bound) {
-			try {
-				unbindView(cm);
-			} catch {
-				/* 뷰가 이미 사라졌을 수 있음 */
-			}
-		}
-		if (session.mdPresence) {
-			for (const chips of session.mdPresence.values()) chips.destroy();
-			session.mdPresence.clear();
-		}
-		session.exBinding?.destroy();
+		// 바인딩 해제(kind별 — 평가 P2-3b: md=CM6 unbind+칩 정리, excalidraw=exBinding.destroy).
+		this.strategies[session.kind].unbind(session);
 
-		if (!persist) {
-			// 삭제 적용을 위한 종료 — 스냅샷·vault 쓰기 생략(아래 정리만 수행).
-		} else if (session.kind === "excalidraw") {
-			// Excalidraw 파일은 플러그인이 onChange 때 디스크에 저장한다. 세션 종료 후 그 파일을
-			// CouchDB로 한 번 올려 비실시간 멤버에게 전파(서버는 excalidraw를 CouchDB 스냅샷하지 않는다).
-			try {
-				const file = this.app.vault.getAbstractFileByPath(path);
-				if (file instanceof TFile) {
-					const content = await this.app.vault.read(file);
-					if (content.length > 0) {
-						const res = await this.getSyncForPath(path)?.snapshotNote(path, content);
-						if (res === "uploaded" || res === "skipped-same") {
-							this.core.logger.ok(t("realtime.realtime_snapshot_saved", { path }));
-						} else if (res) {
-							this.core.logger.warn(
-								t("realtime.realtime_snapshot_not_saved_may_not", {
-									reason: String(res),
-									path,
-								}),
-								true,
-							);
-						}
-					}
-				}
-			} catch (e) {
-				this.core.logger.error(
-					t("realtime.snapshot_save_failed", { path, error: errMessage(e) }),
-				);
-			}
-		} else {
-			// 종료 영속: Y.Text → vault(변경 시) + CouchDB 업로드.
-			// 서버(onStoreDocument)가 세션 중에도 CouchDB 스냅샷을 저장하지만, vault 파일은 서버가 쓸 수 없고
-			// 서버가 CouchDB 미연동(폴백 모드)일 수도 있으므로 종료 시 클라이언트가 한 번 더 보장한다
-			// (서버가 이미 같은 내용을 저장했으면 contentHash 동일 → skipped-same).
-			try {
-				const file = this.app.vault.getAbstractFileByPath(path);
-				if (file instanceof TFile) {
-					const content = session.ytext?.toString() ?? "";
-					const current = await this.app.vault.read(file);
-					// 안전장치: 빈 내용으로 기존 내용을 덮어쓰지 않음(데이터 손실 방지)
-					if (content.length === 0 && current.length > 0) {
-						this.core.logger.warn(t("realtime.skipping_realtime_snapshot_preventing_overwrite", { path }));
-					} else {
-						if (content !== current) {
-							await this.app.vault.process(file, () => content); // 백그라운드 쓰기: 가이드라인 권장
-						}
-						const res = await this.getSyncForPath(path)?.snapshotNote(path, content);
-						if (res === "uploaded" || res === "skipped-same") {
-							this.core.logger.ok(t("realtime.realtime_snapshot_saved", { path }));
-						} else if (res) {
-							this.core.logger.warn(
-								t("realtime.realtime_snapshot_not_saved_may_not", {
-									reason: String(res),
-									path,
-								}),
-								true,
-							);
-						}
-					}
-				}
-			} catch (e) {
-				this.core.logger.error(
-					t("realtime.snapshot_save_failed", { path, error: errMessage(e) }),
-				);
-			}
-		}
+		// 종료 영속(스냅샷). persist=false(원격 삭제 적용 직전)면 생략 — tombstone 위에 내용을 되올려
+		// 삭제를 무효화하는 것을 막는다. kind별 영속은 전략이 담당(md=Y.Text→vault+업로드, excalidraw=디스크 파일 업로드).
+		if (persist) await this.strategies[session.kind].snapshot(session, path, this.strategyCtx);
 
 		// provider.destroy()는 awareness 정리 + 공유 소켓에서 이 문서만 detach한다(소켓은 유지).
 		session.provider.destroy();
@@ -720,6 +583,10 @@ export class RealtimeManager {
 		this.disposed = true;
 		for (const timer of this.retryTimers) window.clearTimeout(timer);
 		this.retryTimers.clear();
+		for (const timer of this.excalidrawRetryTimers) window.clearTimeout(timer);
+		this.excalidrawRetryTimers.clear();
+		this.excalidrawRebindPending.clear();
+		this.excalidrawRebindAttempts.clear();
 		for (const path of [...this.sessions.keys()]) await this.endSession(path);
 		this.teardownSocketIfIdle();
 	}

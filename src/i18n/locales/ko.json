@@ -877,6 +877,7 @@
 		"replication_write_denied": "서버가 쓰기를 거부했습니다({db}): {id}",
 		"readonly_write_denied": "공유 파일이 읽기 전용이라 서버가 {path} 변경을 거부했습니다. 변경 내용은 이 기기에 보관됩니다 — 편집하려면 운영자에게 실시간 세션 참여를 요청하세요.",
 		"readonly_write_denied_short": "읽기 전용: {path} 변경이 서버에서 거부됨",
+		"readonly_change_reverted": "공유 파일이 읽기 전용이라 변경할 수 없어 {path}을(를) 변경 전으로 복원했습니다. 편집하려면 운영자에게 실시간 세션 참여를 요청하세요.",
 		"replication_error": "replication 오류: {err}",
 		"background_sync_paused": "백그라운드 — 동기화 일시정지: {db}",
 		"foreground_sync_resumed": "포그라운드 — 동기화 재개: {db}",

@@ -18,7 +18,7 @@ const OVERRIDES = {
 	"src/main.ts": 747, // +토큰 Secret Storage(S-1)·기기별 계정 위임(S-2) 배선
 	"src/settings/SettingsTab.ts": 613, // 평가 P2-2/P2-3: 매니저 섹션을 managerSection.ts·managerCards.ts로 분할(1148→613). ratchet 하향.
 	// ClassroomController.ts: 평가 P2-3에서 Notice/Assignment/Routine/Message 컨트롤러로 분할(전부 일반 캡 이하) — 제거됨.
-	"src/core/realtime/RealtimeManager.ts": 732, // 평가 P2-1: 백오프 로직을 retryBackoff.ts로 추출(735→732). provider 주입·md/excalidraw 전략 분리는 후속(라이브 서버 수동 검증 필요).
+	"src/core/realtime/RealtimeManager.ts": 599, // 평가 P2-1+P2-3b: 백오프(retryBackoff.ts)·provider 주입(providerFactory.ts)·md/excalidraw 전략(md/excalidrawStrategy.ts) 추출(735→556) + Excalidraw API 마운트 지연 재시도(바인딩·읽기전용 잠금, 현장 수정). 분할 전(732) 대비 여전히 큰 감소.
 	// 문서 모델: 타입 선언 + 타입 가드(평가 H-8) 위주라 캡을 너그럽게 둔다.
 	"src/core/model/types.ts": 600,
 };

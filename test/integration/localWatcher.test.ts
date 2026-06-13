@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Cluster } from "../harness/env";
 import { LocalWatcher } from "../../src/core/sync/LocalWatcher";
-import { noteId } from "../../src/core/model/types";
+import { noteId, rtPartId } from "../../src/core/model/types";
 
 const settle = (ms = 60): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -74,5 +74,90 @@ describe("LocalWatcher 이벤트 → 업로드/tombstone (P1-1)", () => {
 		await settle();
 		const doc = await d.ctx.pouch.get<any>(noteId("무시.md"));
 		expect(doc).toBeNull();
+	});
+});
+
+describe("읽기전용 공유 공간 삭제 게이팅", () => {
+	let cluster: Cluster;
+	let watcher: LocalWatcher | undefined;
+	afterEach(() => {
+		watcher?.stop();
+		watcher = undefined;
+		cluster?.dispose();
+	});
+
+	// ctx.remoteDb(공유 공간) != settings.remoteDb(개인 mirror) + role member → isReadOnlyShared 후보.
+	function startReadOnlyMember() {
+		cluster = new Cluster();
+		const d = cluster.device({
+			deviceId: "m",
+			role: "member",
+			remoteDb: "share_x",
+			localRoot: "",
+			settings: { remoteDb: "mirror_self", debounceMs: 5 },
+		});
+		watcher = new LocalWatcher(d.ctx, d.uploader);
+		watcher.start();
+		return d;
+	}
+
+	it("비참여자 삭제는 tombstone 대신 라이브 사본을 복원한다", async () => {
+		const d = startReadOnlyMember();
+		// 아직 읽기전용 아님 → 정상 업로드로 라이브 노트 생성.
+		const file = await d.vault.create("공유노트.md", "내용");
+		await settle();
+		expect((await d.ctx.pouch.get<any>(noteId("공유노트.md")))?.content).toBe("내용");
+		// 읽기전용 전환 후 삭제 — rtpart 없음 → 비참여자 → 복원.
+		d.settings.sharedReadOnly = true;
+		await d.vault.trash(file, false);
+		await settle();
+		expect(d.ctx.getFile("공유노트.md")).not.toBeNull(); // vault에 복원됨
+		const doc = await d.ctx.pouch.get<any>(noteId("공유노트.md"));
+		expect(doc?.deleted).toBeFalsy(); // tombstone 만들지 않음
+	});
+
+	it("편집(modify)은 올리지 않고 정본으로 복원한다(기기 보관 아님)", async () => {
+		const d = startReadOnlyMember();
+		const file = await d.vault.create("공유노트.md", "정본");
+		await settle();
+		d.settings.sharedReadOnly = true;
+		await d.vault.process(file, () => "구성원이 바꿈");
+		await settle();
+		expect(await d.ctx.readVaultFile("공유노트.md")).toBe("정본"); // vault 원복
+		const doc = await d.ctx.pouch.get<any>(noteId("공유노트.md"));
+		expect(doc?.content).toBe("정본"); // 업로드 안 됨(pouch 정본 유지)
+	});
+
+	it("구성원이 새로 만든 파일은(정본 없음) 제거된다", async () => {
+		const d = startReadOnlyMember();
+		d.settings.sharedReadOnly = true;
+		await d.vault.create("구성원작성.md", "임의");
+		await settle();
+		expect(d.ctx.getFile("구성원작성.md")).toBeNull(); // vault에서 제거
+		const doc = await d.ctx.pouch.get<any>(noteId("구성원작성.md"));
+		expect(doc).toBeNull(); // 업로드 안 됨
+	});
+
+	it("참여자로 지정돼도 삭제는 복원된다(관리자만 삭제 가능)", async () => {
+		const d = startReadOnlyMember();
+		const file = await d.vault.create("공유노트.md", "내용");
+		await settle();
+		// 이 파일의 실시간 참여자로 지정(편집은 가능) + 읽기전용 전환.
+		await d.ctx.pouch.put({
+			_id: rtPartId("공유노트.md"),
+			type: "rtpart",
+			schemaVersion: 1,
+			workspaceId: "class_test",
+			dbPath: "공유노트.md",
+			memberIds: ["m"],
+			updatedAtMs: 1,
+			updatedBy: "m",
+		} as any);
+		d.settings.sharedReadOnly = true;
+		await d.vault.trash(file, false);
+		await settle();
+		expect(d.ctx.getFile("공유노트.md")).not.toBeNull(); // 복원됨
+		const doc = await d.ctx.pouch.get<any>(noteId("공유노트.md"));
+		expect(doc?.deleted).toBeFalsy(); // 참여자여도 삭제(tombstone) 안 됨
 	});
 });

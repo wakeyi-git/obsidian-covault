@@ -593,17 +593,21 @@
 	flex: 0 0 auto;
 }
 
-/* 실시간 커서: 편집자 이름 라벨 항상 표시 (y-codemirror.next)
-   — Excalidraw 포인터 라벨과 동일 스타일: 600 12px sans-serif, padding 5/3, radius 8,
-   배경은 참가자 색(clientColor, 연한 파스텔), 글자는 검정. */
-.covault-rt .cm-ySelectionInfo {
-	/* y-codemirror.next가 자체 CM 테마(serif·.75em·normal·white)를 더 높은 우선순위로 주입하므로
-	   덮어쓰려면 !important가 필요하다. */
+/* 실시간 커서: 편집자 이름 라벨 — Excalidraw 협업자 라벨과 동일 스타일로 통일하고 **항상** 표시한다.
+   y-codemirror.next 기본은 hover 전용(opacity:0)·serif·.75em·white라, hover 시에만 다른 스타일로
+   튀어 보였다. 이 앱에서 yCollab 커서는 CoVault만 쓰므로 전역으로 스코프해(.covault-rt 의존 제거 —
+   에디터 재렌더로 클래스가 사라져도 스타일이 유지되도록) 일관성을 보장한다.
+   y-codemirror가 자체 CM 테마를 높은 우선순위로 주입하므로 !important로 덮는다.
+   배경은 참가자 색(caret의 inline background-color 상속), 글자는 검정(Excalidraw와 동일). */
+.cm-ySelectionInfo,
+.cm-ySelectionCaret:hover > .cm-ySelectionInfo {
 	opacity: 1 !important;
 	transition-delay: 0s !important;
 	font-family: sans-serif !important;
 	font-size: 12px !important;
 	font-weight: 600 !important;
+	font-style: normal !important;
+	line-height: normal !important;
 	padding: 3px 5px !important;
 	border-radius: 8px !important;
 	white-space: nowrap;
