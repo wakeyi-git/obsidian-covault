@@ -15,10 +15,13 @@ import {
 import { AssignmentStateDoc, AssignmentDoc, RubricCriterion } from "../model/types";
 
 describe("assignmentWorkDir / assignmentFileName / substituteTemplate", () => {
-	it("폴더: 개인=교사측 <root>/_과제, 학생측(root='')은 _과제, 공유=학급/과제 (과제별 하위폴더 없음)", () => {
-		expect(assignmentWorkDir("mirror", "학생A", "_학급")).toBe("학생A/_과제");
-		expect(assignmentWorkDir("mirror", "", "_학급")).toBe("_과제");
-		expect(assignmentWorkDir("shared", "학생A", "_학급")).toBe("_학급/과제");
+	it("폴더: 개인=교사측 <root>/_<label>, 학생측(root='')은 _<label>, 공유=학급/<label> (label은 현지화된 폴더명)", () => {
+		expect(assignmentWorkDir("mirror", "학생A", "_학급", "과제")).toBe("학생A/_과제");
+		expect(assignmentWorkDir("mirror", "", "_학급", "과제")).toBe("_과제");
+		expect(assignmentWorkDir("shared", "학생A", "_학급", "과제")).toBe("_학급/과제");
+		// 영문 로케일: label="Assignments"
+		expect(assignmentWorkDir("shared", "", "Home", "Assignments")).toBe("Home/Assignments");
+		expect(assignmentWorkDir("mirror", "", "Home", "Assignments")).toBe("_Assignments");
 	});
 	it("파일명: <slug>+템플릿 확장자(.md, .excalidraw.md 유지)", () => {
 		expect(assignmentFileName("독서감상문", "과제.md")).toBe("독서감상문.md");

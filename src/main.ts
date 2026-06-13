@@ -17,7 +17,7 @@ import { getCouchPassword, migratePlaintextTokens } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
-import { ClassroomController } from "./modes/ClassroomController";
+import { ClassroomControllers, buildClassroomControllers } from "./modes/classroom";
 import { PluginDeployController } from "./modes/PluginDeployController";
 import { confirmPluginInstall } from "./ui/PluginInstallModal";
 import { RealtimeController } from "./modes/RealtimeController";
@@ -58,7 +58,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	private rtStatus!: HTMLElement;
 	private feedback!: FeedbackStore;
 	private classroom!: ClassroomStore;
-	private classroomCtl!: ClassroomController;
+	private classroomCtls!: ClassroomControllers; // 학급 운영 도메인 컨트롤러 4종(평가 P2-3 분할)
 	private nav!: PanelNavigator; // 패널 활성화 + 보류 채널/서브뷰 상태(panelHost.ts)
 	private panelHost!: PanelHost; // 컨트롤러들로 조립된 PanelHost(buildPanelHost) — 뷰/마법사에 주입
 	private realtimeCtl!: RealtimeController;
@@ -121,7 +121,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 
 		// 학급 운영(대시보드) 저장소 — 학급 공유 공간 pouch에 알림장·시간표 등 공통 문서를 읽고 쓴다.
 		this.classroom = new ClassroomStore(this.core, () => this.homeroomPouch());
-		this.classroomCtl = new ClassroomController({
+		this.classroomCtls = buildClassroomControllers({
 			app: this.app,
 			logger: this.logger,
 			classroom: this.classroom,
@@ -178,9 +178,9 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			homeroomReady: () => this.homeroomReady(),
 			saveSettings: () => this.saveSettings(),
 			deployShared: (space, opts) => this.deploymentCtl.deployShared(space, opts),
-			syncGroupDoc: (g, names) => this.classroomCtl.syncGroupDoc(g, names),
-			deleteGroupDoc: (id) => this.classroomCtl.deleteGroupDoc(id),
-			groupChannelFor: (id) => this.classroomCtl.groupChannelFor(id),
+			syncGroupDoc: (g, names) => this.classroomCtls.messageCtl.syncGroupDoc(g, names),
+			deleteGroupDoc: (id) => this.classroomCtls.messageCtl.deleteGroupDoc(id),
+			groupChannelFor: (id) => this.classroomCtls.messageCtl.groupChannelFor(id),
 			openChat: (ch) => this.nav.openChat(ch),
 			deleteSharedServer: (space) => this.serverResetCtl.deleteSharedServer(space),
 			refreshMemberShares: () => this.refreshMemberShares(),
@@ -263,15 +263,15 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming();
 		};
 		// 알림장·수업은 편집창 + 프론트매터로 작성한다 — 파일 프론트매터 변경/삭제/이름변경을 게시 메타에 반영(교사).
-		this.registerEvent(this.app.metadataCache.on("changed", (file) => { if (file instanceof TFile) void this.classroomCtl.syncNoticeFromFile(file); }));
+		this.registerEvent(this.app.metadataCache.on("changed", (file) => { if (file instanceof TFile) void this.classroomCtls.noticeCtl.syncNoticeFromFile(file); }));
 		this.registerEvent(this.app.vault.on("delete", (file) => {
 			if (!(file instanceof TFile)) return;
-			void this.classroomCtl.onNoticeFileDeleted(file.path);
+			void this.classroomCtls.noticeCtl.onNoticeFileDeleted(file.path);
 			void this.participantCtl.onFileDeleted(file.path); // 실시간 지정 문서 정리
 		}));
 		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
 			if (!(file instanceof TFile)) return;
-			void this.classroomCtl.onNoticeFileRenamed(file, oldPath);
+			void this.classroomCtls.noticeCtl.onNoticeFileRenamed(file, oldPath);
 			void this.participantCtl.onFileRenamed(oldPath, file.path); // 실시간 지정 문서 이전
 		}));
 		this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.onWorkspaceChange()));
@@ -291,7 +291,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			feedback: this.feedback,
 			classroom: this.classroom,
 			settings: () => this.settings,
-			classroomCtl: this.classroomCtl,
+			...this.classroomCtls, // noticeCtl·assignmentCtl·routineCtl·messageCtl (PanelHostDeps와 1:1)
 			participantCtl: this.participantCtl,
 			recoveryCtl: this.recoveryCtl,
 			groupRequestCtl: this.groupRequestCtl,
@@ -370,7 +370,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 		// 재배포/설정 적용 시 기존 세션을 깨끗이 종료(awareness 제거) 후 재구성 → 유령 커서 방지
 		await this.realtime?.refresh();
 		void this.participantCtl.backfillRtPartNames(); // 구버전 지정 문서에 이름 채우기(학생 카드에 이름 표시)
-		void this.classroomCtl.cleanupLegacyGroups(); // 0.100.x 파일별 그룹 문서 정리(드롭다운 유령 제거)
+		void this.classroomCtls.messageCtl.cleanupLegacyGroups(); // 0.100.x 파일별 그룹 문서 정리(드롭다운 유령 제거)
 		if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming(); // 시작 시 미처리 플러그인 배포 안내
 		if (this.settings.role === "manager") {
 			void this.deploymentCtl.redeployValidate(); // validate 버전 마이그레이션(1회, 실패 시 다음 시작 재시도)
@@ -502,10 +502,10 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 		new SetupWizardModal(this.app, this.panelHost).open();
 	}
 	createTemplateFile(kind: "notice" | "lesson" | "assignment"): Promise<void> {
-		return this.classroomCtl.createTemplateFile(kind);
+		return this.classroomCtls.noticeCtl.createTemplateFile(kind);
 	}
 	cleanupClassroomDocs(): Promise<{ duplicates: number; orphans: number; danglingLinks: number; orphanAssignments: number }> {
-		return this.classroomCtl.cleanupClassroomDocs();
+		return this.classroomCtls.noticeCtl.cleanupClassroomDocs();
 	}
 	/** 명령용: 로그 패널을 열고 중복/고아 학급 문서 정리 실행(결과는 로그에 표시). */
 	private async runCleanupClassroom(): Promise<void> {

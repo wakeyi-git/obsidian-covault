@@ -65,7 +65,7 @@ CoVault는 **독립적인 두 서버**가 필요합니다:
 
 # CouchDB (필수)
 
-아래 두 따라하기 중 **하나**를 따른 뒤, 실시간이 필요하면 [Yjs](#yjs-실시간-서버-선택)로 넘어가세요. 뒤의
+아래 두 따라하기 중 **하나**를 따른 뒤, 실시간이 필요하면 [실시간 서버](#실시간-서버--hocuspocus-선택)로 넘어가세요. 뒤의
 [호스팅 선택지](#couchdb-호스팅-선택지)에서 모든 대안을 상세히 설명합니다.
 
 ## 따라하기 A: 클라우드 VPS (권장)
@@ -314,7 +314,7 @@ placeholder, 16자 미만이면 서버가 기동을 거부합니다 — 의도�
 ```caddyfile
 yjs.example.com {
     reverse_proxy localhost:1234
-    log { output discard }          # ?token= 을 접근 로그에서 제외
+    log { output discard }          # 선택 사항 — CoVault 토큰은 URL이 아닌 인증 메시지로 전달됨
 }
 ```
 요건: 도메인 A 레코드가 서버를 가리키고, 80/443 포트가 열려 있어야 함(Caddy는 ACME 챌린지에 80이 필요).
@@ -328,7 +328,7 @@ location / {
     proxy_set_header Connection "upgrade";
     proxy_set_header Host       $host;
     proxy_read_timeout 3600s;        # 장수명 WS 연결 유지
-    access_log off;                  # 또는 $args(?token=)를 제거하는 log_format
+    access_log off;                  # 선택적 심층 방어 — 토큰은 URL에 나타나지 않음
 }
 ```
 

@@ -112,3 +112,43 @@ describe("첨부 충돌 (asset conflict)", () => {
 		expect(bytes(await b.ctx.readVaultBinary("img/p.png"))).toEqual(bytes(buf("A-remote")));
 	});
 });
+
+describe("첨부 수신(pull) 크기 게이트 (P1-1 #4)", () => {
+	let cluster: Cluster;
+	afterEach(() => cluster?.dispose());
+
+	it("기기 한도를 넘는 원격 첨부는 다운로드·vault 쓰기를 건너뛴다(다른 기기가 올린 대용량으로부터 보호)", async () => {
+		cluster = new Cluster();
+		// a: 무제한 업로드. b: maxAttachmentMB=1(모바일 가정).
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1", settings: { maxAttachmentMB: 0 } });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1", settings: { maxAttachmentMB: 1 } });
+
+		const big = new ArrayBuffer(2 * 1024 * 1024); // 2MB > 1MB 한도
+		a.vault.seedBinary("img/big.png", big);
+		await a.uploader.uploadPath("img/big.png");
+		await a.push();
+		await b.pull();
+
+		const doc = await b.ctx.pouch.getWithConflicts<any>(assetId("img/big.png"));
+		expect(doc?.size).toBe(2 * 1024 * 1024); // 메타에 크기 존재(다운로드 전 판정 근거)
+		const res = await b.applier.applyAsset(doc);
+		expect(res).toBe("skipped-too-large");
+		expect(await b.ctx.readVaultBinary("img/big.png")).toBeNull(); // vault에 쓰지 않음
+	});
+
+	it("한도 이하 첨부는 정상 수신된다(게이트가 작은 파일을 막지 않음)", async () => {
+		cluster = new Cluster();
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1", settings: { maxAttachmentMB: 0 } });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1", settings: { maxAttachmentMB: 1 } });
+
+		a.vault.seedBinary("img/small.png", buf("작은 파일"));
+		await a.uploader.uploadPath("img/small.png");
+		await a.push();
+		await b.pull();
+
+		const doc = await b.ctx.pouch.getWithConflicts<any>(assetId("img/small.png"));
+		const res = await b.applier.applyAsset(doc);
+		expect(res).toBe("applied");
+		expect(bytes(await b.ctx.readVaultBinary("img/small.png"))).toEqual(bytes(buf("작은 파일")));
+	});
+});

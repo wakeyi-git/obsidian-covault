@@ -28,16 +28,21 @@ describe("validate v2 규칙 회귀 (정책과 무관하게 유지)", () => {
 		}
 	});
 
-	it("구성원은 교사 전용 타입(게시물 메타 + 인가·명단)을 쓸 수 없다", () => {
-		for (const type of ["notice", "timetable", "routine", "assignment", "chatgroup", "rtpart", "rtcontrol", "roster"]) {
+	it("구성원은 교사 전용 타입(게시물 메타 + 인가·명단 + shares/rtconfig)을 쓸 수 없다", () => {
+		for (const type of ["notice", "timetable", "routine", "assignment", "chatgroup", "rtpart", "rtcontrol", "roster", "shares", "rtconfig"]) {
 			expect(() => validate({ type }, null, member)).toThrow();
 		}
 	});
 
-	it("구성원은 협업 콘텐츠(note/asset/message/feedback)를 쓸 수 있다(읽기전용 꺼짐)", () => {
-		for (const type of ["note", "asset", "message", "feedback"]) {
+	it("구성원은 note/asset를 자유롭게 쓸 수 있다(읽기전용 꺼짐)", () => {
+		for (const type of ["note", "asset"]) {
 			expect(() => validate({ type, _id: `${type}:x.md` }, null, member)).not.toThrow();
 		}
+	});
+
+	it("구성원은 본인 명의(member 역할) message/feedback를 쓸 수 있다", () => {
+		expect(() => validate({ type: "message", _id: "message:1", byUser: "student_a", byRole: "member" }, null, member)).not.toThrow();
+		expect(() => validate({ type: "feedback", _id: "feedback:1", createdBy: "student_a", createdByRole: "member" }, null, member)).not.toThrow();
 	});
 
 	it("grouprequest: 본인 pending 신청 허용·soft-취소 허용·타인/승인 위조 거부", () => {
@@ -51,6 +56,39 @@ describe("validate v2 규칙 회귀 (정책과 무관하게 유지)", () => {
 	it("response는 본인 것만", () => {
 		expect(() => validate({ type: "response", byUser: "student_a" }, null, member)).not.toThrow();
 		expect(() => validate({ type: "response", byUser: "student_b" }, null, member)).toThrow();
+	});
+
+	it("message: 본인 것만 + manager 역할 위조 거부 + 타인 메시지 수정/삭제 거부 (P1-1)", () => {
+		// 본인 명의 신규
+		expect(() => validate({ type: "message", _id: "message:1", byUser: "student_a", byRole: "member" }, null, member)).not.toThrow();
+		// 타 멤버 명의로 작성
+		expect(() => validate({ type: "message", _id: "message:2", byUser: "student_b", byRole: "member" }, null, member)).toThrow();
+		// 운영자(manager) 역할 위조
+		expect(() => validate({ type: "message", _id: "message:3", byUser: "student_a", byRole: "manager" }, null, member)).toThrow();
+		// byUser 누락(불완전 문서) 거부
+		expect(() => validate({ type: "message", _id: "message:4", byRole: "member" }, null, member)).toThrow();
+		// 본인 메시지 수정(soft delete) 허용
+		const own = { type: "message", _id: "message:1", byUser: "student_a", byRole: "member" };
+		expect(() => validate({ ...own, deleted: true }, own, member)).not.toThrow();
+		// 타인 메시지 수정/삭제(기존 문서 owner=타인) 거부
+		const others = { type: "message", _id: "message:9", byUser: "student_b", byRole: "member" };
+		expect(() => validate({ ...others, body: "변조" }, others, member)).toThrow();
+		// 타인 메시지 hard delete(_deleted, newDoc owner 없음 → oldDoc owner=타인) 거부
+		expect(() => validate({ _id: "message:9", _deleted: true }, others, member)).toThrow();
+		// 본인 메시지 hard delete 허용
+		expect(() => validate({ _id: "message:1", _deleted: true }, own, member)).not.toThrow();
+	});
+
+	it("feedback: 본인 것만 + manager 역할 위조 거부 (P1-1)", () => {
+		expect(() => validate({ type: "feedback", _id: "feedback:1", createdBy: "student_a", createdByRole: "member" }, null, member)).not.toThrow();
+		expect(() => validate({ type: "feedback", _id: "feedback:2", createdBy: "student_b", createdByRole: "member" }, null, member)).toThrow();
+		expect(() => validate({ type: "feedback", _id: "feedback:3", createdBy: "student_a", createdByRole: "manager" }, null, member)).toThrow();
+		expect(() => validate({ type: "feedback", _id: "feedback:4", createdByRole: "member" }, null, member)).toThrow();
+	});
+
+	it("운영자(_admin)는 message/feedback 소유·역할 검사를 우회한다", () => {
+		expect(() => validate({ type: "message", _id: "m1", byUser: "anyone", byRole: "manager" }, null, admin)).not.toThrow();
+		expect(() => validate({ type: "feedback", _id: "f1", createdBy: "anyone", createdByRole: "manager" }, null, admin)).not.toThrow();
 	});
 });
 
@@ -91,9 +129,9 @@ describe("validate v3 — 읽기전용 강제 (H-5)", () => {
 		expect(() => validate({ type: "asset", _id: "asset:그림.png" }, null, other)).toThrow();
 	});
 
-	it("message/feedback/response는 읽기전용과 무관하게 허용", () => {
-		expect(() => validate({ type: "message", _id: "m1" }, null, other)).not.toThrow();
-		expect(() => validate({ type: "feedback", _id: "f1" }, null, other)).not.toThrow();
+	it("message/feedback/response는 읽기전용과 무관하게 본인 명의면 허용", () => {
+		expect(() => validate({ type: "message", _id: "m1", byUser: "student_b", byRole: "member" }, null, other)).not.toThrow();
+		expect(() => validate({ type: "feedback", _id: "f1", createdBy: "student_b", createdByRole: "member" }, null, other)).not.toThrow();
 		expect(() => validate({ type: "response", byUser: "student_b" }, null, other)).not.toThrow();
 	});
 
@@ -163,5 +201,44 @@ describe("validate v4 — 기기별 계정(acct 정규화, 평가 S-2)", () => {
 		const old = { type: "grouprequest", byUsername: "student_a", status: "pending" };
 		expect(() => validate({ ...old, deleted: true }, old, device)).not.toThrow();
 		expect(() => validate({ ...old, deleted: true }, old, other)).toThrow();
+	});
+});
+
+describe("mirror DB 정책 — DM 사칭 차단 (P1-1)", () => {
+	// mirror는 readOnly:false(공유 공간 전용 개념). byUser는 memberId, 계정→memberId는 accounts로 정규화.
+	const policy: ValidatePolicy = {
+		readOnly: false,
+		svcUsername: "covault-rt",
+		allowByPath: {},
+		accounts: { student_a: "m1", "m1-d2": "m1" }, // m1의 기본 계정 + 기기 계정
+	};
+	const validate = compile(policy);
+	const m1 = { name: "student_a", roles: [] };
+	const m1Device = { name: "m1-d2", roles: [] };
+	const teacher = { name: "teacher", roles: ["_admin"] };
+
+	it("구성원은 본인(memberId) 명의 DM을 보낼 수 있다 — 기기 계정도 동일", () => {
+		expect(() => validate({ type: "message", _id: "message:1", channel: "dm:m1", byUser: "m1", byRole: "member" }, null, m1)).not.toThrow();
+		expect(() => validate({ type: "message", _id: "message:2", channel: "dm:m1", byUser: "m1", byRole: "member" }, null, m1Device)).not.toThrow();
+	});
+
+	it("구성원은 자기 mirror DM에서도 운영자(manager) 명의를 위조할 수 없다", () => {
+		expect(() => validate({ type: "message", _id: "message:3", channel: "dm:m1", byUser: "m1", byRole: "manager" }, null, m1)).toThrow();
+	});
+
+	it("운영자(_admin)는 mirror에 manager 명의 DM을 보낼 수 있다(우회)", () => {
+		expect(() => validate({ type: "message", _id: "message:4", channel: "dm:m1", byUser: "manager", byRole: "manager" }, null, teacher)).not.toThrow();
+	});
+
+	it("구성원은 note/asset(자기 vault)·assignment-state·version을 자유롭게 쓴다 — mirror는 읽기전용 아님", () => {
+		for (const type of ["note", "asset", "assignment-state", "routine-state", "version"]) {
+			expect(() => validate({ type, _id: `${type}:x` }, null, m1)).not.toThrow();
+		}
+	});
+
+	it("구성원은 mirror에 shares/rtconfig·기타 교사 전용 타입을 주입할 수 없다", () => {
+		for (const type of ["shares", "rtconfig", "notice", "rtpart"]) {
+			expect(() => validate({ type, _id: `${type}:x` }, null, m1)).toThrow();
+		}
 	});
 });

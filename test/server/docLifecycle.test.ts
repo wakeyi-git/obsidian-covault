@@ -34,6 +34,7 @@ function note(content: string, over: Record<string, unknown> = {}) {
 function makeEnv(opts: { note?: unknown; getDocError?: boolean; putConflict?: boolean } = {}) {
 	const calls = { putDoc: [] as any[], putDocWithRev: [] as any[], closed: [] as string[] };
 	const sqliteRows = new Map<string, Buffer>();
+	const sqliteMeta = new Map<string, string>();
 	const couch = {
 		async getDoc() {
 			if (opts.getDocError) throw new Error("network down");
@@ -54,11 +55,14 @@ function makeEnv(opts: { note?: unknown; getDocError?: boolean; putConflict?: bo
 			get: (n: string) => sqliteRows.get(n) ?? null,
 			put: (n: string, d: Buffer) => void sqliteRows.set(n, d),
 			del: (n: string) => void sqliteRows.delete(n),
+			getMeta: (k: string) => sqliteMeta.get(k) ?? null,
+			putMeta: (k: string, v: string) => void sqliteMeta.set(k, v),
+			delMeta: (k: string) => void sqliteMeta.delete(k),
 		},
 		closeConnections: (n: string) => void calls.closed.push(n),
 		log: { log() {}, warn() {}, error() {} },
 	});
-	return { lifecycle, couch, sqliteRows, calls };
+	return { lifecycle, couch, sqliteRows, sqliteMeta, calls };
 }
 
 describe("onLoadDocument — 시드·재시드 분기 매트릭스", () => {
@@ -121,14 +125,70 @@ describe("onLoadDocument — 시드·재시드 분기 매트릭스", () => {
 		).rejects.toThrow("document seed failed");
 	});
 
-	it("excalidraw(비스냅샷 대상)는 CouchDB를 보지 않고 SQLite만 복원", async () => {
-		const { lifecycle, sqliteRows } = makeEnv({ getDocError: true }); // couch를 보면 throw
+	it("excalidraw + note 조회 실패 → 신선도 검증 불가, SQLite 그대로 복원(가용성 우선)", async () => {
+		const { lifecycle, sqliteRows } = makeEnv({ getDocError: true });
 		const room = { dbPath: "그림.excalidraw.md", spaceId: "g1" };
 		const name = "ws/share/g1/그림.excalidraw.md";
 		sqliteRows.set(name, encodeState("씬 상태"));
 		const document = new Y.Doc();
 		await lifecycle.loadDocument({ document, documentName: name, room, claims: CLAIMS });
 		expect(document.getText("content").toString()).toBe("씬 상태");
+	});
+});
+
+describe("onLoadDocument — Excalidraw 신선도 앵커 (P1-1 #3)", () => {
+	const xlRoom = { dbPath: "그림.excalidraw.md", spaceId: "g1" };
+	const xlName = "ws/share/g1/그림.excalidraw.md";
+	function xlNote(content: string, over: Record<string, unknown> = {}) {
+		return { _id: `note:${xlRoom.dbPath}`, type: "note", path: xlRoom.dbPath, content, contentHash: sha256Hex(content), deleted: false, ...over };
+	}
+
+	it("SQLite 없음 → 서버는 Y를 적용하지 않고(클라이언트 시드) note 해시를 앵커로 기록", async () => {
+		const { lifecycle, sqliteMeta } = makeEnv({ note: xlNote("디스크 그림 v1") });
+		const document = new Y.Doc();
+		await lifecycle.loadDocument({ document, documentName: xlName, room: xlRoom, claims: CLAIMS });
+		expect(document.getText("content").toString()).toBe(""); // 서버 시드 안 함
+		expect(sqliteMeta.get(xlName)).toBe(sha256Hex("디스크 그림 v1"));
+	});
+
+	it("앵커 == 현재 note 해시 → SQLite Y 상태 복원(외부 편집 없음)", async () => {
+		const { lifecycle, sqliteRows, sqliteMeta } = makeEnv({ note: xlNote("디스크 그림 v1") });
+		sqliteRows.set(xlName, encodeState("세션 Y 상태"));
+		sqliteMeta.set(xlName, sha256Hex("디스크 그림 v1"));
+		const document = new Y.Doc();
+		await lifecycle.loadDocument({ document, documentName: xlName, room: xlRoom, claims: CLAIMS });
+		expect(document.getText("content").toString()).toBe("세션 Y 상태");
+	});
+
+	it("앵커 != 현재 note 해시(세션 사이 외부 편집) → SQLite Y 폐기, 행 삭제, 클라이언트 재시드", async () => {
+		const { lifecycle, sqliteRows, sqliteMeta } = makeEnv({ note: xlNote("동기화로 갱신된 그림 v2") });
+		sqliteRows.set(xlName, encodeState("옛 세션 Y 상태"));
+		sqliteMeta.set(xlName, sha256Hex("디스크 그림 v1")); // 앵커는 v1, 디스크는 v2
+		const document = new Y.Doc();
+		await lifecycle.loadDocument({ document, documentName: xlName, room: xlRoom, claims: CLAIMS });
+		expect(document.getText("content").toString()).toBe(""); // stale Y 미적용 → 클라이언트가 디스크 v2에서 시드
+		expect(sqliteRows.has(xlName)).toBe(false); // stale 행 삭제
+		expect(sqliteMeta.get(xlName)).toBe(sha256Hex("동기화로 갱신된 그림 v2")); // 앵커 최신화
+	});
+
+	it("앵커 없음(최초 마이그레이션) + SQLite 있음 → 보수적으로 복원하고 앵커 기록", async () => {
+		const { lifecycle, sqliteRows, sqliteMeta } = makeEnv({ note: xlNote("디스크 그림") });
+		sqliteRows.set(xlName, encodeState("기존 세션 Y 상태"));
+		const document = new Y.Doc();
+		await lifecycle.loadDocument({ document, documentName: xlName, room: xlRoom, claims: CLAIMS });
+		expect(document.getText("content").toString()).toBe("기존 세션 Y 상태");
+		expect(sqliteMeta.get(xlName)).toBe(sha256Hex("디스크 그림"));
+	});
+
+	it("교사 삭제 tombstone → 로드 거부 + SQLite 행·앵커 삭제(부활 방지)", async () => {
+		const { lifecycle, sqliteRows, sqliteMeta } = makeEnv({ note: xlNote("x", { deleted: true, deletedByRole: "manager" }) });
+		sqliteRows.set(xlName, encodeState("옛 Y 상태"));
+		sqliteMeta.set(xlName, "oldhash");
+		await expect(
+			lifecycle.loadDocument({ document: new Y.Doc(), documentName: xlName, room: xlRoom, claims: CLAIMS }),
+		).rejects.toThrow("document deleted");
+		expect(sqliteRows.has(xlName)).toBe(false);
+		expect(sqliteMeta.has(xlName)).toBe(false);
 	});
 });
 

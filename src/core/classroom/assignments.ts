@@ -23,13 +23,16 @@ export function gradeTotal(grade: AssignmentGrade | undefined, rubric: RubricCri
 }
 
 /**
- * 과제 작업 폴더. 개인=<root>/_과제(root="" 학생 측이면 _과제), 공유=<학급>/과제.
+ * 과제 작업 폴더. 공유=<학급>/<label>, 개인=<root>/_<label>(root="" 학생 측이면 _<label>).
+ * label은 현지화된 폴더명(ko "과제" / en "Assignments") — 호출측이 t("dashboard.subfolder_assignment")로 넘긴다
+ * (평가 P1-1 — 한국어 폴더 하드코딩 제거). 개인 폴더는 `_` 접두사(숨김/사적 관례)를 붙인다.
  * 과제 파일은 이 폴더 바로 아래 `<slug>.<ext>`로 생성한다(과제별 하위 폴더를 만들지 않음).
  * 개인 과제의 파일은 dbPath(localRoot 상대)로 저장하므로 학생 측은 root="", 교사 측은 member.localRoot로 해석한다.
+ * 기존 과제는 상태 문서(AssignmentStateDoc.workPaths)에 경로가 저장·보존되므로 label 변경에 영향받지 않는다.
  */
-export function assignmentWorkDir(privacy: "mirror" | "shared", root: string, homeroomFolder: string): string {
-	if (privacy === "shared") return `${homeroomFolder}/과제`;
-	return root ? `${root}/_과제` : `_과제`;
+export function assignmentWorkDir(privacy: "mirror" | "shared", root: string, homeroomFolder: string, label: string): string {
+	if (privacy === "shared") return `${homeroomFolder}/${label}`;
+	return root ? `${root}/_${label}` : `_${label}`;
 }
 
 /** 과제 파일명: <slug><ext>. ext는 템플릿 파일명의 첫 점 이후(.md, .excalidraw.md 등)를 유지. */

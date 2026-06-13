@@ -20,16 +20,16 @@ Highlights:
 - **QR/code invites** — inviting a member auto-provisions a least-privilege account that can **only access their own mirror DB** (no admin credentials). If an invite leaks, the manager can **'Reissue password'** to immediately invalidate the old invite.
 - **Server-enforced isolation** — per-member data is isolated on the server by per-database permissions (`_security`).
 - **Markdown + attachments** — not only notes but images, PDFs, etc. are synced (PouchDB attachments).
-- **Conflict preservation** — on simultaneous edits the local copy is kept and you compare/choose in the conflict UI. For both markdown and attachments the remote copy is preserved under `_충돌/` (Conflicts).
+- **Conflict preservation** — on simultaneous edits the local copy is kept and you compare/choose in the conflict UI. For both markdown and attachments the remote copy is preserved under the conflicts folder (`_conflicts/`).
 - **Shared folders** — a group/workspace shares one folder (dedicated DB + member permissions), auto-propagated to members by manager deploy.
 - **Realtime co-editing** — character-level co-editing of shared-folder notes via Yjs. For **both markdown and Excalidraw**, cursors/names + a **participant chip** (always shown at the bottom-right) reveal who is co-editing — even on tablets/phones without a mouse (image sync; the Excalidraw plugin is required). A separate WebSocket server is needed.
 - **Realtime control & access** — a dedicated **Realtime tab** manages live editing: an on/off toggle, **per-file participant assignment** (only the members you pick co-edit a given note; others stay on plain file sync), an optional **shared-files read-only** policy (members can only edit a shared note while it's an active realtime session for them), and a live **active-sessions list** (open assigned files with one click — they stay listed even when closed). Removing a member from a file ends their live session immediately.
-- **Realtime security** — realtime tokens are issued as **per-member HMAC-signed tokens**, so a leaked token only grants **that space with that member's permissions** (not the whole workspace). Per-file participant assignment is **enforced by the server** (unassigned members are refused entry and removed members are kicked live), and tokens travel in an authentication message so they never hit proxy access logs. The server refuses to start with a known placeholder secret, and the manager's tokens/secret are kept in **Obsidian Secret Storage** (not plaintext in `data.json`).
+- **Realtime security** — realtime tokens are issued as **per-member HMAC-signed tokens**, so a leaked token only grants **that space with that member's permissions** (not the whole workspace). Per-file participant assignment is **enforced by the server** when the realtime server is configured with `COUCHDB_URL` (unassigned members are refused entry and removed members are kicked live; without `COUCHDB_URL` only space-level token checks apply), and tokens travel in an authentication message so they never hit proxy access logs. The server refuses to start with a known placeholder secret, and the manager's tokens/secret are kept in **Obsidian Secret Storage** (on platforms without Secret Storage they fall back to `data.json` with a warning).
 - **Messenger** — a built-in **chat tab**: a **class-wide channel** (homeroom shared DB) and **1:1 DMs** (manager↔member, over the personal mirror DB). Send text, **`[[wikilink]]`s with Obsidian-style autocomplete**, URLs, and **file/image attachments** (the file is copied to the other side); links and image previews render inline. Sender names show for everyone (not raw IDs).
 - **Feedback layer** — leave comments anchored to text without editing the body (on shared and personal notes). The manager can review scattered feedback at once with the **all-unresolved feedback inbox**. Periodic in-session snapshots are also supported.
 - **Classroom dashboard** — an optional manager↔member workspace built on one auto-provisioned **homeroom** shared space: **notices** (read-confirm + class comments + private questions/replies), a **weekly timetable + lessons**, **assignments** (distribute → submit with version snapshot → grade by score/rubric/comment → return), **checklists/routines**, and a **statistics** view (read/submission/score/completion rates, CSV export). Notices and lessons are authored **right in the Obsidian editor using frontmatter** (draft → publish toggle), and notices/lessons/assignments support **reusable content templates**.
 - **Operational UX** — manager **onboarding wizard** ('Get started' checklist), **bulk member import** (paste a roster with an optional per-member folder) and **bulk invite** for all pending members, **deploy preview (dry-run) + per-member result & retry-failed**, an **action-oriented dashboard** (action cards + narrow-screen card layout), and inline settings validation (duplicate ID / URL / folder-overlap warnings).
-- **Operational convenience** — settings export/import (credentials excluded), full diagnostics (server · read/write permissions · realtime), mobile power-saving (pause background sync · pre-check large files), and a configurable max-delete-reconcile limit.
+- **Operational convenience** — settings export/import (credentials excluded), full diagnostics (server · read/write permissions · realtime), mobile power-saving (pause scheduling of background sync · pre-check large files), and a configurable max-delete-reconcile limit.
 
 ### Requirements
 - **Obsidian 1.11.4+** (desktop and mobile). 1.11.4 is required because the plugin uses the Secret Storage API.
@@ -151,18 +151,20 @@ The single **CoVault ribbon (vault icon)** opens the unified panel; the commands
 | Refresh shared spaces | Re-read the shared-space config and reconcile shared folders |
 | Open log panel | View the sync log |
 
-Deleted files move to the **archive folder (`_삭제됨/`, configurable)**; deleting from that folder permanently purges from the DB.
+Deleted files move to the **archive folder (`_deleted/`, configurable; `_삭제됨/` on Korean-locale installs)**; deleting from that folder permanently purges from the DB.
 
 ### Conflicts
 When both sides edit the same file differently, the local copy is preserved (preserve-local) and the remote version is
-pulled into the **`_충돌/` (Conflicts) folder**. In `Open conflicts`, compare and resolve via *keep local / apply remote /
-keep both*. If the other side resolves first and your edit would be overwritten, your version is kept as `_충돌/<file>.내편집.md`.
+pulled into the **`_conflicts/` folder** (`_충돌/` on Korean-locale installs — folder and label names follow your locale).
+In `Open conflicts`, compare and resolve via *keep local / apply remote / keep both*. If the other side resolves first
+and your edit would be overwritten, your version is kept as `_conflicts/<file>.MyEdit.md`.
 
 ### Attachments
 Non-markdown files like images and PDFs are also synced (CouchDB attachments). Control them with the *Sync attachments*
-toggle and *Max attachment size (MB)* in settings (mobile protection). Attachment conflicts also appear in the conflict
-list and can be resolved (keep local / apply remote / keep both). There is no binary content diff — the file name, size,
-and MIME type are shown and the remote copy is preserved in `_충돌/`.
+toggle and *Max attachment size (MB)* in settings (the limit is checked when uploading from a device; attachments
+already in the DB are still downloaded). Attachment conflicts also appear in the conflict list and can be resolved
+(keep local / apply remote / keep both). There is no binary content diff — the file name, size, and MIME type are
+shown and the remote copy is preserved in the conflicts folder.
 
 ### Manager deploy
 Keep originals outside member folders (e.g. in `Templates/`), then in the **deploy tab** pick a path (quick buttons:
@@ -201,7 +203,8 @@ note, and in its highlighted session card pick the participating members (defaul
 *nobody* when read-only is on, *everyone* when off). Only the chosen members join the live session; the rest stay on plain
 file sync. This access control is **enforced by the server** — members not on the list are refused entry, and removing
 a member from a file makes the server **drop their live connection immediately** (and re-locks the note under the
-read-only policy). Enforcement is server-side on both paths: the realtime server gates **session entry**, and CouchDB
+read-only policy). Per-file enforcement requires the realtime server to be configured with `COUCHDB_URL`; if it is
+not set, the server logs a warning at startup and falls back to space-level token checks only. Enforcement is server-side on both paths: the realtime server gates **session entry**, and CouchDB
 `validate_doc_update` rejects member writes of shared **note/asset documents** while read-only is on (session
 participants and the realtime service account stay allowed, so end-of-session uploads still work). A member editing
 files outside the plugin keeps their local copy, but the server refuses to accept the change. Excalidraw drawings are locked/unlocked the same way (view mode). Each card also lists who's
@@ -214,7 +217,7 @@ To run the realtime server, see **[`server/README.md` → Realtime server](serve
 **Realtime token security** — set `YJS_SECRET` on the server and the same value in the plugin's **'Yjs space secret (HMAC)'**;
 then each time the manager deploys a space, **per-member signed tokens** are issued and delivered to members. The
 token payload carries `workspaceId`·`spaceId`·DB name·member id·role (+ optional expiry); the server verifies the room
-prefix (`<workspaceId>/share/<spaceId>/`) **and the per-file participant assignment**, so a leaked token only grants
+prefix (`<workspaceId>/share/<spaceId>/`) **and — when `COUCHDB_URL` is configured — the per-file participant assignment**, so a leaked token only grants
 **that space with that member's permissions**. Tokens are sent in an authentication message after the WebSocket is
 established — they never appear in proxy access logs. Changing the secret/members and redeploying refreshes tokens,
 and **'Space token expiry (days)'** sets a TTL. The manager's tokens/secret are stored in Obsidian Secret Storage.
@@ -320,14 +323,15 @@ The manager keeps one `MirrorSync` per member to sync many members at once.
 ## Security notes
 
 - **Invite codes** contain the member's private password (for a one-time organization onboarding, base64-encoded). Invites
-  **expire after a configurable TTL** (default 14 days), and if a leak is suspected the manager can rotate the password via
+  **expire after a configurable TTL** (default 7 days), and if a leak is suspected the manager can rotate the password via
   **'Reissue password'** on the member card, **immediately invalidating the old invite**. Applying an invite always asks for
   confirmation first (showing the target server) and rejects non-http(s) server URLs.
 - **Realtime tokens** are issued as per-space **HMAC-signed tokens**, so a leak only grants access to that space's room
   (`workspaceId`·`spaceId` binding + optional expiry). The server refuses to start with a placeholder/too-short secret like
   `CHANGE_ME`, and tokens travel over WSS **in an authentication message, not the URL** — proxy access logs never see them (log masking is optional defense-in-depth; see `server/README.md`).
 - **The Yjs space secret** (manager) and **CouchDB admin password** are stored in **Obsidian Secret Storage** (a per-vault
-  store), not left in plaintext in `data.json`.
+  store) where the platform provides it. On platforms without Secret Storage support they fall back to plaintext in
+  `data.json`, and the plugin warns once per session.
 - **Settings export** excludes credentials — admin password, member passwords, `yjsSecret`, space tokens, and device-specific values.
 - The manager's admin credentials are stored only on the manager's device; members never handle admin permissions.
 - Inter-member data is isolated on the server by CouchDB `_security` (403 when accessing another member's DB).

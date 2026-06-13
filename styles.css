@@ -2095,3 +2095,21 @@
 	display: block;
 	margin: 0 auto 8px;
 }
+
+/* 설정 고급 접이 영역(평가 P2-2) — 자주 안 만지는 항목을 기본 접힘으로 */
+.covault-advanced {
+	margin: 6px 0;
+	border-top: 1px solid var(--background-modifier-border);
+}
+.covault-advanced > summary {
+	cursor: pointer;
+	padding: 8px 12px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.covault-advanced[open] > summary {
+	color: var(--text-normal);
+}
+.covault-advanced-body {
+	padding-left: 12px;
+}

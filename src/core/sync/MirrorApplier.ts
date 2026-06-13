@@ -4,6 +4,7 @@ import { ConflictManager } from "./ConflictManager";
 import { recordDeleteModify } from "./deleteModifyQueue";
 import { NoteDoc, AssetDoc, assetId } from "../model/types";
 import { sha256 } from "../hash/hash";
+import { exceedsAttachmentLimit } from "./attachment";
 import { t } from "../../i18n";
 
 /** 삭제(tombstone) 적용에 필요한 최소 형태(note/asset 공통). */
@@ -25,6 +26,7 @@ export type ApplyResult =
 	| "skipped-excluded"
 	| "skipped-pending"
 	| "skipped-collision"
+	| "skipped-too-large"
 	| "conflict";
 
 /** _conflicts를 포함한 로컬 문서. */
@@ -40,6 +42,8 @@ type DocWithConflicts = NoteDoc & { _conflicts?: string[] };
  */
 export class MirrorApplier {
 	private loggedConflicts = new Set<string>();
+	/** 크기 초과로 수신 스킵한 첨부 경로 — 경고를 경로당 1회만 내기 위함(매 동기화 스팸 방지). */
+	private loggedTooLarge = new Set<string>();
 
 	constructor(
 		private ctx: MirrorContext,
@@ -219,14 +223,35 @@ export class MirrorApplier {
 			}
 		}
 
+		// 수신(pull) 방향 크기 게이트(평가 P1-1 #4): 다른 기기가 올린 대용량 첨부로부터 이 기기(특히 모바일)를
+		// 보호한다. doc.size(메타)로 다운로드 전에 판정 — 한도 초과면 바이너리를 받지도(메모리 스파이크 회피),
+		// vault에 쓰지도 않는다. 멱등 스킵이라 stall 없이 매 동기화에서 동일 판정(경고는 경로당 1회).
+		if (exceedsAttachmentLimit(doc.size ?? 0, ctx.settings.maxAttachmentMB || 0)) {
+			if (!this.loggedTooLarge.has(doc.path)) {
+				this.loggedTooLarge.add(doc.path);
+				ctx.logger.warn(
+					t("sync.attachment_too_large_to_download", {
+						path: localPath,
+						mb: ctx.settings.maxAttachmentMB || 0,
+						size: Math.round(((doc.size ?? 0) / (1024 * 1024)) * 10) / 10,
+					}),
+					true,
+				);
+			}
+			return "skipped-too-large";
+		}
+
 		const data = await ctx.pouch.getAssetBinary(assetId(doc.path));
 		if (data == null) {
 			ctx.logger.warn(t("sync.no_attachment_data_waiting_for_propagation", { path: doc.path }));
 			return "skipped-nonmd";
 		}
 		ctx.guard.mark(localPath, doc.contentHash);
-		await ctx.writeVaultBinary(localPath, data);
+		// compare-and-swap(평가 P2-4 — 노트 D-2와 대칭): readVaultBinary 이후 끼어든 로컬 편집(아직 pending에
+		// 안 잡힌 저장)을 보존 없이 덮지 않는다 — 실패하면 다음 change에서 pending 보존 규칙으로 재평가된다.
+		const applied = await ctx.writeVaultBinaryIf(localPath, localHash, data);
 		ctx.guard.releaseAfterDelay(localPath);
+		if (!applied) return "skipped-pending";
 		ctx.status.lastDownloadAt = Date.now();
 		ctx.logger.ok(t("sync.applied_remote_local_attachment", { path: localPath }));
 		return "applied";

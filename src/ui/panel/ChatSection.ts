@@ -3,7 +3,7 @@ import { PanelHost, PanelSection, panelButton } from "./PanelSection";
 import { ConfirmModal } from "../ConfirmModal";
 import { ChatSuggest, FilePickModal, FeedbackPickModal } from "./chatSuggest";
 import { MessageDoc, CLASS_CHANNEL, dmChannel } from "../../core/model/types";
-import { parseMessageBody } from "../../core/classroom/messages";
+import { parseMessageBody, messageListSig, isAppendable, messageSnippet } from "../../core/classroom/messages";
 import { resolveSenderName } from "../../core/classroom/people";
 import { errMessage } from "../../core/util/err";
 import { t, formatDate } from "../../i18n";
@@ -301,7 +301,7 @@ export class ChatSection implements PanelSection {
 		}
 		box.show();
 		box.createSpan({ cls: "covault-chat-reply-to", text: t("chat.replying_to", { name: this.senderName(this.replyTo.byUser, this.replyTo.byRole, this.replyTo.byName) }) });
-		box.createSpan({ cls: "covault-chat-reply-snip covault-cr-muted", text: this.snippet(this.replyTo.body) });
+		box.createSpan({ cls: "covault-chat-reply-snip covault-cr-muted", text: messageSnippet(this.replyTo.body) });
 		const cancel = box.createEl("button", { cls: "clickable-icon covault-chat-reply-cancel" });
 		setIcon(cancel, "x");
 		cancel.setAttr("aria-label", t("common.cancel"));
@@ -309,18 +309,6 @@ export class ChatSection implements PanelSection {
 			this.replyTo = null;
 			this.renderReplyBanner();
 		};
-	}
-
-	/** 본문에서 링크/멘션 토큰을 걷어낸 짧은 미리보기. */
-	private snippet(body: string, max = 60): string {
-		const text = parseMessageBody(body)
-			.map((s) =>
-				s.kind === "text" ? s.text : s.kind === "url" ? s.url : s.kind === "wikilink" ? s.target : s.kind === "mention" ? `@${s.name}` : s.label,
-			)
-			.join(" ")
-			.replace(/\s+/g, " ")
-			.trim();
-		return text.length > max ? text.slice(0, max - 1) + "…" : text;
 	}
 
 	private async reload(): Promise<void> {
@@ -351,7 +339,7 @@ export class ChatSection implements PanelSection {
 		if (!list) return;
 		const hasMore = fetched.length > this.limit;
 		const msgs = hasMore ? fetched.slice(fetched.length - this.limit) : fetched;
-		const sig = `${this.channel}|${this.limit}|${msgs.length}|${msgs[0]?._id ?? ""}|${msgs[msgs.length - 1]?._id ?? ""}|${msgs[msgs.length - 1]?._rev ?? ""}`;
+		const sig = messageListSig(this.channel, this.limit, msgs);
 		if (sig === this.lastSig) return; // 변화 없으면 재렌더 생략(폴링 깜빡임 방지)
 		this.lastSig = sig;
 		this.msgs = msgs;
@@ -360,10 +348,7 @@ export class ChatSection implements PanelSection {
 
 		// append-only(기존 렌더가 새 목록의 prefix) → 꼬리만 추가(평가 P-2). 창이 차서 미끄러지거나
 		// 삭제·이전 메시지 로드로 머리가 바뀌면 전체 재구성 — 창 크기(≤PAGE)로 유계라 저렴하다.
-		const isAppend =
-			this.renderedIds.length > 0 &&
-			this.renderedIds.length < ids.length &&
-			this.renderedIds.every((id, i) => ids[i] === id);
+		const isAppend = isAppendable(this.renderedIds, ids);
 		const nearBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 60;
 		if (isAppend) {
 			for (const m of msgs.slice(this.renderedIds.length)) this.renderMessage(list, m, m.byUser === me);
@@ -418,7 +403,7 @@ export class ChatSection implements PanelSection {
 			const quote = row.createDiv({ cls: "covault-chat-quote covault-cr-muted" });
 			if (parentMsg) {
 				quote.createSpan({ cls: "covault-chat-quote-author", text: this.senderName(parentMsg.byUser, parentMsg.byRole, parentMsg.byName) });
-				quote.createSpan({ text: this.snippet(parentMsg.body, 50) });
+				quote.createSpan({ text: messageSnippet(parentMsg.body, 50) });
 			} else {
 				quote.createSpan({ text: t("chat.reply_deleted") });
 			}

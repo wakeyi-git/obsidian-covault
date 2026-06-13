@@ -90,10 +90,13 @@ export class DeploymentController {
 	private validateTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	/**
-	 * validate_doc_update(v3 — 정책 임베드형)를 프로비저닝된 공유 DB에 재배포(지문 비교, 멱등).
-	 * DB마다 원격 rtpart(권위 소스)를 읽어 정책(읽기전용 + 파일별 참여자 username)을 만들고,
-	 * 마지막 성공 배포 지문(settings.validatePolicyByDb)과 다를 때만 PUT한다.
-	 * 실패 DB는 지문 미기록 → 다음 트리거/시작에서 자동 재시도(기존 validateDocVersion 패턴의 일반화).
+	 * validate_doc_update(정책 임베드형)를 프로비저닝된 공유 DB **와 구성원 mirror DB**에 재배포
+	 * (지문 비교, 멱등). 평가 P1-1: mirror DB(=DM 채널이 사는 곳)도 message/feedback 소유·역할 검사를
+	 * 받아야 운영자/타 멤버 사칭과 임의 타입 주입을 막을 수 있다.
+	 *  - 공유 DB: 원격 rtpart(권위 소스)를 읽어 읽기전용 + 파일별 참여자(memberId) 정책을 만든다.
+	 *  - mirror DB: 읽기전용은 공유 공간 전용 개념이라 항상 readOnly:false. 소유·역할·교사전용 차단만 적용.
+	 * 마지막 성공 배포 지문(settings.validatePolicyByDb)과 다를 때만 PUT한다. 실패 DB는 지문 미기록 →
+	 * 다음 트리거/시작에서 자동 재시도(기존 validateDocVersion 패턴의 일반화).
 	 */
 	async redeployValidate(opts?: { dbs?: string[] }): Promise<void> {
 		const s = this.d.settings();
@@ -101,34 +104,51 @@ export class DeploymentController {
 		const adminPw = this.d.couchPassword();
 		if (!s.couchdbUrl || !s.username || !adminPw) return;
 		const admin = new CouchAdmin(s.couchdbUrl, s.username, adminPw);
-		const targets = s.sharedSpaces.filter(
-			(sp) => sp.provisioned && sp.remoteDb && (!opts?.dbs || opts.dbs.includes(sp.remoteDb)),
-		);
+		const accounts = accountsMapFromMembers(s.members); // v4 — 기기별 계정 정규화(평가 S-2)
+		const svc = s.rtServiceUsername?.trim() || undefined;
+
+		// 대상: 프로비저닝된 공유 공간 + 프로비저닝된 구성원 mirror DB. 정책은 DB 종류별로 다르게 만든다.
+		type Target = { db: string; buildPolicy: () => Promise<ValidatePolicy> };
+		const targets: Target[] = [
+			...s.sharedSpaces
+				.filter((sp): sp is SharedSpace & { remoteDb: string } => !!(sp.provisioned && sp.remoteDb))
+				.map((sp) => ({
+					db: sp.remoteDb,
+					buildPolicy: async (): Promise<ValidatePolicy> => ({
+						readOnly: !!s.sharedReadOnly,
+						svcUsername: svc,
+						allowByPath: allowMapFromRtParts(await admin.listDocsByPrefix<RtPartDoc>(sp.remoteDb, RTPART_ID_PREFIX), s.members),
+						accounts,
+					}),
+				})),
+			...s.members
+				.filter((m): m is MemberConfig & { remoteDb: string } => !!(m.provisioned && m.remoteDb))
+				.map((m) => ({
+					db: m.remoteDb,
+					// mirror는 항상 편집 가능(읽기전용은 공유 공간 전용). 소유·역할·교사전용 차단만 — 파일별 참여자 없음.
+					buildPolicy: async (): Promise<ValidatePolicy> => ({ readOnly: false, svcUsername: svc, allowByPath: {}, accounts }),
+				})),
+		].filter((tg) => !opts?.dbs || opts.dbs.includes(tg.db));
+
 		let changed = 0;
-		for (const sp of targets) {
+		for (const tg of targets) {
 			try {
-				const rtparts = await admin.listDocsByPrefix<RtPartDoc>(sp.remoteDb, RTPART_ID_PREFIX);
-				const policy: ValidatePolicy = {
-					readOnly: !!s.sharedReadOnly,
-					svcUsername: s.rtServiceUsername?.trim() || undefined,
-					allowByPath: allowMapFromRtParts(rtparts, s.members),
-					accounts: accountsMapFromMembers(s.members), // v4 — 기기별 계정 정규화(평가 S-2)
-				};
+				const policy = await tg.buildPolicy();
 				const fp = await policyFingerprint(policy);
-				if ((s.validatePolicyByDb ?? {})[sp.remoteDb] === fp) continue; // 이미 최신
+				if ((s.validatePolicyByDb ?? {})[tg.db] === fp) continue; // 이미 최신
 				const source = buildValidateSource(policy);
 				if (source.length > VALIDATE_SOURCE_WARN_BYTES) {
-					this.d.logger.warn(t("command.validate_source_too_large", { db: sp.remoteDb, kb: Math.round(source.length / 1024) }));
+					this.d.logger.warn(t("command.validate_source_too_large", { db: tg.db, kb: Math.round(source.length / 1024) }));
 				}
-				const r = await admin.putValidateDesignDoc(sp.remoteDb, source);
+				const r = await admin.putValidateDesignDoc(tg.db, source);
 				if (!r.ok) {
-					this.d.logger.warn(t("command.validate_redeploy_failed", { db: sp.remoteDb, err: r.error ?? "" }));
+					this.d.logger.warn(t("command.validate_redeploy_failed", { db: tg.db, err: r.error ?? "" }));
 					continue;
 				}
-				s.validatePolicyByDb = { ...(s.validatePolicyByDb ?? {}), [sp.remoteDb]: fp };
+				s.validatePolicyByDb = { ...(s.validatePolicyByDb ?? {}), [tg.db]: fp };
 				changed++;
 			} catch (e) {
-				this.d.logger.warn(t("command.validate_redeploy_failed", { db: sp.remoteDb, err: errMessage(e) }));
+				this.d.logger.warn(t("command.validate_redeploy_failed", { db: tg.db, err: errMessage(e) }));
 			}
 		}
 		if (changed > 0) {

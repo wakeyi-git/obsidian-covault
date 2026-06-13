@@ -16,9 +16,9 @@ const OVERRIDES = {
 	// main.ts: M-12 완료 — PanelHost를 컨트롤러 컴포지션(src/panelHost.ts)으로 조립해 1178→719.
 	// 남은 것은 수명주기·DI 배선·SettingsHost 1줄 위임. 이 값은 실측 ratchet(성장 차단).
 	"src/main.ts": 747, // +토큰 Secret Storage(S-1)·기기별 계정 위임(S-2) 배선
-	"src/settings/SettingsTab.ts": 1148, // 범위 밖(+그룹 관리·실시간 서비스 계정·검증 메시지·통합 변경 감지 토글·기기 관리 버튼 S-2)
-	"src/modes/ClassroomController.ts": 1098, // 범위 밖(+그룹 대화·과제 보관 전파·시간표 프론트매터, +채팅 최근 N건 조회 P-2)
-	"src/core/realtime/RealtimeManager.ts": 735, // 범위 밖(게이트 로직은 main에 있음) — +세션 진입 pending 보존·dispose 백오프 타이머 정리(평가 R-A·C-2)
+	"src/settings/SettingsTab.ts": 613, // 평가 P2-2/P2-3: 매니저 섹션을 managerSection.ts·managerCards.ts로 분할(1148→613). ratchet 하향.
+	// ClassroomController.ts: 평가 P2-3에서 Notice/Assignment/Routine/Message 컨트롤러로 분할(전부 일반 캡 이하) — 제거됨.
+	"src/core/realtime/RealtimeManager.ts": 732, // 평가 P2-1: 백오프 로직을 retryBackoff.ts로 추출(735→732). provider 주입·md/excalidraw 전략 분리는 후속(라이브 서버 수동 검증 필요).
 	// 문서 모델: 타입 선언 + 타입 가드(평가 H-8) 위주라 캡을 너그럽게 둔다.
 	"src/core/model/types.ts": 600,
 };

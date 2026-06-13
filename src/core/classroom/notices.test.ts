@@ -8,8 +8,8 @@ describe("slugify / noticeFilePath", () => {
 		expect(slugify("   ")).toBe("notice");
 	});
 
-	it("파일 경로는 폴더 아래 알림장/<stamp>-<slug>.md", () => {
-		const p = noticeFilePath("_학급", 1_700_000_000_000, "오늘의 안내");
+	it("파일 경로는 폴더 아래 <sub>/<stamp>-<slug>.md (sub은 현지화 폴더명)", () => {
+		const p = noticeFilePath("_학급", 1_700_000_000_000, "오늘의 안내", "알림장");
 		expect(p.startsWith("_학급/알림장/")).toBe(true);
 		expect(p.endsWith("-오늘의-안내.md")).toBe(true);
 	});
