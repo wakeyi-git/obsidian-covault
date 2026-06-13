@@ -2,9 +2,9 @@ import { Setting, SettingGroup } from "obsidian";
 import { CoVaultSettings, MemberConfig, SharedSpace } from "./types";
 import { ConfirmModal } from "../ui/ConfirmModal";
 import { DeviceAccountsModal } from "../ui/DeviceAccountsModal";
-import { MemberSelectModal } from "../ui/MemberSelectModal";
+import { MultiSelectModal } from "../ui/MultiSelectModal";
 import { sharedSpaceStatus } from "./sharedSpaceStatus";
-import { noAutoCorrect } from "./settingsUi";
+import { noAutoCorrect, cardCollapsible } from "./settingsUi";
 import type { ManagerCtx } from "./managerSection";
 import { t } from "../i18n";
 
@@ -51,7 +51,9 @@ export function renderSharedCard(c: ManagerCtx, group: SettingGroup, sp: SharedS
 				),
 		);
 
-	new Setting(card).setName(t("settings.name")).addText((txt) => {
+	// 세부 항목은 기본 접힘(평가 P2-2) — 카드 첫 화면엔 이름·배포 상태만, 편집은 펼쳐서.
+	const body = cardCollapsible(card, t("settings.space_details"));
+	new Setting(body).setName(t("settings.name")).addText((txt) => {
 		txt.setPlaceholder(t("settings.group_1")).setValue(sp.name).onChange(async (v) => {
 			sp.name = v.trim();
 			if (!sp.folder) sp.folder = v.trim();
@@ -60,7 +62,7 @@ export function renderSharedCard(c: ManagerCtx, group: SettingGroup, sp: SharedS
 		noAutoCorrect(txt.inputEl);
 		c.applyOnBlur(txt.inputEl);
 	});
-	new Setting(card).setName(t("settings.folder")).addText((txt) => {
+	new Setting(body).setName(t("settings.folder")).addText((txt) => {
 		txt.setPlaceholder(t("settings.group_1")).setValue(sp.folder).onChange(async (v) => {
 			const v2 = v.trim();
 			if (!c.okFolder(v2)) return;
@@ -72,7 +74,7 @@ export function renderSharedCard(c: ManagerCtx, group: SettingGroup, sp: SharedS
 	});
 
 	// 학급 공동 공간 지정 — 알림장·수업안내·과제(공유) 등 학급 운영 기능이 이 공간의 폴더/DB를 기준으로 동작.
-	new Setting(card)
+	new Setting(body)
 		.setName(t("settings.homeroom_space"))
 		.setDesc(t("settings.homeroom_space_desc"))
 		.addToggle((tg) =>
@@ -82,25 +84,32 @@ export function renderSharedCard(c: ManagerCtx, group: SettingGroup, sp: SharedS
 			}),
 		);
 
-	// 학급 공동 공간일 때만: 학급 운영 특화 기능(모듈) 활성화 토글.
+	// 학급 공동 공간일 때만: 운영 기능(모듈) 선택을 다중선택 모달로(평가 P2-2 — 구성원 선택과 동일 패턴).
 	if (sp.kind === "homeroom") {
-		card.createDiv({ cls: "covault-dash-label", text: t("settings.classroom_modules") });
-		const modules: Array<[keyof NonNullable<CoVaultSettings["classroomModules"]>, string]> = [
-			["notices", t("dashboard.notices")],
-			["lessons", t("dashboard.lessons")],
-			["assignments", t("dashboard.assignments")],
-			["routines", t("dashboard.routines")],
-			["gradebook", t("dashboard.gradebook")],
+		const moduleItems: Array<{ id: keyof NonNullable<CoVaultSettings["classroomModules"]>; label: string }> = [
+			{ id: "notices", label: t("dashboard.notices") },
+			{ id: "lessons", label: t("dashboard.lessons") },
+			{ id: "assignments", label: t("dashboard.assignments") },
+			{ id: "routines", label: t("dashboard.routines") },
+			{ id: "gradebook", label: t("dashboard.gradebook") },
 		];
-		for (const [key, label] of modules) {
-			new Setting(card).setName(label).addToggle((tg) =>
-				tg.setValue(s.classroomModules?.[key] !== false).onChange(async (v) => {
-					s.classroomModules = { ...(s.classroomModules ?? {}), [key]: v };
-					await c.host.saveSettings();
+		const enabledIds = moduleItems.filter((it) => s.classroomModules?.[it.id] !== false).map((it) => it.id);
+		new Setting(body)
+			.setName(t("settings.classroom_modules"))
+			.setDesc(t("settings.modules_selected", { n: enabledIds.length, total: moduleItems.length }))
+			.addButton((b) =>
+				b.setButtonText(t("settings.select_modules")).onClick(() => {
+					new MultiSelectModal(c.app, t("settings.classroom_modules"), moduleItems, enabledIds, async (ids) => {
+						const on = new Set(ids);
+						const next = { ...(s.classroomModules ?? {}) };
+						for (const it of moduleItems) next[it.id] = on.has(it.id);
+						s.classroomModules = next;
+						await c.host.saveSettings();
+						c.display();
+					}).open();
 				}),
 			);
-		}
-		new Setting(card)
+		new Setting(body)
 			.setName(t("settings.dashboard_page_size"))
 			.setDesc(t("settings.dashboard_page_size_desc"))
 			.addText((txt) => {
@@ -114,16 +123,14 @@ export function renderSharedCard(c: ManagerCtx, group: SettingGroup, sp: SharedS
 			});
 	}
 
-	// 구성원 선택 — 카드마다 다중선택 모달 버튼 하나로(평가 P2-2). 과거엔 공간×구성원 토글 그리드가
-	// O(M×N)으로 늘어 한 토글 변경마다 전체 재렌더했다. 이제 버튼이 현재 선택 수만 표시하고,
-	// 모달에서 스크롤 목록 + 전체/해제로 고른 뒤 저장 시에만 갱신한다.
-	const membersWithId = s.members.filter((st) => st.memberId).map((st) => ({ memberId: st.memberId, memberName: st.memberName || st.memberId }));
-	new Setting(card)
+	// 구성원 선택 — 다중선택 모달 버튼 하나로(평가 P2-2). 버튼이 현재 선택 수만 표시하고, 모달에서 저장 시에만 갱신.
+	const membersWithId = s.members.filter((st) => st.memberId).map((st) => ({ id: st.memberId, label: st.memberName || st.memberId }));
+	new Setting(body)
 		.setName(t("panel.members"))
 		.setDesc(t("settings.members_selected", { n: sp.members.length }))
 		.addButton((b) =>
 			b.setButtonText(t("settings.select_members")).onClick(() => {
-				new MemberSelectModal(c.app, t("settings.select_members"), membersWithId, sp.members, async (ids) => {
+				new MultiSelectModal(c.app, t("settings.select_members"), membersWithId, sp.members, async (ids) => {
 					sp.members = ids;
 					await c.host.saveSettings();
 					c.display(); // 선택 수·배지(재배포 필요) 갱신
@@ -196,11 +203,13 @@ export function renderMemberCard(c: ManagerCtx, group: SettingGroup, st: MemberC
 				),
 		);
 
-	memberField(c, card, t("settings.name"), st, "memberName", t("common.member_a"));
-	memberField(c, card, t("settings.member_id"), st, "memberId", "member_a");
+	// 세부 정보(이름·ID·Mirror DB·폴더)는 기본 접힘(평가 P2-2) — 카드 첫 화면엔 이름·상태만, 편집은 펼쳐서.
+	const body = cardCollapsible(card, t("settings.member_details"));
+	memberField(c, body, t("settings.name"), st, "memberName", t("common.member_a"));
+	memberField(c, body, t("settings.member_id"), st, "memberId", "member_a");
 	// 비우면 초대 시점에 학생 ID로 자동 채움 (계정=ID, DB=mirror_<ID>, 폴더=이름/ID)
-	memberField(c, card, t("settings.mirror_db_auto_if_empty"), st, "remoteDb", t("settings.mirror_memberid"));
-	memberField(c, card, t("settings.folder_auto_if_empty"), st, "localRoot", t("settings.name_or_memberid"));
+	memberField(c, body, t("settings.mirror_db_auto_if_empty"), st, "remoteDb", t("settings.mirror_memberid"));
+	memberField(c, body, t("settings.folder_auto_if_empty"), st, "localRoot", t("settings.name_or_memberid"));
 
 	card.createEl("div", {
 		cls: "covault-member-status",
