@@ -101,13 +101,29 @@ export class VersionStore {
 			}
 		}
 
-		const prev = (await ctx.pouch.get<NoteDoc>(noteId(dbPath)))?.version ?? 0;
-		const fresh = await ctx.buildNoteDoc(dbPath, v.content, prev);
-		ctx.guard.mark(localPath, fresh.contentHash);
-		await ctx.writeVaultFile(localPath, v.content);
-		ctx.guard.releaseAfterDelay(localPath);
+		// rev 검증 put + 재시도(평가 P2-4 / L-1): 복원은 의도적 덮어쓰기지만, 읽기→쓰기 사이에 끼어든 원격
+		// 변경을 검증 없이 LWW로 덮지 않는다 — 매번 최신 rev 위에 다시 쌓는다. 사용자 동작이라 3회 소진 시엔
+		// 최신 위에 강제 적용(LWW 폴백). DB put 성공 후에만 vault에 쓴다(실패 시 디스크-DB 불일치 방지).
+		for (let attempt = 0; attempt < 3; attempt++) {
+			const cur = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
+			const fresh = await ctx.buildNoteDoc(dbPath, v.content, cur?.version ?? 0);
+			if ((await ctx.pouch.putWithRev(fresh, cur?._rev)) === "conflict") continue;
+			await this.writeRestored(localPath, dbPath, v.content, fresh.contentHash);
+			return "restored";
+		}
+		const cur = await ctx.pouch.get<NoteDoc>(noteId(dbPath));
+		const fresh = await ctx.buildNoteDoc(dbPath, v.content, cur?.version ?? 0);
 		await ctx.pouch.put(fresh);
-		ctx.logger.ok(t("version.version_restored", { path: dbPath }), true);
+		await this.writeRestored(localPath, dbPath, v.content, fresh.contentHash);
 		return "restored";
+	}
+
+	/** 복원 내용을 vault에 쓴다(guard로 업로드 에코 차단). DB put 성공 뒤에만 호출. */
+	private async writeRestored(localPath: string, dbPath: string, content: string, hash: string): Promise<void> {
+		const ctx = this.ctx;
+		ctx.guard.mark(localPath, hash);
+		await ctx.writeVaultFile(localPath, content);
+		ctx.guard.releaseAfterDelay(localPath);
+		ctx.logger.ok(t("version.version_restored", { path: dbPath }), true);
 	}
 }

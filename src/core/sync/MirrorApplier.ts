@@ -247,8 +247,11 @@ export class MirrorApplier {
 			return "skipped-nonmd";
 		}
 		ctx.guard.mark(localPath, doc.contentHash);
-		await ctx.writeVaultBinary(localPath, data);
+		// compare-and-swap(평가 P2-4 — 노트 D-2와 대칭): readVaultBinary 이후 끼어든 로컬 편집(아직 pending에
+		// 안 잡힌 저장)을 보존 없이 덮지 않는다 — 실패하면 다음 change에서 pending 보존 규칙으로 재평가된다.
+		const applied = await ctx.writeVaultBinaryIf(localPath, localHash, data);
 		ctx.guard.releaseAfterDelay(localPath);
+		if (!applied) return "skipped-pending";
 		ctx.status.lastDownloadAt = Date.now();
 		ctx.logger.ok(t("sync.applied_remote_local_attachment", { path: localPath }));
 		return "applied";

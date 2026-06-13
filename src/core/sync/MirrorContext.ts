@@ -289,6 +289,25 @@ export class MirrorContext {
 		else await this.app.vault.createBinary(localPath, data);
 	}
 
+	/**
+	 * writeVaultFileIf의 바이너리 CAS 변형(평가 P2-4 — 노트 D-2와 대칭). 읽기 시점 해시(expectedHash)와
+	 * 현재 디스크 해시가 일치할 때만 덮는다 — 읽기 이후 끼어든 로컬 편집을 보존 없이 덮지 않는다. 적용했으면 true.
+	 */
+	async writeVaultBinaryIf(localPath: string, expectedHash: string | null, data: ArrayBuffer): Promise<boolean> {
+		await this.ensureParentFolder(localPath);
+		const existing = this.app.vault.getAbstractFileByPath(localPath);
+		if (existing instanceof TFile) {
+			if (expectedHash == null) return false; // 기대: 없음 — 읽기 이후 생성됨
+			const cur = await this.app.vault.readBinary(existing);
+			if ((await sha256(cur)) !== expectedHash) return false; // 끼어든 편집 — 그대로 둔다
+			await this.app.vault.modifyBinary(existing, data);
+			return true;
+		}
+		if (expectedHash != null) return false; // 기대: 있음 — 읽기 이후 삭제됨
+		await this.app.vault.createBinary(localPath, data);
+		return true;
+	}
+
 	// --- 문서 빌드 ---
 
 	/** 로컬 내용으로 NoteDoc 빌드(업로드용). 기술문서 §8.1. */

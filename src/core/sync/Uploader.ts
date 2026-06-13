@@ -53,16 +53,16 @@ export class Uploader {
 			if (existing?.deleted && existing.deletedByRole === "manager") return "skipped-deleted";
 			if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
-			// 재시도 진입 = 직전 put 사이에 다른 쓰기가 끼어듦. 끼어든 게 다른 기기의 새 내용이면
-			// 덮기 전에 버전 히스토리에 보존한다(tombstonePath와 동형 — 평가 D-1).
-			if (attempt > 0) await this.preserveInterveningNote(dbPath, existing, newHash);
+			// 끼어든 다른 기기의 새 내용을 덮기 전에 버전 히스토리에 보존(평가 D-1·P2-4). 첫 시도에도 적용 —
+			// get 시점에 이미 보이는 원격 내용을 rev-일치 put이 무손실로 덮던 창을 봉쇄(내 기기·동일 해시는 no-op).
+			await this.preserveInterveningNote(dbPath, existing, newHash);
 			const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
 			if ((await ctx.pouch.putWithRev(doc, existing?._rev)) === "conflict") continue;
 			await ctx.versions.snapshot(dbPath, content, "modify", doc.version); // 실시간 편집도 버전 기록(dedupe 있음)
 			this.markUploaded(dbPath);
 			return "uploaded";
 		}
-		ctx.logger.warn(t("sync.upload_retry_conflict", { path: dbPath }));
+		await this.preserveUnuploaded(dbPath, content);
 		return "skipped-conflict";
 	}
 
@@ -80,16 +80,26 @@ export class Uploader {
 			if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
 			if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
-			// 재시도 진입 시 끼어든 다른 기기의 새 내용을 보존(평가 D-1, uploadContent와 동일).
-			if (attempt > 0) await this.preserveInterveningNote(dbPath, existing, newHash);
+			// 끼어든 다른 기기의 새 내용을 덮기 전에 보존(평가 D-1·P2-4, uploadContent와 동일). 첫 시도에도 적용.
+			await this.preserveInterveningNote(dbPath, existing, newHash);
 			const doc = await ctx.buildNoteDoc(dbPath, content, existing?.version ?? 0);
 			if ((await ctx.pouch.putWithRev(doc, existing?._rev)) === "conflict") continue;
 			await ctx.versions.snapshot(dbPath, content, "modify", doc.version); // 버전 히스토리(편집 시점)
 			this.markUploaded(dbPath);
 			return "uploaded";
 		}
-		ctx.logger.warn(t("sync.upload_retry_conflict", { path: dbPath }));
+		await this.preserveUnuploaded(dbPath, content);
 		return "skipped-conflict";
+	}
+
+	/**
+	 * 업로드 재시도 소진(skipped-conflict) 시 미업로드 로컬 내용을 버전 히스토리에 보존(평가 P2-4).
+	 * DB엔 끼어든 다른 쓰기가 반영됐고 내 편집은 rev를 못 얻었으므로, 이후 pull이 vault를 덮으면 흔적 없이
+	 * 사라진다 — 복구 가능하도록 conflict 스냅샷으로 남긴다(dedupe로 중복 기록 안 함). 마크다운 전용.
+	 */
+	private async preserveUnuploaded(dbPath: string, content: string): Promise<void> {
+		this.ctx.logger.warn(t("sync.upload_retry_conflict", { path: dbPath }));
+		if (this.ctx.isMarkdown(dbPath)) await this.ctx.versions.snapshot(dbPath, content, "conflict", 0);
 	}
 
 	private async uploadAsset(localPath: string, dbPath: string): Promise<UploadResult> {
@@ -129,8 +139,9 @@ export class Uploader {
 			if (existing?.deleted && !this.modifiedAfterTombstone(localPath, existing, newHash)) return "skipped-deleted";
 			if (existing && !existing.deleted && existing.contentHash === newHash) return "skipped-same";
 
-			// 첨부는 버전 히스토리가 없어 끼어든 원격 바이너리가 유일본일 수 있다 — _충돌/에 보존(평가 D-1).
-			if (attempt > 0) await this.preserveInterveningAsset(dbPath, existing, newHash);
+			// 첨부는 버전 히스토리가 없어 끼어든 원격 바이너리가 유일본일 수 있다 — _충돌/에 보존(평가 D-1·P2-4).
+			// 첫 시도에도 적용(내 기기·동일 해시는 no-op) — get 시점에 보이는 원격 첨부를 무손실로 덮던 창 봉쇄.
+			await this.preserveInterveningAsset(dbPath, existing, newHash);
 			const doc = await ctx.buildAssetDoc(dbPath, data, existing?.version ?? 0);
 			if ((await ctx.pouch.putAssetWithRev(doc, data, existing?._rev)) === "conflict") continue;
 			this.markUploaded(dbPath);
@@ -243,10 +254,12 @@ export class Uploader {
 		// tombstone과 동일 — 첨부 동기화 off 기기는 asset purge를 발신하지 않는다.
 		if (!ctx.isMarkdown(dbPath) && !ctx.settings.syncAssets) return "skipped";
 		const id = ctx.isMarkdown(dbPath) ? noteId(dbPath) : assetId(dbPath);
-		const existing = await ctx.pouch.get<NoteDoc | AssetDoc>(id);
+		const existing = await ctx.pouch.getWithConflicts<NoteDoc | AssetDoc>(id);
 		if (!existing || !existing._rev) return "skipped";
 		await this.snapshotBeforePurge(dbPath, existing); // '최근 영구 삭제' 되돌리기용
+		// winner rev만 지우면 _conflicts 리프가 승격돼 문서가 부활한다 — 모든 리프 제거(평가 P2-4).
 		await ctx.pouch.removeRev(id, existing._rev);
+		for (const leafRev of existing._conflicts ?? []) await ctx.pouch.removeRev(id, leafRev).catch(() => undefined);
 		ctx.logger.ok(t("sync.permanently_deleted_from_db_purge", { path: dbPath }));
 		ctx.notifyLocalWrite?.();
 		return "purged";
