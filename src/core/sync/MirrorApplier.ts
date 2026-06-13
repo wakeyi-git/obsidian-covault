@@ -190,6 +190,26 @@ export class MirrorApplier {
 
 		if (doc.deleted) return await this.applyDeletion(doc);
 
+		// 수신(pull) 크기 게이트(평가 P1-1 #4) — readVaultBinary/sha256보다 먼저 둔다: 한도 초과 첨부는
+		// 로컬 본문을 읽지도(수백 MB를 메인스레드에서 읽고 해싱하면 앱이 멈춘다 — 현장 프리즈) 다운로드하지도
+		// 않고 멱등 스킵한다. doc.size(원격 메타) 또는 로컬 stat.size(메타만, 본문 미독) 중 하나라도 초과면.
+		const maxMB = ctx.settings.maxAttachmentMB || 0;
+		const localStatSize = ctx.getFile(localPath)?.stat.size ?? 0;
+		if (exceedsAttachmentLimit(doc.size ?? 0, maxMB) || exceedsAttachmentLimit(localStatSize, maxMB)) {
+			if (!this.loggedTooLarge.has(doc.path)) {
+				this.loggedTooLarge.add(doc.path);
+				ctx.logger.warn(
+					t("sync.attachment_too_large_to_download", {
+						path: localPath,
+						mb: maxMB,
+						size: Math.round((Math.max(doc.size ?? 0, localStatSize) / (1024 * 1024)) * 10) / 10,
+					}),
+					true,
+				);
+			}
+			return "skipped-too-large";
+		}
+
 		const local = await ctx.readVaultBinary(localPath);
 		const localHash = local == null ? null : await sha256(local);
 		const hasConflict = !!doc._conflicts && doc._conflicts.length > 0;
@@ -221,24 +241,6 @@ export class MirrorApplier {
 				}
 				return "skipped-collision";
 			}
-		}
-
-		// 수신(pull) 방향 크기 게이트(평가 P1-1 #4): 다른 기기가 올린 대용량 첨부로부터 이 기기(특히 모바일)를
-		// 보호한다. doc.size(메타)로 다운로드 전에 판정 — 한도 초과면 바이너리를 받지도(메모리 스파이크 회피),
-		// vault에 쓰지도 않는다. 멱등 스킵이라 stall 없이 매 동기화에서 동일 판정(경고는 경로당 1회).
-		if (exceedsAttachmentLimit(doc.size ?? 0, ctx.settings.maxAttachmentMB || 0)) {
-			if (!this.loggedTooLarge.has(doc.path)) {
-				this.loggedTooLarge.add(doc.path);
-				ctx.logger.warn(
-					t("sync.attachment_too_large_to_download", {
-						path: localPath,
-						mb: ctx.settings.maxAttachmentMB || 0,
-						size: Math.round(((doc.size ?? 0) / (1024 * 1024)) * 10) / 10,
-					}),
-					true,
-				);
-			}
-			return "skipped-too-large";
 		}
 
 		const data = await ctx.pouch.getAssetBinary(assetId(doc.path));

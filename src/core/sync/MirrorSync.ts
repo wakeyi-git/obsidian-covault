@@ -167,6 +167,10 @@ export class MirrorSync {
 		}
 		this.ctx.status.state = "syncing";
 
+		// 한도 초과 첨부를 복제(push/pull)에서 제외하도록 크기 한도를 주입한다 — 이미 DB에 박힌
+		// 대용량 첨부가 push 시 메모리를 폭증시켜 앱을 멈추는 것을 복제 진입 단계에서 차단(현장 프리즈).
+		this.ctx.pouch.setMaxAttachmentBytes(this.ctx.settings.maxAttachmentMB);
+
 		// 실시간 동기화를 켜기 전에 시작 정합을 수행한다(기술문서 §17.2).
 		// 미반영 로컬 편집을 먼저 올리되, 삭제 정합은 pull 이후에만 해서 다른 기기의 원격 수정을
 		// stale tombstone으로 밀지 않는다(run("up")의 조기 tombstone 문제 회피).

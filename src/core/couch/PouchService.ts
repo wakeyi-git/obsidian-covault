@@ -1,6 +1,7 @@
 import PouchDB from "pouchdb-browser";
 import { NoteDoc, AssetDoc, PouchDocBase } from "../model/types";
 import { createObsidianFetch } from "./obsidianFetch";
+import { isOverLimitAsset } from "../sync/attachment";
 
 /**
  * PouchDB 기반 동기화 서비스. 기술문서 §23.4 CouchClient 역할을 대체한다.
@@ -38,6 +39,8 @@ export class PouchService {
 	private local: PouchDB.Database | null = null;
 	private replication: PouchDB.Replication.Sync<{}> | null = null;
 	private readonly fetchImpl: typeof fetch;
+	/** 복제에서 제외할 첨부 크기 한도(바이트). 0이면 무제한(필터 없음). setMaxAttachmentBytes로 주입. */
+	private maxAttachmentBytes = 0;
 
 	constructor(
 		private baseUrl: string,
@@ -376,15 +379,34 @@ export class PouchService {
 
 	// --- 로컬 ↔ 원격 live replication ---
 
+	/** 복제 단계에서 한도 초과 첨부를 제외하기 위한 크기 한도(MB) 주입. 0/음수면 무제한. */
+	setMaxAttachmentBytes(maxMB: number): void {
+		this.maxAttachmentBytes = maxMB > 0 ? maxMB * 1024 * 1024 : 0;
+	}
+
+	/**
+	 * 복제 옵션(필터). 한도 초과 첨부(asset 문서)는 push/pull 어느 방향으로도 복제하지 않는다.
+	 *
+	 * 이미 DB에 박힌 대용량 첨부를 push할 때 PouchDB가 바이너리를 통째 메모리에 버퍼링해 앱이
+	 * 멈추고(0.125.x 현장 하드 프리즈) CouchDB도 질식해 502를 낸다. applyAsset 수신 게이트는
+	 * 본문을 받은 뒤라 늦으므로, 복제 진입 자체를 막는다. size는 asset 문서의 메타데이터.
+	 * (한도 미설정 시 빈 옵션 → 거동 불변.)
+	 */
+	private replicateOpts(): { filter?: (doc: any) => boolean } {
+		const maxBytes = this.maxAttachmentBytes;
+		if (maxBytes <= 0) return {};
+		return { filter: (doc: any) => !isOverLimitAsset(doc, maxBytes) };
+	}
+
 	/** 1회성 push만(로컬→원격). 수동 "업로드만"에서 원격 변경을 끌어오지 않기 위해 사용. */
 	async replicatePushOnce(): Promise<number> {
-		const push = await this.localDb().replicate.to(this.remote);
+		const push = await this.localDb().replicate.to(this.remote, this.replicateOpts());
 		return push?.docs_written ?? 0;
 	}
 
 	/** 1회성 pull만(원격→로컬). 수동 "다운로드만"에서 로컬 변경을 밀어올리지 않기 위해 사용. */
 	async replicatePullOnce(): Promise<number> {
-		const pull = await this.localDb().replicate.from(this.remote);
+		const pull = await this.localDb().replicate.from(this.remote, this.replicateOpts());
 		return pull?.docs_written ?? 0;
 	}
 
@@ -399,7 +421,7 @@ export class PouchService {
 	startReplication(handlers: ReplicationHandlers = {}): void {
 		if (this.replication) return;
 		this.replication = this.localDb()
-			.sync(this.remote, { live: true, retry: true })
+			.sync(this.remote, { live: true, retry: true, ...this.replicateOpts() })
 			.on("change", (info: any) => handlers.onChange?.(info.direction, info.change?.docs_written ?? 0))
 			.on("paused", (err: any) => handlers.onPaused?.(err))
 			.on("active", () => handlers.onActive?.())
