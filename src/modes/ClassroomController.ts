@@ -562,10 +562,11 @@ export class ClassroomController {
 		const subst = (memberId: string, memberName: string): string =>
 			substituteTemplate(applyNoticeVars(templateContent, { title: def.title, date }), { memberId, memberName, workspaceId: s.workspaceId, date });
 		const homeFolder = this.d.homeroomFolder() ?? "";
+		const workLabel = t("dashboard.subfolder_assignment"); // 현지화된 과제 폴더명(평가 P1-1)
 
 		let sharedWorkPath: string | null = null;
 		if (def.privacy === "shared") {
-			sharedWorkPath = `${assignmentWorkDir("shared", "", homeFolder)}/${fileName}`;
+			sharedWorkPath = `${assignmentWorkDir("shared", "", homeFolder, workLabel)}/${fileName}`;
 			await this.writeFileIfAbsent(sharedWorkPath, subst("", ""));
 		}
 
@@ -581,10 +582,9 @@ export class ClassroomController {
 			} else if (def.privacy === "shared") {
 				workPaths = sharedWorkPath ? [sharedWorkPath] : [];
 			} else {
-				const studentPath = `${assignmentWorkDir("mirror", "", homeFolder)}/${fileName}`;
-				const teacherPath = `${assignmentWorkDir("mirror", member.localRoot, homeFolder)}/${fileName}`;
-				await this.writeFileIfAbsent(teacherPath, subst(member.memberId, member.memberName));
-				workPaths = [studentPath];
+				// 학생 경로(root="")는 상태 문서에 저장, 교사 경로(member.localRoot)에는 작업 파일을 만든다.
+				await this.writeFileIfAbsent(`${assignmentWorkDir("mirror", member.localRoot, homeFolder, workLabel)}/${fileName}`, subst(member.memberId, member.memberName));
+				workPaths = [`${assignmentWorkDir("mirror", "", homeFolder, workLabel)}/${fileName}`];
 			}
 			const base: AssignmentStateDoc = existing && !existing.deleted ? existing : {
 				_id: assignmentStateId(def.uid, memberId),

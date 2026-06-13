@@ -15,8 +15,8 @@ function pad(n: number): string {
 	return String(n).padStart(2, "0");
 }
 
-/** 게시 본문 파일 경로: <folder>/<sub>/<YYYYMMDD-HHmm>-<slug>.md. sub=알림장(기본)/수업. */
-export function noticeFilePath(folder: string, ts: number, title: string, sub = "알림장"): string {
+/** 게시 본문 파일 경로: <folder>/<sub>/<YYYYMMDD-HHmm>-<slug>.md. sub은 현지화된 하위 폴더명(알림장/수업) — 호출측이 t()로 넘긴다(평가 P1-1 — 한국어 기본값 제거). */
+export function noticeFilePath(folder: string, ts: number, title: string, sub: string): string {
 	const d = new Date(ts);
 	const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
 	return `${folder}/${sub}/${stamp}-${slugify(title)}.md`;

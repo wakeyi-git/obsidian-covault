@@ -7,22 +7,17 @@
  */
 import { t } from "../../i18n";
 
-/** 내장 기본 알림장 템플릿. 프론트매터 `covault: notice` + 초안 플래그. */
-export const DEFAULT_NOTICE_TEMPLATE = `---
-covault: notice
-title: "{{title}}"
-published: false
-pinned: false
-responses: true
----
+export type NoticeTemplateKind = "notice" | "lesson" | "assignment";
 
-여기에 알림장 내용을 작성하세요.
-
-작성을 마치면 위 속성의 \`published\`를 켜거나 대시보드의 **게시** 버튼을 눌러 구성원에게 공개합니다.
-`;
-
-/** 내장 기본 수업 안내 템플릿. 프론트매터 `covault: lesson` + 주(週)·요일·교시 키(day/period를 채우면 시간표 칸에 배치). */
-export const DEFAULT_LESSON_TEMPLATE = `---
+/**
+ * 유형별 내장 기본 템플릿(평가 P1-1 — 본문 현지화). 프론트매터(`covault: notice|lesson` 등)는 파서가
+ * 인식하는 구조라 언어 중립으로 코드에 고정하고, 산문(설명·섹션 제목·라벨)만 i18n으로 분리한다 →
+ * 영어 로케일 구성원에게 한국어 본문 파일이 배포되던 문제 해소. {{title}}/{{memberName}}/{{date}}/{{week}}
+ * 치환 변수는 그대로 유지(배포 시 substituteTemplate/applyNoticeVars가 채운다).
+ */
+export function defaultTemplate(kind: NoticeTemplateKind): string {
+	if (kind === "lesson") {
+		return `---
 covault: lesson
 title: "{{title}}"
 published: false
@@ -31,37 +26,42 @@ day: ""
 period: ""
 ---
 
-## 학습 목표
+## ${t("dashboard.tpl_lesson_objective")}
 
 -
 
-## 수업 내용
+## ${t("dashboard.tpl_lesson_content")}
 
 1.
 
-## 준비물 / 과제
+## ${t("dashboard.tpl_lesson_materials")}
 
 -
 `;
+	}
+	if (kind === "assignment") {
+		return `# {{title}}
 
-/** 내장 기본 과제 작업 파일 템플릿. 배포 시 {{memberName}}·{{date}} 등이 치환된다. */
-export const DEFAULT_ASSIGNMENT_TEMPLATE = `# {{title}}
-
-- 이름: {{memberName}}
-- 날짜: {{date}}
+- ${t("dashboard.tpl_assignment_name")}: {{memberName}}
+- ${t("dashboard.tpl_assignment_date")}: {{date}}
 
 ---
 
-여기에 과제를 작성하세요.
+${t("dashboard.tpl_assignment_body")}
 `;
+	}
+	return `---
+covault: notice
+title: "{{title}}"
+published: false
+pinned: false
+responses: true
+---
 
-export type NoticeTemplateKind = "notice" | "lesson" | "assignment";
+${t("dashboard.tpl_notice_body")}
 
-/** 유형별 내장 기본 템플릿. */
-export function defaultTemplate(kind: NoticeTemplateKind): string {
-	if (kind === "lesson") return DEFAULT_LESSON_TEMPLATE;
-	if (kind === "assignment") return DEFAULT_ASSIGNMENT_TEMPLATE;
-	return DEFAULT_NOTICE_TEMPLATE;
+${t("dashboard.tpl_notice_publish_hint")}
+`;
 }
 
 /** 유형별 기본 템플릿 저장 경로(설정이 비었을 때 "기본 템플릿 만들기"가 쓰는 위치). 로케일 반영(평가 U-2). */
