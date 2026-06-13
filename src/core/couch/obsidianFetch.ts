@@ -29,21 +29,18 @@ export function createObsidianFetch(username: string, password: string): typeof 
 		}
 
 		const body = await normalizeBody(init?.body);
-		const signal = init?.signal ?? undefined;
 
-		// requestUrl은 네이티브 계층 요청이라 진행 중 취소(AbortSignal)를 지원하지 않는다. 그래도 signal을
-		// 존중해, 일시정지·재시작·복제 취소 시 응답을 버리고 AbortError로 reject한다 → PouchDB가 longpoll
-		// 루프를 멈춘다(평가 P2-5 — 모바일 절전 주장 정합). 네이티브 HTTP는 응답까지 진행 후 버려진다.
-		const resp = await withAbort(
-			signal,
-			requestUrl({
-				url,
-				method,
-				headers,
-				body,
-				throw: false, // PouchDB가 상태 코드(404/409 등)를 직접 처리하도록
-			}),
-		);
+		// requestUrl은 네이티브 계층 요청이라 AbortSignal로 취소할 수 없다 — signal을 흉내내 reject하면
+		// 네이티브 요청은 계속 살아 있는데 PouchDB는 longpoll을 버리고 새로 열어, 죽지 않는 연결이 쌓여
+		// Chromium 호스트당 연결 한도를 채우고 모든 후속 요청이 멈춘다(0.125.0 회귀). 그래서 signal은 무시하고
+		// 네이티브 요청을 완료까지 둔다(일시정지는 새 replication 스케줄만 멈춘다 — README 'pause scheduling').
+		const resp = await requestUrl({
+			url,
+			method,
+			headers,
+			body,
+			throw: false, // PouchDB가 상태 코드(404/409 등)를 직접 처리하도록
+		});
 
 		return new Response(resp.arrayBuffer, {
 			status: resp.status,
@@ -51,34 +48,6 @@ export function createObsidianFetch(username: string, password: string): typeof 
 			headers: sanitizeResponseHeaders(resp.headers as Record<string, string>),
 		});
 	}) as typeof fetch;
-}
-
-/** fetch 표준의 abort 사유 — PouchDB·복제 루프가 식별해 재시도를 멈춘다. */
-export function makeAbortError(): DOMException {
-	return new DOMException("The operation was aborted.", "AbortError");
-}
-
-/**
- * signal이 없으면 p를 그대로, 있으면 p와 abort를 경쟁시킨다. signal이 이미/도중에 발화하면 AbortError로
- * reject하고, 아니면 p의 결과를 그대로 전달한다. 어느 쪽이 이기든 abort 리스너를 정리한다(누수 방지). 순수.
- */
-export function withAbort<T>(signal: AbortSignal | undefined, p: Promise<T>): Promise<T> {
-	if (!signal) return p;
-	if (signal.aborted) return Promise.reject(makeAbortError());
-	return new Promise<T>((resolve, reject) => {
-		const onAbort = (): void => reject(makeAbortError());
-		signal.addEventListener("abort", onAbort, { once: true });
-		p.then(
-			(v) => {
-				signal.removeEventListener("abort", onAbort);
-				resolve(v);
-			},
-			(e) => {
-				signal.removeEventListener("abort", onAbort);
-				reject(e);
-			},
-		);
-	});
 }
 
 /**
