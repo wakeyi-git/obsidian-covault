@@ -13,12 +13,20 @@ import { sha256 } from "../hash/hash";
  *    클라이언트의 보증 업로드(Uploader.uploadContent, 본인 계정 replication)가 막히지 않아야 한다.
  *  - asset: 참여자 합집합(anyAllowed) — Excalidraw 세션 중 생성되는 이미지 asset은 노트와 경로가
  *    달라 파일별 매칭이 불가능한 절충. 노트 본문 보호가 목적이므로 허용 범위가 다소 넓어도 수용.
- *  - message/feedback/response/version 등 나머지 타입은 기존대로(읽기전용은 파일 콘텐츠만 대상).
+ *  - version 등 나머지 타입은 기존대로(읽기전용은 파일 콘텐츠만 대상).
  * 거부 사유는 `covault:shared-read-only`로 고정 — 클라이언트(onDenied)가 식별해 안내하는 프로토콜.
+ *
+ * v5 = message/feedback 소유·역할 검사 추가(평가 P1-1) + shares/rtconfig를 교사 전용에 포함.
+ *  - message/feedback는 byUser/createdBy가 작성자(memberId 정규화) 본인이어야 쓰고, 신규/수정 시
+ *    byRole/createdByRole에 'manager'를 위조할 수 없다(구성원은 'member'만). 이 규칙은 공유 DB와
+ *    구성원 mirror DB(=DM 채널이 사는 곳) 모두에 배포되어, 멤버가 운영자/타 멤버를 사칭한 메시지를
+ *    만들거나 타인의 메시지·피드백을 수정·삭제하지 못하게 한다. 운영자(_admin)는 전부 우회한다.
+ *  - shares/rtconfig는 운영자(admin.putDoc)만 쓰므로 교사 전용에 넣어 구성원의 임의 주입을 막는다.
+ *    mirror DB 정책은 readOnly:false(읽기전용은 공유 공간 전용 개념) — 소유·역할·교사전용 차단만 적용.
  */
 
-/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포). v4 = 기기별 계정(acct 정규화). */
-export const VALIDATE_DOC_VERSION = 4;
+/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포). v5 = message/feedback 소유·역할 검사(P1-1). */
+export const VALIDATE_DOC_VERSION = 5;
 
 /** onDenied가 식별하는 거부 사유 문자열(서버↔클라이언트 프로토콜 — 변경 금지). */
 export const READONLY_FORBIDDEN_REASON = "covault:shared-read-only";
@@ -86,11 +94,27 @@ export function buildValidateSource(policy: ValidatePolicy): string {
 		"  function cn(x) { return (POLICY.acct && POLICY.acct[x]) || x; }\n" +
 		"  var me = cn(userCtx && userCtx.name);\n" +
 		"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
-		"  var teacherOnly = ['notice','timetable','routine','assignment','chatgroup','rtpart','rtcontrol','roster'];\n" +
+		"  var teacherOnly = ['notice','timetable','routine','assignment','chatgroup','rtpart','rtcontrol','roster','shares','rtconfig'];\n" +
 		"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
+		// ownedByMe: 신규/수정 문서와 기존 문서의 작성자(field)가 모두 나여야 한다(타인 문서 위조·수정·삭제 차단).
+		"  function ownedByMe(f) {\n" +
+		"    var nv = newDoc._deleted ? (oldDoc && oldDoc[f]) : newDoc[f];\n" +
+		"    if (!nv || cn(nv) !== me) return false;\n" +
+		"    if (oldDoc && oldDoc[f] && cn(oldDoc[f]) !== me) return false;\n" +
+		"    return true;\n" +
+		"  }\n" +
 		"  if (t === 'response') {\n" +
 		"    var owner = newDoc._deleted ? (oldDoc && oldDoc.byUser) : newDoc.byUser;\n" +
 		"    if (owner && cn(owner) !== me) throw({ forbidden: 'own doc only' });\n" +
+		"  }\n" +
+		// message/feedback: 작성자 본인만, 그리고 신규/수정 시 manager 역할 위조 금지(P1-1).
+		"  if (t === 'message') {\n" +
+		"    if (!ownedByMe('byUser')) throw({ forbidden: 'own message only' });\n" +
+		"    if (!newDoc._deleted && newDoc.byRole && newDoc.byRole !== 'member') throw({ forbidden: 'member role only' });\n" +
+		"  }\n" +
+		"  if (t === 'feedback') {\n" +
+		"    if (!ownedByMe('createdBy')) throw({ forbidden: 'own feedback only' });\n" +
+		"    if (!newDoc._deleted && newDoc.createdByRole && newDoc.createdByRole !== 'member') throw({ forbidden: 'member role only' });\n" +
 		"  }\n" +
 		"  if (t === 'grouprequest') {\n" +
 		"    var reqOwner = newDoc._deleted ? (oldDoc && oldDoc.byUsername) : newDoc.byUsername;\n" +

@@ -143,6 +143,8 @@ export class MemberController {
 		await this.d.mintMirror(member);
 		await this.d.saveSettings();
 		await this.writeMemberSync(admin, member);
+		// mirror DB에도 validate 배포(평가 P1-1) — DM 사칭·임의 타입 주입 차단. 지문 비교로 멱등.
+		await this.d.redeployValidate({ dbs: [member.remoteDb] });
 		this.d.requestApply();
 		this.d.logger.ok(t("command.provisioning_complete_account_db_permissions", { id: member.memberId }), true);
 
