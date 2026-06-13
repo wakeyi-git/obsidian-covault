@@ -67,7 +67,7 @@ plugin      │                     ▲
 
 # CouchDB (required)
 
-Follow **one** of the two walkthroughs below, then jump to [Yjs](#yjs-realtime-server-optional) only if you want
+Follow **one** of the two walkthroughs below, then jump to [the realtime server](#realtime-server--hocuspocus-optional) only if you want
 realtime. The [hosting options](#couchdb-hosting-options) section afterwards explains every alternative in detail.
 
 ## Walkthrough A — CouchDB on a cloud VPS (recommended)
@@ -328,7 +328,7 @@ How to put a real certificate in front of either server. **All of these work for
 ```caddyfile
 yjs.example.com {
     reverse_proxy localhost:1234
-    log { output discard }          # keep ?token= out of access logs
+    log { output discard }          # optional — CoVault sends tokens in an auth message, never in the URL
 }
 ```
 Requirements: the domain's A record points at the server, and ports 80/443 are open (Caddy needs 80 for the ACME
@@ -344,7 +344,7 @@ location / {
     proxy_set_header Connection "upgrade";
     proxy_set_header Host       $host;
     proxy_read_timeout 3600s;        # keep long-lived WS connections open
-    access_log off;                  # or a log_format that strips $args (the ?token=)
+    access_log off;                  # optional defense-in-depth — tokens never appear in the URL
 }
 ```
 
