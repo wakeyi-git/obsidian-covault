@@ -205,7 +205,7 @@ export class ChatSection implements PanelSection {
 		};
 		input.value = keepInput; // 재드로우 전 작성 텍스트 복원
 		this.input = input;
-		new ChatSuggest(this.host.app, input, () => this.mentionNames()); // [[ 파일 + @ 멘션 자동완성
+		new ChatSuggest(this.host.app, input, () => this.mentionNames(), () => this.host.sharedFolders()); // [[ 공동 공간 파일 + @ 멘션 자동완성
 		panelButton(compose, t("chat.send"), () => this.send(), { cta: true });
 
 		c.createDiv({ cls: "covault-cr-muted covault-chat-hint", text: t("chat.shared_folder_hint") });

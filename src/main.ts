@@ -302,6 +302,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			pluginDeployCtl: this.pluginDeployCtl,
 			homeroomReady: () => this.homeroomReady(),
 			homeroomConfigured: () => this.homeroomConfigured(),
+			// 공동 공간 폴더만(개인 mirror 제외 — 교사 측 mirror는 folder가 멤버 localRoot라 빈문자 필터로 못 거름). 대화 위키링크 후보 제한.
+			sharedFolders: () => this.core.sharedSpaces.filter((sp) => sp.kind !== "mirror" && sp.folder !== "").map((sp) => sp.folder),
 			saveSettings: () => this.saveSettings(),
 			openSettings: () => this.openSettings(),
 			completeOnboarding: () => this.completeOnboarding(),
@@ -456,8 +458,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	 */
 	private homeroomPouch(): PouchService | undefined {
 		const h = this.core.homeroom;
-		if (!h) return undefined;
-		return this.mode?.findSyncByDb(h.remoteDb)?.ctx.pouch;
+		return h ? this.mode?.findSyncByDb(h.remoteDb)?.ctx.pouch : undefined;
 	}
 
 	/** 학급 운영 기능의 기준 폴더(지정된 학급 공동 공간의 폴더). 미지정이면 null. */
@@ -475,8 +476,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	 * 즉시 판단된다 — 볼트 재시작 직후 패널이 모드보다 먼저 그려질 때 "지정하세요" 안내가 깜빡이는 것 방지.
 	 */
 	homeroomConfigured(): boolean {
-		if (this.settings.role === "manager") return this.settings.sharedSpaces.some((sp) => sp.kind === "homeroom");
-		return !!this.core.homeroom;
+		return this.settings.role === "manager" ? this.settings.sharedSpaces.some((sp) => sp.kind === "homeroom") : !!this.core.homeroom;
 	}
 
 	// --- 실시간 참여 게이트/파일별 참여자/읽기전용 → ParticipantController 위임 ---

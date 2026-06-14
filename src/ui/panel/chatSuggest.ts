@@ -1,5 +1,6 @@
 import { AbstractInputSuggest, App, FuzzySuggestModal, TFile } from "obsidian";
 import { t } from "../../i18n";
+import { relUnder } from "../../core/realtime/room";
 
 /** vault 파일 선택(첨부용). 모든 파일(노트·이미지·PDF 등). */
 export class FilePickModal extends FuzzySuggestModal<TFile> {
@@ -40,9 +41,18 @@ export class FeedbackPickModal extends FuzzySuggestModal<FbItem> {
 type Tok = { partial: string; start: number; end: number };
 type ChatSuggestion = { kind: "file"; file: TFile } | { kind: "mention"; name: string };
 
-/** 입력창 자동완성: `[[`→vault 파일 위키링크, `@`→구성원 멘션. 토큰만 교체한다. */
+/**
+ * 입력창 자동완성: `[[`→공동 공간 파일 위키링크, `@`→구성원 멘션. 토큰만 교체한다.
+ * 위키링크 후보는 **공동 공간으로 설정한 폴더(sharedFolders) 내부 파일로 제한** — 공유되지 않는
+ * 파일을 링크하면 상대가 열 수 없으므로(ChatSection 힌트와 동일 취지) 후보 단계에서 걸러낸다.
+ */
 export class ChatSuggest extends AbstractInputSuggest<ChatSuggestion> {
-	constructor(app: App, private inputEl: HTMLInputElement, private mentionNames: () => string[]) {
+	constructor(
+		app: App,
+		private inputEl: HTMLInputElement,
+		private mentionNames: () => string[],
+		private sharedFolders: () => string[],
+	) {
 		super(app, inputEl);
 	}
 
@@ -82,8 +92,11 @@ export class ChatSuggest extends AbstractInputSuggest<ChatSuggestion> {
 		}
 		if (wt) {
 			const term = wt.partial.toLowerCase().trim();
+			// 빈 폴더("")는 vault 전체를 삼키므로 제외 — 실제 공동 공간 폴더만 후보 범위로 삼는다.
+			const folders = this.sharedFolders().filter((folder) => folder !== "");
 			return this.app.vault
 				.getFiles()
+				.filter((f) => folders.some((folder) => relUnder(f.path, folder) !== null))
 				.filter((f) => !term || f.basename.toLowerCase().includes(term) || f.path.toLowerCase().includes(term))
 				.sort((a, b) => a.path.localeCompare(b.path))
 				.slice(0, 20)

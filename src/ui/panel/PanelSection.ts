@@ -46,6 +46,8 @@ export interface CoreHost {
 	homeroomReady(): boolean;
 	/** 학급 공동 공간이 '지정'되어 있는지(연결 준비와 무관 — 시작 직후 깜빡임 방지용). */
 	homeroomConfigured(): boolean;
+	/** 공동 공간으로 설정한 폴더 경로 목록(교사=설정, 구성원=수신한 shares). 대화 위키링크 후보 제한용. */
+	sharedFolders(): string[];
 	/** 노트 경로의 피드백 목록(대화 피드백 참조 picker용). */
 	listFeedback(path: string): Promise<Array<{ uid: string; label: string; path: string }>>;
 	/** 피드백 참조 클릭 → 해당 앵커 위치로 이동. */

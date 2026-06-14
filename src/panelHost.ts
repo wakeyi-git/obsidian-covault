@@ -124,6 +124,7 @@ export interface PanelHostDeps {
 	// main 잔존 글루(모드/Plugin 수명주기에 결박된 동작)
 	homeroomReady(): boolean;
 	homeroomConfigured(): boolean;
+	sharedFolders(): string[];
 	saveSettings(): Promise<void>;
 	openSettings(): void;
 	completeOnboarding(): Promise<void>;
@@ -154,6 +155,7 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 		},
 		homeroomReady: d.homeroomReady,
 		homeroomConfigured: d.homeroomConfigured,
+		sharedFolders: d.sharedFolders,
 		saveSettings: d.saveSettings,
 		openSettings: d.openSettings,
 		completeOnboarding: d.completeOnboarding,
