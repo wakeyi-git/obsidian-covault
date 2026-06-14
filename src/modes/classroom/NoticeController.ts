@@ -288,6 +288,22 @@ export class NoticeController {
 		const periods = existing?.periods ?? [...DEFAULT_PERIODS];
 		// 칸을 못 정하면(week 누락, day/period 비움·오타) 목표 칸 없음 → 아래 정리에서 기존 연결만 해제.
 		const cellKey = weekKey ? resolveTimetableSlot(dayRaw, periodRaw, days, periods) : null;
+		// day/period를 **채웠는데** 칸을 못 정했으면(라벨/범위 불일치) — 조용히 미배치로 떨어뜨리지 말고,
+		// 기존 배치를 보존한 채 무엇이 안 맞는지 안내한다(현장: "알맞게 고쳤는데 시간표에 연결 안 됨, 안내 없음").
+		const provided =
+			(dayRaw != null && String(dayRaw).trim() !== "") || (periodRaw != null && String(periodRaw).trim() !== "");
+		if (weekKey && provided && !cellKey) {
+			this.d.logger.warn(
+				t("dashboard.lesson_slot_unresolved", {
+					day: String(dayRaw ?? ""),
+					period: String(periodRaw ?? ""),
+					days: days.join(", "),
+					periods: periods.join(", "),
+				}),
+				true,
+			);
+			return;
+		}
 		// 1) 목표가 아닌 시간표에 남은 연결 해제 — 주(week) 이동, day/period 비움이 칸에 직접 반영되도록.
 		for (const tt of await this.d.classroom.listByPrefix<TimetableDoc>(TIMETABLE_ID_PREFIX)) {
 			if (cellKey && tt.weekKey === weekKey) continue; // 목표 주는 아래 배치가 처리(칸 이동 포함)

@@ -266,6 +266,7 @@
 		"today": "오늘",
 		"no_lessons_day": "이 날의 수업 안내가 없습니다.",
 		"unplaced_lessons": "미배치 수업 ({n})",
+		"lesson_slot_unresolved": "수업을 시간표 칸에 연결하지 못했습니다 — 요일 '{day}' · 교시 '{period}'가 이 주 시간표와 맞지 않습니다. 요일: {days} / 교시: {periods} 중 하나(또는 1부터의 번호)로 입력하세요. 기존 배치는 그대로 둡니다.",
 		"prev_month": "이전 달",
 		"next_month": "다음 달",
 		"no_items_day": "이 날 해당하는 항목이 없습니다.",

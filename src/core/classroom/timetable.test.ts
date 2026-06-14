@@ -31,6 +31,17 @@ describe("resolveTimetableSlot", () => {
 	it("맞지 않는 라벨은 null", () => {
 		expect(resolveTimetableSlot("일", "2", DAYS, PERIODS)).toBeNull();
 	});
+
+	it("'요일' 접미·공백·대소문자 표기 차이를 흡수(월요일↔월)", () => {
+		expect(resolveTimetableSlot("월요일", "2", DAYS, PERIODS)).toBe("0:1");
+		expect(resolveTimetableSlot(" 수 ", "3", DAYS, PERIODS)).toBe("2:2");
+		expect(resolveTimetableSlot("Mon", "1", ["Mon", "Tue"], PERIODS)).toBe("0:0");
+		expect(resolveTimetableSlot("monday", "1", ["Monday", "Tuesday"], PERIODS)).toBe("0:0");
+	});
+
+	it("숫자 라벨에 접두 오탐 없음(12교시는 1교시로 매칭되지 않음)", () => {
+		expect(resolveTimetableSlot("월", "12", DAYS, PERIODS)).toBeNull();
+	});
 });
 
 describe("placeLessonSlot", () => {

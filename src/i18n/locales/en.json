@@ -266,6 +266,7 @@
 		"today": "Today",
 		"no_lessons_day": "No lessons for this day.",
 		"unplaced_lessons": "Unplaced lessons ({n})",
+		"lesson_slot_unresolved": "Couldn't place the lesson — day '{day}' / period '{period}' don't match this week's timetable. Use one of — days: {days} / periods: {periods} (or a 1-based number). The existing placement is kept.",
 		"prev_month": "Previous month",
 		"next_month": "Next month",
 		"no_items_day": "No items for this day.",

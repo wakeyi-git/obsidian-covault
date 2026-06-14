@@ -9,13 +9,21 @@ export function defaultTimetableDays(): string[] {
 	return [t("dashboard.wd_mon"), t("dashboard.wd_tue"), t("dashboard.wd_wed"), t("dashboard.wd_thu"), t("dashboard.wd_fri")];
 }
 
-/** 라벨 배열에서 값을 인덱스로 해석: 라벨 일치 우선, 없으면 1-기반 정수(1..N)로. 못 맞추면 null. */
+/** 라벨 배열에서 값을 인덱스로 해석: 라벨 일치 우선(표기 차이 흡수), 없으면 1-기반 정수(1..N)로. 못 맞추면 null. */
 function resolveIndex(raw: unknown, labels: string[]): number | null {
 	if (raw == null || raw === "") return null;
 	const s = String(raw).trim();
 	if (!s) return null;
 	const byLabel = labels.indexOf(s);
 	if (byLabel >= 0) return byLabel;
+	// 표기 차이 흡수: "요일" 접미·대소문자·공백 무시(월요일↔월, mon↔Mon). 정규화 후 정확 일치만
+	// (접두 매칭은 숫자 라벨에서 오탐: "12"가 "1"에 붙는 문제).
+	const norm = (x: string) => x.trim().toLowerCase().replace(/요일$/, "");
+	const ns = norm(s);
+	if (ns) {
+		const i = labels.findIndex((l) => norm(l) === ns);
+		if (i >= 0) return i;
+	}
 	const n = Number(s);
 	if (Number.isInteger(n) && n >= 1 && n <= labels.length) return n - 1;
 	return null;
