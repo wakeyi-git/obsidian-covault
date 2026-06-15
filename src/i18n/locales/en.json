@@ -910,6 +910,7 @@
 		"permanently_deleted_from_db_purge": "Permanently deleted from DB (purge): {path}",
 		"full_sync_started": "Full sync started ({direction}) — {db}",
 		"repair_no_shared_spaces": "No shared spaces to repair.",
+		"repair_scanned": "Repair scan: {db} — {live} live doc(s), {orphans} missing from vault.",
 		"repair_consistency_ok": "Consistency OK — no orphaned files (live in DB but missing from your vault).",
 		"repair_confirm_title": "Repair shared-space consistency",
 		"repair_confirm_body": "{n} file(s) are live in the DB but missing from your vault — they will be deleted (tombstoned) for everyone:\n\n{sample}\n\nProceed?",

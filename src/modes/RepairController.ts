@@ -35,10 +35,14 @@ export class RepairController {
 			return;
 		}
 		await this.d.openLog();
+		// 원격을 먼저 pull해 로컬 DB를 최신(구성원이 보는 상태)과 맞춘다 — 관리자 로컬 DB가 뒤처져
+		// "고아 없음"으로 잘못 나오던 경우를 없앤다. 관리자가 쓴 파일은 skip-self라 vault에 되살아나지 않는다.
+		for (const sync of syncs) await sync.pullOnce().catch(() => 0);
 		const found: Array<{ sync: MirrorSync; paths: string[] }> = [];
 		for (const sync of syncs) {
-			const paths = await sync.listVaultOrphans();
-			if (paths.length > 0) found.push({ sync, paths });
+			const scan = await sync.scanVaultOrphans();
+			this.d.logger.info(t("sync.repair_scanned", { db: sync.remoteDb, live: scan.liveCount, orphans: scan.orphans.length }));
+			if (scan.orphans.length > 0) found.push({ sync, paths: scan.orphans });
 		}
 		const total = found.reduce((n, f) => n + f.paths.length, 0);
 		if (total === 0) {

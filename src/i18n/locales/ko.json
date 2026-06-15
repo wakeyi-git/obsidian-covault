@@ -910,6 +910,7 @@
 		"permanently_deleted_from_db_purge": "DB에서 영구 삭제(purge): {path}",
 		"full_sync_started": "전체 동기화 시작 ({direction}) — {db}",
 		"repair_no_shared_spaces": "복구할 공유 공간이 없습니다.",
+		"repair_scanned": "정합 복구 스캔: {db} — 살아있는 문서 {live}개, vault 누락 {orphans}개.",
 		"repair_consistency_ok": "정합 양호 — 고아 파일 없음(로컬 DB엔 있고 내 vault엔 없는 파일).",
 		"repair_confirm_title": "공유 공간 정합 복구",
 		"repair_confirm_body": "로컬 DB엔 살아있지만 내 vault엔 없는 파일 {n}개 — 모든 구성원에게서 삭제(tombstone)됩니다:\n\n{sample}\n\n진행할까요?",

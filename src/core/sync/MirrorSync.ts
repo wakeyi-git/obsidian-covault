@@ -16,7 +16,7 @@ import { FullSync, SyncDirection } from "./FullSync";
 import { parseDeniedEvent, deniedDisplayPath } from "./deniedEvent";
 import { sweepTombstones } from "./tombstoneRetention";
 import { isAuthError, logAuthDiagnostic } from "./authDiagnostic";
-import { listVaultOrphans, tombstoneVaultOrphans } from "./orphanRepair";
+import { scanVaultOrphans, tombstoneVaultOrphans, OrphanScan } from "./orphanRepair";
 import { t } from "../../i18n";
 
 /**
@@ -448,9 +448,14 @@ export class MirrorSync {
 		return dbPath != null && !this.ctx.isExcluded(localPath);
 	}
 
-	/** 정합 복구: 로컬 DB엔 살아있지만 vault엔 없는 파일 경로(전파 안 된 잔존 삭제). orphanRepair.ts. */
-	listVaultOrphans(): Promise<string[]> {
-		return listVaultOrphans(this.ctx);
+	/** 원격→로컬 pouch 1회 pull(정합 복구 전 최신 반영용). vault는 건드리지 않는다. */
+	pullOnce(): Promise<number> {
+		return this.ctx.pouch.replicatePullOnce();
+	}
+
+	/** 정합 복구 스캔: 로컬 DB엔 살아있지만 vault엔 없는 파일 + 진단 카운트. orphanRepair.ts. */
+	scanVaultOrphans(): Promise<OrphanScan> {
+		return scanVaultOrphans(this.ctx);
 	}
 
 	/** 정합 복구: 주어진 경로들을 tombstone해 삭제를 전파한다. 만든 tombstone 수 반환. */

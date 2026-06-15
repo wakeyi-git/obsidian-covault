@@ -128,4 +128,25 @@ describe("공동 공간 삭제 전파 (관리자 → 읽기전용 구성원)", (
 		await settle(150);
 		expect(mem.ctx.getFile("자료/x.md")).toBeNull();
 	});
+
+	it("정합 복구: 관리자 로컬 DB가 뒤처져 원격에만 있는 파일은 pull 후에야 고아로 잡힌다", async () => {
+		cluster = new Cluster();
+		const mgr = cluster.device({ deviceId: "mgr", role: "manager", remoteDb: "share_x", localRoot: "" });
+		const other = cluster.device({ deviceId: "other", role: "manager", remoteDb: "share_x", localRoot: "" });
+
+		// 다른 기기가 공유 파일을 원격에 올림 — 관리자(mgr) vault·로컬 DB엔 아직 없음.
+		await other.vault.create("외부.md", "내용");
+		await other.uploader.uploadPath("외부.md");
+		await other.push();
+
+		// pull 전: mgr 로컬 DB에 없으니 고아로 안 잡힘(= 사용자의 "고아 없음" 상황).
+		expect(await listVaultOrphans(mgr.ctx)).not.toContain("외부.md");
+
+		// pull 후: live 문서가 로컬 DB로 들어오고 vault엔 없음 → 고아로 잡힘.
+		await mgr.pull();
+		expect(await listVaultOrphans(mgr.ctx)).toContain("외부.md");
+		const n = await tombstoneVaultOrphans(mgr.ctx, mgr.uploader, ["외부.md"]);
+		expect(n).toBe(1);
+		expect((await mgr.note("외부.md"))?.deleted).toBe(true);
+	});
 });

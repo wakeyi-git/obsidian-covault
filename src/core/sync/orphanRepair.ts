@@ -9,18 +9,32 @@ import { Uploader } from "./Uploader";
  * ⚠️ **vault가 최신(다운로드 완료)** 이라는 전제 — 아직 안 받은 파일을 고아로 오인해 지우지 않도록,
  *    호출측이 관리자(자기 vault가 정본)·공유 공간 링크로 한정하고 사용자 확인을 받는다.
  */
-export async function listVaultOrphans(ctx: MirrorContext): Promise<string[]> {
+export interface OrphanScan {
+	/** vault엔 없는데 DB엔 살아있는 파일(전파할 삭제). */
+	orphans: string[];
+	/** 스캔한 살아있는(non-tombstone) 문서 총수 — 진단용(0이면 로컬 DB가 비었거나 뒤처진 것). */
+	liveCount: number;
+}
+
+export async function scanVaultOrphans(ctx: MirrorContext): Promise<OrphanScan> {
 	const notes = await ctx.pouch.allNotes();
 	const assets = ctx.settings.syncAssets ? await ctx.pouch.allAssets() : [];
-	const out: string[] = [];
+	const orphans: string[] = [];
+	let liveCount = 0;
 	for (const doc of [...notes, ...assets]) {
 		if (doc.deleted) continue; // 이미 tombstone
+		liveCount++;
 		const localPath = ctx.toLocalPath(doc.path);
 		if (ctx.isExcluded(localPath)) continue; // 보관/충돌/제외 폴더는 대상 아님
 		if (ctx.fileExists(localPath)) continue; // vault에 있음 → 정상(고아 아님)
-		out.push(doc.path);
+		orphans.push(doc.path);
 	}
-	return out;
+	return { orphans, liveCount };
+}
+
+/** 고아 경로만 반환(scanVaultOrphans 래퍼 — 테스트·단순 호출용). */
+export async function listVaultOrphans(ctx: MirrorContext): Promise<string[]> {
+	return (await scanVaultOrphans(ctx)).orphans;
 }
 
 /** 주어진 경로들을 tombstone(삭제 전파)한다. 실제로 만든 tombstone 수를 반환. */
