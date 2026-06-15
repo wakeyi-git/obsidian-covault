@@ -150,6 +150,28 @@ describe("공동 공간 삭제 전파 (관리자 → 읽기전용 구성원)", (
 		expect((await mgr.note("외부.md"))?.deleted).toBe(true);
 	});
 
+	it("읽기전용 공유: 구성원 시작 정합이 vault 파일을 원격으로 올리지 않는다(삭제 부활 차단)", async () => {
+		cluster = new Cluster();
+		const mem = cluster.device({
+			deviceId: "mem",
+			role: "member",
+			remoteDb: "share_x",
+			localRoot: "",
+			settings: { remoteDb: "mirror_self", sharedReadOnly: true },
+		});
+		const other = cluster.device({ deviceId: "other", role: "manager", remoteDb: "share_x", localRoot: "" });
+
+		// 구성원 vault에 잔존 파일(관리자가 지웠지만 구성원에 남은 상황). 원격엔 없음.
+		await mem.vault.create("잔존.md", "내용");
+
+		// 시작 정합/전체 동기화(up) — 읽기전용이라 업로드 단계를 건너뛰어야 한다.
+		await mem.sync("up");
+
+		// 원격으로 올라가지 않았다(다른 기기에서 안 보임) → 삭제가 부활하지 않는다.
+		await other.pull();
+		expect(await other.note("잔존.md")).toBeNull();
+	});
+
 	it("원격-직접 복구: 로컬 DB엔 없고 원격에만 live인 유령 문서를 원격에 직접 tombstone한다", async () => {
 		cluster = new Cluster();
 		const mgr = cluster.device({ deviceId: "mgr", role: "manager", remoteDb: "share_x", localRoot: "" });

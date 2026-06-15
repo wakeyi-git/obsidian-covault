@@ -145,6 +145,13 @@ export class FullSync {
 
 	private async upload(baseline: LinkManifestDoc | null): Promise<void> {
 		const ctx = this.ctx;
+		// 읽기전용 공유 공간: 구성원은 vault를 원격으로 일괄 업로드하지 않는다(원격=정본). 이 단계가 빠져 있어
+		// 관리자가 지운 파일을 구성원의 시작 정합/전체 동기화가 매번 원격에 **부활**시켰다(현장 핵심 버그).
+		// 실시간 세션 스냅샷은 별도 경로(uploadPath)라 영향 없다. 개인 mirror는 isReadOnlyShared=false라 정상 업로드.
+		if (ctx.isReadOnlyShared) {
+			ctx.logger.info(t("sync.readonly_shared_upload_skipped", { db: ctx.remoteDb }));
+			return;
+		}
 		let uploaded = 0;
 		let unchanged = 0;
 		const files = this.localFiles();
@@ -201,6 +208,8 @@ export class FullSync {
 	 */
 	private async reconcileDeletions(baseline: LinkManifestDoc | null): Promise<void> {
 		const ctx = this.ctx;
+		// 읽기전용 공유 공간: 구성원은 삭제(tombstone)를 만들지 않는다(원격=정본, 삭제는 관리자만). 업로드와 동일.
+		if (ctx.isReadOnlyShared) return;
 		if (!baseline || Object.keys(baseline.paths).length === 0) {
 			ctx.logger.info(t("sync.delete_reconcile_skipped_no_baseline_manifest"));
 			return;

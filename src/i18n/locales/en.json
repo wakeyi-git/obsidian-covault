@@ -884,6 +884,7 @@
 		"readonly_write_denied": "Shared files are read-only — the server rejected your change to {path}. Your edit is kept on this device; ask the manager to add you to a live session to edit it.",
 		"readonly_write_denied_short": "Read-only: change to {path} was rejected by the server",
 		"readonly_change_reverted": "Shared file is read-only — restored {path} to its state before the change. Ask the workspace admin to join a live session to edit.",
+		"readonly_shared_upload_skipped": "Read-only shared space — skipped bulk upload to {db} (remote is authoritative; member does not re-create files here).",
 		"replication_error": "Replication error: {err}",
 		"background_sync_paused": "Background — sync paused: {db}",
 		"foreground_sync_resumed": "Foreground — sync resumed: {db}",
