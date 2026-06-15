@@ -37,26 +37,62 @@ export async function listVaultOrphans(ctx: MirrorContext): Promise<string[]> {
 	return (await scanVaultOrphans(ctx)).orphans;
 }
 
+/** 원격 고아 스캔 결과 — orphans는 **문서 id**(note:/asset:)다(원격에 직접 tombstone하려면 id가 필요). */
+export interface RemoteOrphanScan {
+	ids: string[];
+	liveCount: number;
+}
+
 /**
  * 원격 문서 id 목록(remoteLiveDocIds 결과)으로 고아를 판정 — 로컬 DB가 아니라 **원격 실제 상태** 기준이라
- * 체크포인트가 뒤처져도 옛 삭제 파일을 잡는다. note:/asset: id만 보고 vault에 없는(+제외 아님) 것을 고른다.
+ * 체크포인트가 뒤처져도 옛 삭제 파일/유령 문서를 잡는다. note:/asset: id 중 vault에 없는(+제외 아님) 것.
  */
-export function orphansFromRemoteIds(ctx: MirrorContext, ids: string[]): OrphanScan {
-	const orphans: string[] = [];
+export function remoteOrphanIds(ctx: MirrorContext, allIds: string[]): RemoteOrphanScan {
+	const ids: string[] = [];
 	let liveCount = 0;
-	for (const id of ids) {
+	for (const id of allIds) {
 		const dbPath = id.startsWith("note:") ? id.slice(5) : id.startsWith("asset:") ? id.slice(6) : null;
 		if (dbPath == null) continue; // note/asset 외 문서(manifest·rtconfig 등)는 대상 아님
 		liveCount++;
 		const localPath = ctx.toLocalPath(dbPath);
 		if (ctx.isExcluded(localPath)) continue;
 		if (ctx.fileExists(localPath)) continue;
-		orphans.push(dbPath);
+		ids.push(id);
 	}
-	return { orphans, liveCount };
+	return { ids, liveCount };
 }
 
-/** 주어진 경로들을 tombstone(삭제 전파)한다. 실제로 만든 tombstone 수를 반환. */
+/** id에서 표시용 dbPath 추출(note:/asset: 접두 제거). */
+export function dbPathOfId(id: string): string {
+	return id.startsWith("note:") ? id.slice(5) : id.startsWith("asset:") ? id.slice(6) : id;
+}
+
+/**
+ * 고아 문서들을 **원격에 직접** tombstone한다 — 원격 현재 rev 위에 얹어 live 분기를 확실히 덮으므로
+ * 로컬 분기 충돌/스테일/누락이 있어도 다시 살아나지 않는다. 실제로 처리한 수를 반환.
+ */
+export async function tombstoneRemoteOrphans(ctx: MirrorContext, ids: string[]): Promise<number> {
+	const s = ctx.settings;
+	let n = 0;
+	for (const id of ids) {
+		const now = Date.now();
+		const ok = await ctx.pouch.tombstoneRemoteDoc(id, {
+			deletedAt: new Date(now).toISOString(),
+			deletedBy: s.userId,
+			deletedByRole: s.role,
+			deleteMode: s.deletePolicy,
+			mtime: now,
+			lastModifiedBy: s.userId,
+			lastModifiedRole: s.role,
+			lastModifiedDeviceId: s.deviceId,
+			updatedAt: new Date(now).toISOString(),
+		});
+		if (ok) n++;
+	}
+	return n;
+}
+
+/** 주어진 경로들을 tombstone(삭제 전파)한다. 실제로 만든 tombstone 수를 반환. (로컬 경유 — 테스트·일반 경로용.) */
 export async function tombstoneVaultOrphans(ctx: MirrorContext, uploader: Uploader, dbPaths: string[]): Promise<number> {
 	let n = 0;
 	for (const dbPath of dbPaths) {

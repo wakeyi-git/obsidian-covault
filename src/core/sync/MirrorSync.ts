@@ -16,7 +16,7 @@ import { FullSync, SyncDirection } from "./FullSync";
 import { parseDeniedEvent, deniedDisplayPath } from "./deniedEvent";
 import { sweepTombstones } from "./tombstoneRetention";
 import { isAuthError, logAuthDiagnostic } from "./authDiagnostic";
-import { scanVaultOrphans, orphansFromRemoteIds, tombstoneVaultOrphans, OrphanScan } from "./orphanRepair";
+import { scanVaultOrphans, remoteOrphanIds, tombstoneRemoteOrphans, tombstoneVaultOrphans, OrphanScan, RemoteOrphanScan } from "./orphanRepair";
 import { t } from "../../i18n";
 
 /**
@@ -458,16 +458,14 @@ export class MirrorSync {
 		return scanVaultOrphans(this.ctx);
 	}
 
-	/** 정합 복구 스캔(원격 기준): 원격 _all_docs를 직접 보고 vault에 없는 파일을 찾는다(체크포인트 무관). */
-	async scanRemoteOrphans(): Promise<OrphanScan> {
-		const ids = await this.ctx.pouch.remoteLiveDocIds();
-		return orphansFromRemoteIds(this.ctx, ids);
+	/** 정합 복구 스캔(원격 기준): 원격 _all_docs를 직접 보고 vault에 없는 문서 id를 찾는다(체크포인트 무관). */
+	async scanRemoteOrphans(): Promise<RemoteOrphanScan> {
+		return remoteOrphanIds(this.ctx, await this.ctx.pouch.remoteLiveDocIds());
 	}
 
-	/** 정합 복구: 주어진 dbPath들의 note/asset 문서를 원격에서 로컬로 당겨와 정확한 rev를 확보(tombstone 전). */
-	pullDocs(dbPaths: string[]): Promise<number> {
-		const ids = [...dbPaths.map((p) => noteId(p)), ...dbPaths.map((p) => assetId(p))];
-		return this.ctx.pouch.pullDocs(ids);
+	/** 정합 복구: 고아 문서들을 원격에 직접 tombstone(원격 rev 위에)해 확실히 지운다. 처리 수 반환. */
+	tombstoneRemoteOrphans(ids: string[]): Promise<number> {
+		return tombstoneRemoteOrphans(this.ctx, ids);
 	}
 
 	/** 정합 복구: 주어진 경로들을 tombstone해 삭제를 전파한다. 만든 tombstone 수 반환. */

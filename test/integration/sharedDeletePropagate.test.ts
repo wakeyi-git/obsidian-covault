@@ -6,7 +6,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { Cluster, settle } from "../harness/env";
 import { LocalApplier } from "../../src/core/sync/LocalApplier";
 import { LocalWatcher } from "../../src/core/sync/LocalWatcher";
-import { listVaultOrphans, orphansFromRemoteIds, tombstoneVaultOrphans } from "../../src/core/sync/orphanRepair";
+import { listVaultOrphans, remoteOrphanIds, tombstoneRemoteOrphans, tombstoneVaultOrphans } from "../../src/core/sync/orphanRepair";
 import { noteId } from "../../src/core/model/types";
 
 describe("공동 공간 삭제 전파 (관리자 → 읽기전용 구성원)", () => {
@@ -150,12 +150,12 @@ describe("공동 공간 삭제 전파 (관리자 → 읽기전용 구성원)", (
 		expect((await mgr.note("외부.md"))?.deleted).toBe(true);
 	});
 
-	it("원격-스캔 복구: 로컬 DB엔 아예 없는(체크포인트 뒤처짐) 원격 파일도 잡아 tombstone한다", async () => {
+	it("원격-직접 복구: 로컬 DB엔 없고 원격에만 live인 유령 문서를 원격에 직접 tombstone한다", async () => {
 		cluster = new Cluster();
 		const mgr = cluster.device({ deviceId: "mgr", role: "manager", remoteDb: "share_x", localRoot: "" });
 		const other = cluster.device({ deviceId: "other", role: "manager", remoteDb: "share_x", localRoot: "" });
 
-		// 다른 기기가 원격에 파일을 올림 — mgr는 pull하지 않아 로컬 DB·vault 모두에 없음.
+		// 다른 기기가 원격에 파일을 올림 — mgr는 pull하지 않아 로컬 DB·vault 모두에 없음(체크포인트 뒤처짐 재현).
 		await other.vault.create("잔존.md", "내용");
 		await other.uploader.uploadPath("잔존.md");
 		await other.push();
@@ -163,19 +163,17 @@ describe("공동 공간 삭제 전파 (관리자 → 읽기전용 구성원)", (
 		// 로컬 스캔으론 못 잡는다(로컬 DB에 문서 자체가 없음).
 		expect(await listVaultOrphans(mgr.ctx)).not.toContain("잔존.md");
 
-		// 원격 _all_docs 직접 조회 → 고아로 잡힌다(체크포인트 무관).
-		const ids = await mgr.ctx.pouch.remoteLiveDocIds();
-		const scan = orphansFromRemoteIds(mgr.ctx, ids);
-		expect(scan.orphans).toContain("잔존.md");
+		// 원격 _all_docs 직접 조회 → 고아 id로 잡힌다(체크포인트 무관).
+		const scan = remoteOrphanIds(mgr.ctx, await mgr.ctx.pouch.remoteLiveDocIds());
+		expect(scan.ids).toContain(noteId("잔존.md"));
 
-		// 대상 문서를 로컬로 당겨와 정확한 rev 확보 → tombstone → push.
-		await mgr.ctx.pouch.pullDocs([noteId("잔존.md")]);
-		const n = await tombstoneVaultOrphans(mgr.ctx, mgr.uploader, scan.orphans);
+		// 원격에 직접 tombstone → 원격 live에서 빠진다(반복 실행해도 다시 안 잡힘).
+		const n = await tombstoneRemoteOrphans(mgr.ctx, scan.ids);
 		expect(n).toBe(1);
-		expect((await mgr.note("잔존.md"))?.deleted).toBe(true);
+		const after = remoteOrphanIds(mgr.ctx, await mgr.ctx.pouch.remoteLiveDocIds());
+		expect(after.ids).not.toContain(noteId("잔존.md"));
 
-		// 원격에도 tombstone 전파(다른 기기가 받아 삭제 적용 가능).
-		await mgr.push();
+		// 다른 기기도 tombstone 수신.
 		await other.pull();
 		expect((await other.note("잔존.md"))?.deleted).toBe(true);
 	});

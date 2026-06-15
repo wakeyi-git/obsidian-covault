@@ -129,11 +129,7 @@ export class PouchService {
 
 	/** 특정 리비전 조회(충돌 사본 비교용). */
 	async getRev<T extends PouchDocBase>(id: string, rev: string): Promise<T | null> {
-		try {
-			return (await this.localDb().get(id, { rev })) as unknown as T;
-		} catch {
-			return null;
-		}
+		return (await this.localDb().get(id, { rev }).catch(() => null)) as unknown as T | null;
 	}
 
 	/** 로컬 upsert. 기존 _rev를 붙여 갱신, 409 시 1회 재시도. */
@@ -188,9 +184,7 @@ export class PouchService {
 	}
 
 	/** 특정 리비전 제거(충돌 해소용). */
-	async removeRev(id: string, rev: string): Promise<void> {
-		await this.localDb().remove(id, rev);
-	}
+	async removeRev(id: string, rev: string): Promise<void> { await this.localDb().remove(id, rev); }
 
 	/** 로컬 note 문서 전체. */
 	async allNotes(): Promise<NoteDoc[]> {
@@ -409,13 +403,24 @@ export class PouchService {
 	/** 원격에 **살아있는**(tombstone 제외) 모든 문서 id. 정합 복구가 원격을 직접 보고 고아를 찾을 때 사용
 	 *  — 로컬 체크포인트가 뒤처져도 원격 실제 상태를 본다. allDocs는 deleted를 제외하므로 곧 live 목록. */
 	async remoteLiveDocIds(): Promise<string[]> {
-		return (await this.remote.allDocs()).rows.map((r) => r.id);
+		// soft-delete(deleted=true 필드)는 allDocs에 남으므로 include_docs로 받아 제외(복구 반복 검출 방지).
+		const res = await this.remote.allDocs<{ deleted?: boolean }>({ include_docs: true });
+		return res.rows.filter((r) => r.doc && !r.doc.deleted).map((r) => r.id);
 	}
 
-	/** 특정 id만 원격→로컬로 당겨온다(정합 복구가 tombstone 전 정확한 rev를 로컬에 확보하려고 사용). */
-	async pullDocs(ids: string[]): Promise<number> {
-		if (ids.length === 0) return 0;
-		return (await this.localDb().replicate.from(this.remote, { ...this.replicateOpts(), doc_ids: ids }))?.docs_written ?? 0;
+	/** 원격 문서를 현재 원격 rev 위에 직접 tombstone(정합 복구용) — 로컬 분기 충돌·누락이 있어도 원격 live를
+	 *  확실히 덮어 재생을 막는다. patch=deleted 외 메타. 이미 없음/삭제/거부 시 false(관리자 admin이라 통과). */
+	async tombstoneRemoteDoc(id: string, patch: Record<string, unknown>): Promise<boolean> {
+		const cur = (await this.remote.get(id).catch(() => null)) as (Record<string, unknown> & { deleted?: boolean; version?: number }) | null;
+		if (!cur || cur.deleted) return false;
+		const doc: Record<string, unknown> = { ...cur, deleted: true, version: (cur.version ?? 0) + 1, ...patch };
+		delete doc._attachments;
+		try {
+			await this.remote.put(doc as PouchDB.Core.PutDocument<Record<string, unknown>>);
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	/** 1회성 양방향 동기화(push 후 pull). 자동 동기화가 꺼진 상태의 수동 전체 동기화에 사용. */
@@ -456,14 +461,7 @@ export class PouchService {
 	}
 
 	async close(): Promise<void> {
-		if (this.replication) {
-			try {
-				this.replication.cancel();
-			} catch {
-				/* noop */
-			}
-			this.replication = null;
-		}
+		this.stopReplication();
 		try {
 			await this.remote.close();
 		} catch {

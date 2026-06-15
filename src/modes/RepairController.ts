@@ -2,6 +2,7 @@ import { App, Notice } from "obsidian";
 import { Logger } from "../core/log/Logger";
 import { CoVaultSettings } from "../settings/types";
 import { MirrorSync } from "../core/sync/MirrorSync";
+import { dbPathOfId } from "../core/sync/orphanRepair";
 import { errMessage } from "../core/util/err";
 import { confirm } from "../ui/ConfirmModal";
 import { t } from "../i18n";
@@ -70,10 +71,10 @@ export class RepairController {
 			return;
 		}
 
-		// 1단계: 원격 _all_docs를 직접 조회(연결 비운 상태)해 고아를 찾고, 그 문서를 로컬로 당겨와 정확한 rev
-		// 확보(tombstone 준비). 로컬 체크포인트가 뒤처져도 원격 실제 상태 기준이라 옛 삭제 파일도 잡힌다.
+		// 1단계: 원격 _all_docs를 직접 조회(연결 비운 상태)해 고아 문서 id를 찾는다. 로컬 체크포인트가 뒤처져도
+		// 원격 실제 상태 기준이라 옛 삭제 파일/유령 문서(vault엔 없는데 DB엔 live)를 잡는다.
 		const found = await this.withConnectionsFreed(allSyncs, async () => {
-			const acc: Array<{ sync: MirrorSync; paths: string[] }> = [];
+			const acc: Array<{ sync: MirrorSync; ids: string[] }> = [];
 			for (const sync of syncs) {
 				this.d.logger.info(t("sync.repair_pulling", { db: sync.remoteDb }), true);
 				const scan = await withTimeout(sync.scanRemoteOrphans(), 75000, () => null);
@@ -81,21 +82,18 @@ export class RepairController {
 					this.d.logger.warn(t("sync.repair_pull_failed", { db: sync.remoteDb, err: "timeout/error" }), true);
 					continue;
 				}
-				this.d.logger.info(t("sync.repair_scanned", { db: sync.remoteDb, live: scan.liveCount, orphans: scan.orphans.length }), true);
-				if (scan.orphans.length > 0) {
-					await sync.pullDocs(scan.orphans).catch(() => 0); // tombstone 전 정확한 rev 로컬 확보
-					acc.push({ sync, paths: scan.orphans });
-				}
+				this.d.logger.info(t("sync.repair_scanned", { db: sync.remoteDb, live: scan.liveCount, orphans: scan.ids.length }), true);
+				if (scan.ids.length > 0) acc.push({ sync, ids: scan.ids });
 			}
 			return acc;
 		});
 
-		const total = found.reduce((n, f) => n + f.paths.length, 0);
+		const total = found.reduce((n, f) => n + f.ids.length, 0);
 		if (total === 0) {
 			this.d.logger.ok(t("sync.repair_consistency_ok"), true);
 			return;
 		}
-		const sample = found.flatMap((f) => f.paths).slice(0, 12).join("\n");
+		const sample = found.flatMap((f) => f.ids.map(dbPathOfId)).slice(0, 12).join("\n");
 		const ok = await confirm(this.d.app, {
 			title: t("sync.repair_confirm_title"),
 			message: t("sync.repair_confirm_body", { n: total, sample }),
@@ -104,11 +102,11 @@ export class RepairController {
 		});
 		if (!ok) return;
 
-		// 2단계: tombstone + push(다시 연결 비운 상태) → 삭제를 원격에 전파.
+		// 2단계: 원격에 직접 tombstone(원격 rev 위에) → live 분기를 확실히 덮어 다시 안 살아나게 + 전파.
 		const tombstoned = await this.withConnectionsFreed(allSyncs, async () => {
 			let n = 0;
 			for (const f of found) {
-				n += await f.sync.tombstoneVaultOrphans(f.paths).catch((e) => {
+				n += await f.sync.tombstoneRemoteOrphans(f.ids).catch((e) => {
 					this.d.logger.warn(t("sync.repair_pull_failed", { db: f.sync.remoteDb, err: errMessage(e) }), true);
 					return 0;
 				});
