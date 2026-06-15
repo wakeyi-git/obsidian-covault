@@ -37,6 +37,25 @@ export async function listVaultOrphans(ctx: MirrorContext): Promise<string[]> {
 	return (await scanVaultOrphans(ctx)).orphans;
 }
 
+/**
+ * 원격 문서 id 목록(remoteLiveDocIds 결과)으로 고아를 판정 — 로컬 DB가 아니라 **원격 실제 상태** 기준이라
+ * 체크포인트가 뒤처져도 옛 삭제 파일을 잡는다. note:/asset: id만 보고 vault에 없는(+제외 아님) 것을 고른다.
+ */
+export function orphansFromRemoteIds(ctx: MirrorContext, ids: string[]): OrphanScan {
+	const orphans: string[] = [];
+	let liveCount = 0;
+	for (const id of ids) {
+		const dbPath = id.startsWith("note:") ? id.slice(5) : id.startsWith("asset:") ? id.slice(6) : null;
+		if (dbPath == null) continue; // note/asset 외 문서(manifest·rtconfig 등)는 대상 아님
+		liveCount++;
+		const localPath = ctx.toLocalPath(dbPath);
+		if (ctx.isExcluded(localPath)) continue;
+		if (ctx.fileExists(localPath)) continue;
+		orphans.push(dbPath);
+	}
+	return { orphans, liveCount };
+}
+
 /** 주어진 경로들을 tombstone(삭제 전파)한다. 실제로 만든 tombstone 수를 반환. */
 export async function tombstoneVaultOrphans(ctx: MirrorContext, uploader: Uploader, dbPaths: string[]): Promise<number> {
 	let n = 0;

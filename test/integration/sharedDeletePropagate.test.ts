@@ -6,7 +6,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { Cluster, settle } from "../harness/env";
 import { LocalApplier } from "../../src/core/sync/LocalApplier";
 import { LocalWatcher } from "../../src/core/sync/LocalWatcher";
-import { listVaultOrphans, tombstoneVaultOrphans } from "../../src/core/sync/orphanRepair";
+import { listVaultOrphans, orphansFromRemoteIds, tombstoneVaultOrphans } from "../../src/core/sync/orphanRepair";
 import { noteId } from "../../src/core/model/types";
 
 describe("공동 공간 삭제 전파 (관리자 → 읽기전용 구성원)", () => {
@@ -148,5 +148,35 @@ describe("공동 공간 삭제 전파 (관리자 → 읽기전용 구성원)", (
 		const n = await tombstoneVaultOrphans(mgr.ctx, mgr.uploader, ["외부.md"]);
 		expect(n).toBe(1);
 		expect((await mgr.note("외부.md"))?.deleted).toBe(true);
+	});
+
+	it("원격-스캔 복구: 로컬 DB엔 아예 없는(체크포인트 뒤처짐) 원격 파일도 잡아 tombstone한다", async () => {
+		cluster = new Cluster();
+		const mgr = cluster.device({ deviceId: "mgr", role: "manager", remoteDb: "share_x", localRoot: "" });
+		const other = cluster.device({ deviceId: "other", role: "manager", remoteDb: "share_x", localRoot: "" });
+
+		// 다른 기기가 원격에 파일을 올림 — mgr는 pull하지 않아 로컬 DB·vault 모두에 없음.
+		await other.vault.create("잔존.md", "내용");
+		await other.uploader.uploadPath("잔존.md");
+		await other.push();
+
+		// 로컬 스캔으론 못 잡는다(로컬 DB에 문서 자체가 없음).
+		expect(await listVaultOrphans(mgr.ctx)).not.toContain("잔존.md");
+
+		// 원격 _all_docs 직접 조회 → 고아로 잡힌다(체크포인트 무관).
+		const ids = await mgr.ctx.pouch.remoteLiveDocIds();
+		const scan = orphansFromRemoteIds(mgr.ctx, ids);
+		expect(scan.orphans).toContain("잔존.md");
+
+		// 대상 문서를 로컬로 당겨와 정확한 rev 확보 → tombstone → push.
+		await mgr.ctx.pouch.pullDocs([noteId("잔존.md")]);
+		const n = await tombstoneVaultOrphans(mgr.ctx, mgr.uploader, scan.orphans);
+		expect(n).toBe(1);
+		expect((await mgr.note("잔존.md"))?.deleted).toBe(true);
+
+		// 원격에도 tombstone 전파(다른 기기가 받아 삭제 적용 가능).
+		await mgr.push();
+		await other.pull();
+		expect((await other.note("잔존.md"))?.deleted).toBe(true);
 	});
 });

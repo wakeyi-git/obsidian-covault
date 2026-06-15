@@ -16,7 +16,7 @@ import { FullSync, SyncDirection } from "./FullSync";
 import { parseDeniedEvent, deniedDisplayPath } from "./deniedEvent";
 import { sweepTombstones } from "./tombstoneRetention";
 import { isAuthError, logAuthDiagnostic } from "./authDiagnostic";
-import { scanVaultOrphans, tombstoneVaultOrphans, OrphanScan } from "./orphanRepair";
+import { scanVaultOrphans, orphansFromRemoteIds, tombstoneVaultOrphans, OrphanScan } from "./orphanRepair";
 import { t } from "../../i18n";
 
 /**
@@ -456,6 +456,18 @@ export class MirrorSync {
 	/** 정합 복구 스캔: 로컬 DB엔 살아있지만 vault엔 없는 파일 + 진단 카운트. orphanRepair.ts. */
 	scanVaultOrphans(): Promise<OrphanScan> {
 		return scanVaultOrphans(this.ctx);
+	}
+
+	/** 정합 복구 스캔(원격 기준): 원격 _all_docs를 직접 보고 vault에 없는 파일을 찾는다(체크포인트 무관). */
+	async scanRemoteOrphans(): Promise<OrphanScan> {
+		const ids = await this.ctx.pouch.remoteLiveDocIds();
+		return orphansFromRemoteIds(this.ctx, ids);
+	}
+
+	/** 정합 복구: 주어진 dbPath들의 note/asset 문서를 원격에서 로컬로 당겨와 정확한 rev를 확보(tombstone 전). */
+	pullDocs(dbPaths: string[]): Promise<number> {
+		const ids = [...dbPaths.map((p) => noteId(p)), ...dbPaths.map((p) => assetId(p))];
+		return this.ctx.pouch.pullDocs(ids);
 	}
 
 	/** 정합 복구: 주어진 경로들을 tombstone해 삭제를 전파한다. 만든 tombstone 수 반환. */

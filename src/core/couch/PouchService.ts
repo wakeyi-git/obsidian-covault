@@ -380,9 +380,7 @@ export class PouchService {
 	// --- 로컬 ↔ 원격 live replication ---
 
 	/** 복제 단계에서 한도 초과 첨부를 제외하기 위한 크기 한도(MB) 주입. 0/음수면 무제한. */
-	setMaxAttachmentBytes(maxMB: number): void {
-		this.maxAttachmentBytes = maxMB > 0 ? maxMB * 1024 * 1024 : 0;
-	}
+	setMaxAttachmentBytes(maxMB: number): void { this.maxAttachmentBytes = maxMB > 0 ? maxMB * 1024 * 1024 : 0; }
 
 	/**
 	 * 복제 옵션(필터). 한도 초과 첨부(asset 문서)는 push/pull 어느 방향으로도 복제하지 않는다.
@@ -400,21 +398,29 @@ export class PouchService {
 
 	/** 1회성 push만(로컬→원격). 수동 "업로드만"에서 원격 변경을 끌어오지 않기 위해 사용. */
 	async replicatePushOnce(): Promise<number> {
-		const push = await this.localDb().replicate.to(this.remote, this.replicateOpts());
-		return push?.docs_written ?? 0;
+		return (await this.localDb().replicate.to(this.remote, this.replicateOpts()))?.docs_written ?? 0;
 	}
 
 	/** 1회성 pull만(원격→로컬). 수동 "다운로드만"에서 로컬 변경을 밀어올리지 않기 위해 사용. */
 	async replicatePullOnce(): Promise<number> {
-		const pull = await this.localDb().replicate.from(this.remote, this.replicateOpts());
-		return pull?.docs_written ?? 0;
+		return (await this.localDb().replicate.from(this.remote, this.replicateOpts()))?.docs_written ?? 0;
+	}
+
+	/** 원격에 **살아있는**(tombstone 제외) 모든 문서 id. 정합 복구가 원격을 직접 보고 고아를 찾을 때 사용
+	 *  — 로컬 체크포인트가 뒤처져도 원격 실제 상태를 본다. allDocs는 deleted를 제외하므로 곧 live 목록. */
+	async remoteLiveDocIds(): Promise<string[]> {
+		return (await this.remote.allDocs()).rows.map((r) => r.id);
+	}
+
+	/** 특정 id만 원격→로컬로 당겨온다(정합 복구가 tombstone 전 정확한 rev를 로컬에 확보하려고 사용). */
+	async pullDocs(ids: string[]): Promise<number> {
+		if (ids.length === 0) return 0;
+		return (await this.localDb().replicate.from(this.remote, { ...this.replicateOpts(), doc_ids: ids }))?.docs_written ?? 0;
 	}
 
 	/** 1회성 양방향 동기화(push 후 pull). 자동 동기화가 꺼진 상태의 수동 전체 동기화에 사용. */
 	async replicateOnce(): Promise<{ pushed: number; pulled: number }> {
-		const pushed = await this.replicatePushOnce();
-		const pulled = await this.replicatePullOnce();
-		return { pushed, pulled };
+		return { pushed: await this.replicatePushOnce(), pulled: await this.replicatePullOnce() };
 	}
 
 	/** 양방향 live 동기화 시작. retry:true로 오프라인/재연결을 자동 처리. */

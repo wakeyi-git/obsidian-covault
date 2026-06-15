@@ -70,16 +70,22 @@ export class RepairController {
 			return;
 		}
 
-		// 1단계: 원격 pull(연결 비운 상태) → 로컬 DB를 최신과 맞추고 고아 스캔.
+		// 1단계: 원격 _all_docs를 직접 조회(연결 비운 상태)해 고아를 찾고, 그 문서를 로컬로 당겨와 정확한 rev
+		// 확보(tombstone 준비). 로컬 체크포인트가 뒤처져도 원격 실제 상태 기준이라 옛 삭제 파일도 잡힌다.
 		const found = await this.withConnectionsFreed(allSyncs, async () => {
 			const acc: Array<{ sync: MirrorSync; paths: string[] }> = [];
 			for (const sync of syncs) {
 				this.d.logger.info(t("sync.repair_pulling", { db: sync.remoteDb }), true);
-				const pulled = await withTimeout(sync.pullOnce(), 75000, () => -1);
-				if (pulled < 0) this.d.logger.warn(t("sync.repair_pull_failed", { db: sync.remoteDb, err: "timeout/error" }), true);
-				const scan = await sync.scanVaultOrphans();
+				const scan = await withTimeout(sync.scanRemoteOrphans(), 75000, () => null);
+				if (!scan) {
+					this.d.logger.warn(t("sync.repair_pull_failed", { db: sync.remoteDb, err: "timeout/error" }), true);
+					continue;
+				}
 				this.d.logger.info(t("sync.repair_scanned", { db: sync.remoteDb, live: scan.liveCount, orphans: scan.orphans.length }), true);
-				if (scan.orphans.length > 0) acc.push({ sync, paths: scan.orphans });
+				if (scan.orphans.length > 0) {
+					await sync.pullDocs(scan.orphans).catch(() => 0); // tombstone 전 정확한 rev 로컬 확보
+					acc.push({ sync, paths: scan.orphans });
+				}
 			}
 			return acc;
 		});
