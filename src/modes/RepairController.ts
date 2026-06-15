@@ -12,8 +12,9 @@ import { t } from "../i18n";
  * 공유 공간 링크만 대상으로 한다(구성원 mirror·개인 동기화 제외 — 거긴 내 vault가 정본이 아니라
  * 아직 안 받은 파일을 고아로 오인해 지울 수 있다). 개수·경로 확인 후 실행.
  *
- * 모든 단계를 로그로 남기고 pull에 타임아웃을 둔다 — pull이 멈춰도(연결 고갈 등) 복구가 얼어붙지 않고
- * 무엇이 일어났는지 보이게 한다("실행해도 아무 로그도 안 뜬다"를 방지).
+ * 연결 확보: 관리자 링크가 많으면(>6) 라이브 longpoll이 Chromium 호스트당 연결 한도를 채워 복구의 pull/push가
+ * 굶는다(requestUrl은 취소 불가라 잡힌 연결이 ~60s 하트비트로만 풀림). 그래서 pull·push 구간 동안 전 링크
+ * 복제를 잠시 멈춰 연결을 비우고(끝나면 되살림) pull 타임아웃을 넉넉히 둔다. 모든 단계를 로그로 남긴다.
  */
 export interface RepairDeps {
 	app: App;
@@ -43,6 +44,16 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => T): Promise<
 export class RepairController {
 	constructor(private d: RepairDeps) {}
 
+	/** 전 링크 복제를 멈춰 연결을 비운 상태로 fn을 실행하고, 끝나면 복제를 되살린다. */
+	private async withConnectionsFreed<T>(allSyncs: MirrorSync[], fn: () => Promise<T>): Promise<T> {
+		for (const sync of allSyncs) sync.pauseReplication();
+		try {
+			return await fn();
+		} finally {
+			for (const sync of allSyncs) sync.resumeReplication();
+		}
+	}
+
 	async repairSharedConsistency(): Promise<void> {
 		const s = this.d.settings();
 		if (s.role !== "manager") {
@@ -58,17 +69,21 @@ export class RepairController {
 			this.d.logger.warn(t("sync.repair_no_shared_spaces"), true);
 			return;
 		}
-		const found: Array<{ sync: MirrorSync; paths: string[] }> = [];
-		for (const sync of syncs) {
-			// 원격을 먼저 pull해 로컬 DB를 최신(구성원이 보는 상태)과 맞춘다. 관리자가 쓴 파일은 skip-self라
-			// pull해도 vault에 되살아나지 않으므로, vault엔 없고 DB엔 live인 고아로 정확히 잡힌다.
-			this.d.logger.info(t("sync.repair_pulling", { db: sync.remoteDb }));
-			const pulled = await withTimeout(sync.pullOnce(), 20000, () => -1);
-			if (pulled < 0) this.d.logger.warn(t("sync.repair_pull_failed", { db: sync.remoteDb, err: "timeout/error" }), true);
-			const scan = await sync.scanVaultOrphans();
-			this.d.logger.info(t("sync.repair_scanned", { db: sync.remoteDb, live: scan.liveCount, orphans: scan.orphans.length }), true);
-			if (scan.orphans.length > 0) found.push({ sync, paths: scan.orphans });
-		}
+
+		// 1단계: 원격 pull(연결 비운 상태) → 로컬 DB를 최신과 맞추고 고아 스캔.
+		const found = await this.withConnectionsFreed(allSyncs, async () => {
+			const acc: Array<{ sync: MirrorSync; paths: string[] }> = [];
+			for (const sync of syncs) {
+				this.d.logger.info(t("sync.repair_pulling", { db: sync.remoteDb }), true);
+				const pulled = await withTimeout(sync.pullOnce(), 75000, () => -1);
+				if (pulled < 0) this.d.logger.warn(t("sync.repair_pull_failed", { db: sync.remoteDb, err: "timeout/error" }), true);
+				const scan = await sync.scanVaultOrphans();
+				this.d.logger.info(t("sync.repair_scanned", { db: sync.remoteDb, live: scan.liveCount, orphans: scan.orphans.length }), true);
+				if (scan.orphans.length > 0) acc.push({ sync, paths: scan.orphans });
+			}
+			return acc;
+		});
+
 		const total = found.reduce((n, f) => n + f.paths.length, 0);
 		if (total === 0) {
 			this.d.logger.ok(t("sync.repair_consistency_ok"), true);
@@ -82,10 +97,17 @@ export class RepairController {
 			warning: true,
 		});
 		if (!ok) return;
-		let tombstoned = 0;
-		for (const f of found) tombstoned += await f.sync.tombstoneVaultOrphans(f.paths).catch((e) => {
-			this.d.logger.warn(t("sync.repair_pull_failed", { db: f.sync.remoteDb, err: errMessage(e) }));
-			return 0;
+
+		// 2단계: tombstone + push(다시 연결 비운 상태) → 삭제를 원격에 전파.
+		const tombstoned = await this.withConnectionsFreed(allSyncs, async () => {
+			let n = 0;
+			for (const f of found) {
+				n += await f.sync.tombstoneVaultOrphans(f.paths).catch((e) => {
+					this.d.logger.warn(t("sync.repair_pull_failed", { db: f.sync.remoteDb, err: errMessage(e) }), true);
+					return 0;
+				});
+			}
+			return n;
 		});
 		this.d.logger.ok(t("sync.repair_done", { n: tombstoned }), true);
 	}
