@@ -77,6 +77,28 @@ export function getCouchPassword(app: App, fallback: string | undefined): string
 	return getSecretValue(app, COUCH_PASSWORD_ID, fallback);
 }
 
+/** 진단용 비밀번호 출처(값은 노출하지 않는다). */
+export type CouchPasswordSource = "secret-storage" | "plaintext-fallback" | "empty";
+
+/**
+ * 활성 CouchDB 비밀번호가 **어느 경로**에서 해석되는지 보고(값 비노출). getCouchPassword와 동일한
+ * 해석 규칙을 따른다 — 인증 실패 진단에서 "이 기기에 자격증명이 없음(empty)"과 "설정돼 있는데 서버가
+ * 거부(스테일/회전)"를 구분한다. empty면 빈 로그인이 서버 잠금을 유발한 것이므로 재온보딩이 필요하다.
+ */
+export function describeCouchPassword(app: App, fallback: string | undefined): { source: CouchPasswordSource; hasSecretStorage: boolean } {
+	const hasSS = hasSecretStorage(app);
+	const ss = store(app);
+	if (ss) {
+		try {
+			const v = ss.getSecret(COUCH_PASSWORD_ID);
+			if (v != null && v !== "") return { source: "secret-storage", hasSecretStorage: hasSS };
+		} catch {
+			/* 미지원/오류 → 평문 폴백 판정 */
+		}
+	}
+	return { source: fallback && fallback !== "" ? "plaintext-fallback" : "empty", hasSecretStorage: hasSS };
+}
+
 /** Yjs 공간 시크릿 조회(시크릿 우선, 없으면 평문 fallback). */
 export function getYjsSecret(app: App, fallback: string | undefined): string {
 	return getSecretValue(app, YJS_SECRET_ID, fallback);

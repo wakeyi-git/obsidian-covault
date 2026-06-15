@@ -15,6 +15,8 @@ import { LocalApplier } from "./LocalApplier";
 import { FullSync, SyncDirection } from "./FullSync";
 import { parseDeniedEvent, deniedDisplayPath } from "./deniedEvent";
 import { sweepTombstones } from "./tombstoneRetention";
+import { isAuthError, logAuthDiagnostic } from "./authDiagnostic";
+import { listVaultOrphans, tombstoneVaultOrphans } from "./orphanRepair";
 import { t } from "../../i18n";
 
 /**
@@ -254,6 +256,7 @@ export class MirrorSync {
 				this.authStopped = true;
 				this.ctx.status.state = "error";
 				this.ctx.logger.error(t("sync.sync_stopped_due_to_auth_failure", { db: this.ctx.remoteDb, err: msg }), true);
+				logAuthDiagnostic(this.ctx, this.ctx.remoteDb); // 잠금이 어느 자격증명 경로에서 비롯됐는지
 			} else {
 				this.ctx.status.state = "offline"; // 다음 이벤트/안전망에서 재시도
 				if (!wasOffline) this.ctx.logger.info(t("sync.sync_waiting_offline_error", { db: this.ctx.remoteDb })); // 전이 시에만 로그
@@ -303,6 +306,7 @@ export class MirrorSync {
 						}),
 						true,
 					);
+					logAuthDiagnostic(this.ctx, this.ctx.remoteDb); // 잠금이 어느 자격증명 경로에서 비롯됐는지
 				} else {
 					this.ctx.logger.error(t("sync.replication_error", { err: e.message }));
 				}
@@ -443,9 +447,14 @@ export class MirrorSync {
 		const dbPath = this.ctx.toDbPath(localPath);
 		return dbPath != null && !this.ctx.isExcluded(localPath);
 	}
-}
 
-/** 인증/계정잠금 류 오류 판별(재시도 폭주 방지). */
-function isAuthError(message: string): boolean {
-	return /unauthorized|name or password|password is incorrect|forbidden|locked|\b401\b|\b403\b/i.test(message);
+	/** 정합 복구: 로컬 DB엔 살아있지만 vault엔 없는 파일 경로(전파 안 된 잔존 삭제). orphanRepair.ts. */
+	listVaultOrphans(): Promise<string[]> {
+		return listVaultOrphans(this.ctx);
+	}
+
+	/** 정합 복구: 주어진 경로들을 tombstone해 삭제를 전파한다. 만든 tombstone 수 반환. */
+	tombstoneVaultOrphans(dbPaths: string[]): Promise<number> {
+		return tombstoneVaultOrphans(this.ctx, this.uploader, dbPaths);
+	}
 }

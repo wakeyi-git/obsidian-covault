@@ -17,6 +17,7 @@ import { recordDeleteModify, DeleteModifyItem } from "./deleteModifyQueue";
 import { NoteDoc, AssetDoc, noteId, assetId } from "../model/types";
 import { exceedsAttachmentLimit } from "./attachment";
 import { sha256 } from "../hash/hash";
+import { isAuthError, logAuthDiagnostic } from "./authDiagnostic";
 import { t } from "../../i18n";
 
 export type SyncDirection = "both" | "up" | "down";
@@ -104,7 +105,9 @@ export class FullSync {
 			const pushed = await ctx.pouch.replicatePushOnce();
 			ctx.logger.info(t("version.startup_reconcile_done_docs", { pushed, pulled }));
 		} catch (e) {
-			ctx.logger.error(t("version.startup_reconcile_failed", { err: errMessage(e) }), true);
+			const msg = errMessage(e);
+			ctx.logger.error(t("version.startup_reconcile_failed", { err: msg }), true);
+			if (isAuthError(msg)) logAuthDiagnostic(ctx, ctx.remoteDb); // 잠금이 어느 자격증명 경로에서 비롯됐는지
 		}
 
 		await this.writeManifestSnapshot(baseline);

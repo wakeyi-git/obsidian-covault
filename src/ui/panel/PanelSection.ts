@@ -221,6 +221,8 @@ export interface SyncHost {
 	resetLocalCache(): Promise<void>;
 	realtimeStatus(): Promise<void>;
 	openResetModal(): void;
+	/** 공유 공간 정합 복구(교사): vault엔 없는데 공유 DB엔 남은 파일을 tombstone해 삭제를 전파. */
+	repairSharedConsistency(): Promise<void>;
 	refreshShares(): Promise<void>;
 	/** 원본 경로(파일/폴더)를 선택 학생들에게 복사. 기술문서 §20. */
 	bulkCopy(sourcePath: string, opts: CopyOptions, memberIds: string[]): Promise<CopyResult & { error?: string }>;

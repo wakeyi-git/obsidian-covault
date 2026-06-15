@@ -1,0 +1,34 @@
+import { MirrorContext } from "./MirrorContext";
+import { Uploader } from "./Uploader";
+
+/**
+ * 공유 공간 정합 복구(관리자). "로컬 DB엔 살아있지만 vault엔 없는" 파일 경로를 찾는다 — 관리자가 vault에서
+ * 폴더째 삭제했으나 tombstone이 만들어지지 않아(폴더 삭제 이벤트 누락 버그) 전파되지 못한 잔존 문서가 대상.
+ * 매니페스트 기준선에 의존하지 않으므로, 기준선이 이미 지나쳐 reconcileDeletions가 못 잡는 상태도 정리한다.
+ *
+ * ⚠️ **vault가 최신(다운로드 완료)** 이라는 전제 — 아직 안 받은 파일을 고아로 오인해 지우지 않도록,
+ *    호출측이 관리자(자기 vault가 정본)·공유 공간 링크로 한정하고 사용자 확인을 받는다.
+ */
+export async function listVaultOrphans(ctx: MirrorContext): Promise<string[]> {
+	const notes = await ctx.pouch.allNotes();
+	const assets = ctx.settings.syncAssets ? await ctx.pouch.allAssets() : [];
+	const out: string[] = [];
+	for (const doc of [...notes, ...assets]) {
+		if (doc.deleted) continue; // 이미 tombstone
+		const localPath = ctx.toLocalPath(doc.path);
+		if (ctx.isExcluded(localPath)) continue; // 보관/충돌/제외 폴더는 대상 아님
+		if (ctx.fileExists(localPath)) continue; // vault에 있음 → 정상(고아 아님)
+		out.push(doc.path);
+	}
+	return out;
+}
+
+/** 주어진 경로들을 tombstone(삭제 전파)한다. 실제로 만든 tombstone 수를 반환. */
+export async function tombstoneVaultOrphans(ctx: MirrorContext, uploader: Uploader, dbPaths: string[]): Promise<number> {
+	let n = 0;
+	for (const dbPath of dbPaths) {
+		if ((await uploader.tombstonePath(dbPath)) === "tombstoned") n++;
+	}
+	if (n > 0) await ctx.pouch.replicatePushOnce().catch(() => undefined); // 즉시 전파 시도(live가 없거나 느릴 때)
+	return n;
+}

@@ -27,6 +27,7 @@ import { RecoveryController } from "./modes/RecoveryController";
 import { ParticipantController } from "./modes/ParticipantController";
 import { DeploymentController } from "./modes/DeploymentController";
 import { ServerResetController } from "./modes/ServerResetController";
+import { RepairController } from "./modes/RepairController";
 import { OnboardingController } from "./modes/OnboardingController";
 import { PouchService } from "./core/couch/PouchService";
 import { promptAddFeedback } from "./ui/FeedbackView";
@@ -70,6 +71,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	private pluginDeployCtl!: PluginDeployController;
 	private groupRequestTimer: number | null = null; // grouprequest 변경 → 교사 처리 debounce
 	private serverResetCtl!: ServerResetController;
+	private repairCtl!: RepairController;
 	private onboardingCtl!: OnboardingController;
 	private applyTimer: number | null = null;
 
@@ -220,6 +222,13 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 				this.core.sharedSpaces = [];
 			},
 		});
+		this.repairCtl = new RepairController({
+			app: this.app,
+			logger: this.logger,
+			settings: () => this.settings,
+			getSyncs: () => this.mode?.getSyncs() ?? [],
+			openLog: () => this.nav.openLog(),
+		});
 		this.onboardingCtl = new OnboardingController({
 			app: this.app,
 			logger: this.logger,
@@ -312,6 +321,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			refreshShares: () => this.refreshShares(),
 			runDiagnostics: () => this.runDiagnostics(),
 			openResetModal: () => this.openResetModal(),
+			repairSharedConsistency: () => this.repairCtl.repairSharedConsistency(),
 		});
 		this.registerView(PANEL_VIEW_TYPE, (leaf: WorkspaceLeaf) => new CoVaultPanelView(leaf, this.panelHost));
 		this.addSettingTab(new CoVaultSettingTab(this.app, this));
@@ -553,14 +563,10 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	}
 
 	// --- 학생 온보딩: 초대 코드/딥링크로 자동 설정 ---
-	ingestInvite(input: string): Promise<void> {
-		return this.onboardingCtl.ingestInvite(input);
-	}
+	ingestInvite(input: string): Promise<void> { return this.onboardingCtl.ingestInvite(input); }
 
 	// --- 연결 테스트 (설정 버튼) → DeploymentController 위임 ---
-	testConnection(): Promise<void> {
-		return this.deploymentCtl.testConnection();
-	}
+	testConnection(): Promise<void> { return this.deploymentCtl.testConnection(); }
 
 	/** 종합 진단: 서버 도달 + 활성 링크별 읽기/쓰기 권한 + 실시간 상태. */
 	async runDiagnostics(): Promise<void> {
@@ -594,17 +600,9 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	 * 로컬 캐시·프로비저닝 상태를 비운다. 학급 구성(목록)은 유지 → 재초대·재배포로 복구.
 	 * Yjs 실시간 데이터는 플러그인이 못 지우므로 수동 안내만 표시한다.
 	 */
-	deleteMemberServer(member: MemberConfig): Promise<void> {
-		return this.serverResetCtl.deleteMemberServer(member);
-	}
-
-	deleteSharedServer(space: SharedSpace): Promise<void> {
-		return this.serverResetCtl.deleteSharedServer(space);
-	}
-
-	resetServerData(deleteAccounts: boolean): Promise<void> {
-		return this.serverResetCtl.resetServerData(deleteAccounts);
-	}
+	deleteMemberServer(member: MemberConfig): Promise<void> { return this.serverResetCtl.deleteMemberServer(member); }
+	deleteSharedServer(space: SharedSpace): Promise<void> { return this.serverResetCtl.deleteSharedServer(space); }
+	resetServerData(deleteAccounts: boolean): Promise<void> { return this.serverResetCtl.resetServerData(deleteAccounts); }
 
 	/** 언어 변경 시 로케일 재초기화 + 열린 패널 새로고침(설정 탭은 호출 측에서 display). */
 	refreshUiLanguage(): void {
@@ -672,6 +670,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			fullSync: (dir) => void this.fullSync(dir),
 			toggleAutoSync: () => void this.toggleAutoSync(),
 			resetLocalCache: () => void this.panelHost.resetLocalCache(),
+			repairSharedConsistency: () => void this.repairCtl.repairSharedConsistency(),
 			openConflicts: () => this.panelHost.openConflictModal(),
 			realtimeStatus: () => void this.realtimeStatus(),
 			refreshShares: () => void this.refreshShares(),

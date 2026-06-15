@@ -1,4 +1,4 @@
-import { EventRef, Platform, TAbstractFile, TFile } from "obsidian";
+import { EventRef, Platform, TAbstractFile, TFile, TFolder } from "obsidian";
 import { errMessage } from "../util/err";
 import { MirrorContext } from "./MirrorContext";
 import { Uploader } from "./Uploader";
@@ -164,6 +164,15 @@ export class LocalWatcher {
 	 *  - 일반 파일 삭제 → tombstone(상대 vault는 정책대로 처리, 기술문서 §10.4).
 	 */
 	private onDelete(file: TAbstractFile): void {
+		// 폴더 삭제: Obsidian은 폴더 1건의 delete 이벤트만 내고 내부 파일별 이벤트는 내지 않는다 —
+		// 그래서 폴더 안 파일들이 tombstone되지 않아 상대(구성원)에게 전파되지 않고 원래 위치에 남았다(현장 버그).
+		if (file instanceof TFolder) {
+			if (this.ctx.isStructuralSuppressed(file.path)) return; // applier가 일으킨 폴더 이동/삭제 echo
+			void this.handleFolderDelete(file.path).catch((e) =>
+				this.ctx.logger.error(t("sync.delete_handling_failed", { path: file.path, err: errMessage(e) })),
+			);
+			return;
+		}
 		if (!(file instanceof TFile)) return;
 		const localPath = file.path;
 		if (this.ctx.isStructuralSuppressed(localPath)) return; // applier가 일으킨 삭제/이동 echo
@@ -201,6 +210,27 @@ export class LocalWatcher {
 			return;
 		}
 		await this.uploader.tombstonePath(dbPath);
+	}
+
+	/**
+	 * 폴더 삭제 전파(현장 버그 #): 폴더 삭제 시점엔 vault 파일이 이미 사라졌으므로, 로컬 pouch에서 그 폴더
+	 * 아래 살아있는 note/asset 문서를 찾아 **파일 삭제와 동일 경로(handleDelete)** 로 처리한다 —
+	 * 관리자는 tombstone(전파), 읽기전용 구성원은 reconcileReadOnly(복원). Obsidian이 폴더 안 파일별
+	 * delete 이벤트를 따로 내든 말든(버전·플랫폼차) 멱등하게 동작한다(이미 tombstone이면 건너뜀).
+	 * 안전상 localRoot 전체 삭제(folderDb="")는 한 이벤트로 전부 tombstone하지 않는다 — 하위 폴더만 다룬다.
+	 */
+	private async handleFolderDelete(folderLocalPath: string): Promise<void> {
+		const folderDb = this.ctx.toDbPath(folderLocalPath);
+		if (folderDb == null || folderDb === "") return; // localRoot 밖 또는 루트 전체(과도 삭제 방지)
+		const prefix = folderDb + "/";
+		const notes = await this.ctx.pouch.allDocsByPrefix<NoteDoc>(noteId(prefix));
+		const assets = await this.ctx.pouch.allDocsByPrefix<AssetDoc>(assetId(prefix));
+		for (const doc of [...notes, ...assets]) {
+			if (doc.deleted) continue; // 이미 tombstone
+			const localPath = this.ctx.toLocalPath(doc.path);
+			if (this.ctx.isExcluded(localPath)) continue; // 보관/충돌/제외 폴더는 대상 아님
+			await this.handleDelete(doc.path, localPath);
+		}
 	}
 
 	/**

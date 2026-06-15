@@ -122,6 +122,21 @@ export class InMemoryVault {
 		this.emit("delete", file);
 	}
 
+	/**
+	 * 폴더 삭제(Obsidian 거동 모사): 내부 파일을 조용히 제거하고 **폴더 1건의 delete 이벤트만** 낸다 —
+	 * 파일별 delete 이벤트는 내지 않는다(이게 폴더 삭제 전파 버그의 원인). 중첩 하위 폴더도 함께 제거.
+	 */
+	async deleteFolder(path: string): Promise<void> {
+		const p = normalizePath(path);
+		for (const key of [...this.files.keys()]) {
+			if (key === p || key.startsWith(p + "/")) this.files.delete(key);
+		}
+		for (const f of [...this.folders]) {
+			if (f === p || f.startsWith(p + "/")) this.folders.delete(f);
+		}
+		this.emit("delete", new TFolder(p));
+	}
+
 	getFiles(): TFile[] {
 		return [...this.files.values()].map((e) => e.file);
 	}
