@@ -1,6 +1,6 @@
 import { setIcon } from "obsidian";
 import { PanelHost, panelButton, iconButton } from "../PanelSection";
-import { RoutineDoc, RoutineStateDoc } from "../../../core/model/types";
+import { RoutineDoc, RoutineStateDoc, routineStateId } from "../../../core/model/types";
 import { dayStr, itemsOn, computeStreak } from "../../../core/classroom/routines";
 import { monthMatrix, shiftMonth } from "../../../core/classroom/calendar";
 import { captureScroll } from "../scroll";
@@ -25,6 +25,8 @@ export class RoutinesView {
 	private calYear = new Date().getFullYear();
 	private calMonth0 = new Date().getMonth();
 	private studentSelDay = dayStr(Date.now());
+	// 체크 저장 직렬화(상태문서 단위) — 같은 날 여러 항목이 같은 doc를 써 rev 충돌나는 것을 막는다.
+	private persistQueue = new Map<string, Promise<unknown>>();
 
 	constructor(private host: PanelHost, private onBack: () => void) {}
 
@@ -240,24 +242,35 @@ export class RoutinesView {
 		const headRow = cal.createDiv({ cls: "covault-cal-grid" });
 		for (const k of WEEKDAY_KEYS) headRow.createDiv({ cls: "covault-cal-head", text: t(`dashboard.wd_${k}`) });
 		const grid = cal.createDiv({ cls: "covault-cal-grid" });
+		// 날짜 키 → 셀 element. 체크 토글 시 전체 재렌더 없이 해당 날짜 셀만 다시 색칠한다(모바일 탭 씹힘 방지).
+		const cellByDay = new Map<string, HTMLElement>();
+		const paintLevel = (el: HTMLElement, ts: number, key: string): void => {
+			el.removeClasses(["lvl-zero", "lvl-partial", "lvl-full"]);
+			const agg = this.aggregateForDay(data, ts, key);
+			if (agg.total > 0 && ts <= this.today) {
+				const pct = Math.round((agg.done / agg.total) * 100);
+				el.addClass(pct === 0 ? "lvl-zero" : pct >= 100 ? "lvl-full" : "lvl-partial");
+			}
+		};
 		for (const week of monthMatrix(this.calYear, this.calMonth0)) {
 			for (const cell of week) {
 				const key = dayStr(cell.ts);
 				const el = grid.createDiv({ cls: "covault-cal-cell", text: String(new Date(cell.ts).getDate()) });
+				cellByDay.set(key, el);
 				if (!cell.inMonth) el.addClass("is-out");
 				if (key === todayKey) el.addClass("is-today");
 				if (key === this.studentSelDay) el.addClass("is-sel");
-				const agg = this.aggregateForDay(data, cell.ts, key);
-				if (agg.total > 0 && cell.ts <= this.today) {
-					const pct = Math.round((agg.done / agg.total) * 100);
-					el.addClass(pct === 0 ? "lvl-zero" : pct >= 100 ? "lvl-full" : "lvl-partial");
-				}
+				paintLevel(el, cell.ts, key);
 				el.onclick = () => {
 					this.studentSelDay = key;
 					void this.reload();
 				};
 			}
 		}
+		const repaintCell = (key: string): void => {
+			const el = cellByDay.get(key);
+			if (el) paintLevel(el, new Date(`${key}T00:00`).getTime(), key);
+		};
 
 		// 선택 날짜의 모든 루틴 항목(그날 적용되는 것만).
 		const selTs = new Date(`${this.studentSelDay}T00:00`).getTime();
@@ -270,13 +283,23 @@ export class RoutinesView {
 			const card = list.createDiv({ cls: "covault-cr-card" });
 			const top = card.createDiv({ cls: "covault-cr-card-head" });
 			top.createSpan({ cls: "covault-cr-card-title", text: r.title });
-			const streak = computeStreak(r, byDay, this.today);
-			if (streak > 0) {
-				const sb = top.createSpan({ cls: "covault-cr-badge is-accent" });
-				setIcon(sb.createSpan(), "flame");
-				sb.createSpan({ text: t("dashboard.streak", { n: streak }) });
-			}
-			this.renderRoutineItems(card, r, selTs, byDay);
+			const streakSlot = top.createSpan({ cls: "covault-cr-streakslot" });
+			this.paintStreak(streakSlot, r, byDay);
+			// 체크 토글: 즉시 로컬 반영 + 해당 셀/연속 배지만 갱신, 저장은 백그라운드로 — 전체 reload를 없애
+			// 모바일에서 빠른 연속 탭이 DOM 재생성에 씹히던 문제를 제거한다. 저장 실패 시 되돌리고 알린다.
+			this.renderRoutineItems(card, r, selTs, byDay, (itemId, nowChecked, cb, lab) => {
+				const day = this.studentSelDay;
+				this.applyLocalCheck(byDay, r, day, itemId, nowChecked);
+				repaintCell(day);
+				this.paintStreak(streakSlot, r, byDay);
+				this.persistToggle(r.uid, day, itemId, nowChecked, () => {
+					this.applyLocalCheck(byDay, r, day, itemId, !nowChecked);
+					cb.checked = !nowChecked;
+					lab.toggleClass("is-done", cb.checked);
+					repaintCell(day);
+					this.paintStreak(streakSlot, r, byDay);
+				});
+			});
 		}
 		if (!any) this.empty(list, t("dashboard.no_items_day"));
 	}
@@ -295,8 +318,14 @@ export class RoutinesView {
 		return { done, total };
 	}
 
-	/** 한 루틴의 그날 항목 체크박스(오늘만 편집 가능, 과거/미래는 읽기 전용). */
-	private renderRoutineItems(card: HTMLElement, r: RoutineDoc, ts: number, byDay: Map<string, RoutineStateDoc>): void {
+	/** 한 루틴의 그날 항목 체크박스(오늘만 편집 가능, 과거/미래는 읽기 전용). onToggle은 즉시(낙관적) 처리용. */
+	private renderRoutineItems(
+		card: HTMLElement,
+		r: RoutineDoc,
+		ts: number,
+		byDay: Map<string, RoutineStateDoc>,
+		onToggle?: (itemId: string, checked: boolean, cb: HTMLInputElement, lab: HTMLElement) => void,
+	): void {
 		const key = dayStr(ts);
 		const editable = key === dayStr(this.today);
 		const checked = new Set(byDay.get(key)?.checked ?? []);
@@ -307,14 +336,71 @@ export class RoutinesView {
 			cb.disabled = !editable;
 			lab.toggleClass("is-done", cb.checked);
 			lab.createSpan({ text: item.label });
-			if (editable) {
-				cb.onchange = async () => {
-					await this.host.toggleRoutineItem(r.uid, key, item.id, cb.checked);
-					await this.reload();
+			if (editable && onToggle) {
+				cb.onchange = () => {
+					lab.toggleClass("is-done", cb.checked);
+					onToggle(item.id, cb.checked, cb, lab);
 				};
 			}
 		}
 		if (!editable) card.createDiv({ cls: "covault-cr-muted", text: t("dashboard.past_readonly") });
+	}
+
+	/** 연속 완료(streak) 배지를 슬롯에 다시 그린다(체크 토글 시 즉시 갱신). */
+	private paintStreak(slot: HTMLElement, r: RoutineDoc, byDay: Map<string, RoutineStateDoc>): void {
+		slot.empty();
+		const streak = computeStreak(r, byDay, this.today);
+		if (streak <= 0) return;
+		const sb = slot.createSpan({ cls: "covault-cr-badge is-accent" });
+		setIcon(sb.createSpan(), "flame");
+		sb.createSpan({ text: t("dashboard.streak", { n: streak }) });
+	}
+
+	/** 로컬 누가기록(byDay)에 체크 변경을 즉시 반영 — 저장 응답을 기다리지 않고 달력/연속 계산을 갱신한다. */
+	private applyLocalCheck(byDay: Map<string, RoutineStateDoc>, r: RoutineDoc, key: string, itemId: string, checked: boolean): void {
+		const cur = byDay.get(key);
+		const set = new Set(cur?.checked ?? []);
+		if (checked) set.add(itemId);
+		else set.delete(itemId);
+		const s = this.host.settings;
+		byDay.set(
+			key,
+			cur
+				? { ...cur, checked: [...set] }
+				: {
+						_id: routineStateId(r.uid, s.userId, key),
+						type: "routine-state",
+						schemaVersion: 1,
+						workspaceId: s.workspaceId,
+						routineUid: r.uid,
+						memberId: s.userId,
+						day: key,
+						checked: [...set],
+						updatedAtMs: this.today,
+					},
+		);
+	}
+
+	/**
+	 * 체크 저장을 백그라운드로 수행 — 같은 상태문서(uid:day)에 대한 쓰기를 직렬화해 rev 충돌을 막는다.
+	 * 실패(거부/예외)하면 onError로 UI를 되돌리고 사용자에게 알린다.
+	 */
+	private persistToggle(uid: string, day: string, itemId: string, checked: boolean, onError: () => void): void {
+		const k = `${uid}:${day}`;
+		const next = (this.persistQueue.get(k) ?? Promise.resolve())
+			.catch(() => {})
+			.then(async () => {
+				const ok = await this.host.toggleRoutineItem(uid, day, itemId, checked);
+				if (!ok) throw new Error("toggle rejected");
+			})
+			.catch(() => {
+				this.host.logger.warn(t("dashboard.routine_toggle_failed"), true);
+				onError();
+			});
+		this.persistQueue.set(k, next);
+		void next.finally(() => {
+			if (this.persistQueue.get(k) === next) this.persistQueue.delete(k);
+		});
 	}
 
 	private shiftCalMonth(n: number): void {

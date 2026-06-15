@@ -273,6 +273,7 @@
 		"completed_n": "완료 ({n})",
 		"incomplete_n": "미완료 ({n})",
 		"past_readonly": "지난 날짜는 읽기 전용입니다.",
+		"routine_toggle_failed": "체크 저장에 실패했습니다. 다시 시도해 주세요.",
 		"open_lesson": "수업 안내 열기",
 		"add_lesson": "이 칸에 수업 안내 추가",
 		"period_suffix": "교시",

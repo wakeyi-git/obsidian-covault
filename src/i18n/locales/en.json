@@ -273,6 +273,7 @@
 		"completed_n": "Done ({n})",
 		"incomplete_n": "Not done ({n})",
 		"past_readonly": "Past days are read-only.",
+		"routine_toggle_failed": "Couldn't save the check. Please try again.",
 		"open_lesson": "Open lesson",
 		"add_lesson": "Add lesson for this slot",
 		"period_suffix": "",
