@@ -80,6 +80,23 @@ describe("onLoadDocument — 시드·재시드 분기 매트릭스", () => {
 		expect(document.getText("content").toString()).toBe("");
 	});
 
+	it("SQLite 없음 + 이미 내용 있는 Y.Doc 재시드 → 중복되지 않는다(현장 버그: 전체 내용 반복 덧붙음)", async () => {
+		const { lifecycle } = makeEnv({ note: note("원격 내용") });
+		// 메모리에 재사용된 Y.Doc이 이미 같은 내용을 갖고 있음(빠른 재접속 등). insert(0)을 무조건 하면 중복된다.
+		const document = new Y.Doc();
+		document.getText("content").insert(0, "원격 내용");
+		await lifecycle.loadDocument({ document, documentName: NAME, room: ROOM, claims: CLAIMS });
+		expect(document.getText("content").toString()).toBe("원격 내용"); // "원격 내용원격 내용"이 아니어야 함
+	});
+
+	it("SQLite 없음 + 내용이 어긋난 Y.Doc → 정본으로 교체(중복 자체 치유)", async () => {
+		const { lifecycle } = makeEnv({ note: note("정본 내용") });
+		const document = new Y.Doc();
+		document.getText("content").insert(0, "정본 내용정본 내용"); // 과거에 중복된 잔재
+		await lifecycle.loadDocument({ document, documentName: NAME, room: ROOM, claims: CLAIMS });
+		expect(document.getText("content").toString()).toBe("정본 내용");
+	});
+
 	it("교사 삭제 tombstone → SQLite 잔존 행 삭제 + fail-closed(로드 거부)", async () => {
 		const { lifecycle, sqliteRows } = makeEnv({ note: note("옛 내용", { deleted: true, deletedByRole: "manager" }) });
 		sqliteRows.set(NAME, encodeState("옛 세션 상태"));

@@ -142,8 +142,21 @@ export function createDocLifecycle(deps) {
 			}
 			if (note && !note.deleted && typeof note.content === "string" && note.content.length > 0) {
 				// Y.Text 키 "content"는 클라이언트 RealtimeManager.startSession()의 ydoc.getText("content")와 일치해야 한다.
-				document.getText("content").insert(0, note.content);
-				log.log(`[seed] "${documentName}" seeded from CouchDB note (${note.content.length} chars)`);
+				// ⚠️ insert(0)을 무조건 하면, 메모리에 재사용된 Y.Doc(빠른 재접속 등)에 이미 내용이 있을 때
+				// 전체 내용이 한 번 더 붙어 **중복**된다(노트 전체가 끝에 반복적으로 덧붙는 현장 버그). 그래서
+				// 빈 경우에만 시드하고, 어쩌다 내용이 남아 있으면 정본(note.content)으로 **교체**해 멱등하게 만든다
+				// (중복 상태도 자체 치유). 교체 패턴은 위 SQLite 재시드(differs)와 동일.
+				const ytext = document.getText("content");
+				const current = ytext.toString();
+				if (current !== note.content) {
+					document.transact(() => {
+						if (current.length > 0) ytext.delete(0, current.length);
+						ytext.insert(0, note.content);
+					});
+					log.log(
+						`[seed] "${documentName}" seeded from CouchDB note (${note.content.length} chars${current.length > 0 ? `, replaced ${current.length} stale` : ""})`,
+					);
+				}
 			}
 		} catch (e) {
 			// 시드/검증 실패 시 빈 문서로 열면 스냅샷이 기존 내용을 비울 수 있다 → fail-closed로 연결 거부.
