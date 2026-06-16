@@ -20,10 +20,21 @@
  */
 import { Server } from "@hocuspocus/server";
 import BetterSqlite3 from "better-sqlite3";
+import { readFileSync } from "node:fs";
 import { rejectPlaceholder, parseRoom, verifyToken } from "./auth.js";
 import { CouchClient } from "./couch.js";
 // 문서 로드 시드·스냅샷·언로드 로직은 docLifecycle.js로 분리(의존성 주입 → vitest 검증 가능).
 import { createDocLifecycle, isSnapshotTarget } from "./docLifecycle.js";
+
+// 배포된 서버 빌드 버전(package.json) — health 엔드포인트에 노출해 NAS에 어떤 빌드가 떠 있는지 확인하게 한다.
+// (실시간 서버는 플러그인과 별도로 재배포되므로 배포 누락 진단에 필요.) 읽기 실패해도 기동을 막지 않는다.
+const SERVER_VERSION = (() => {
+	try {
+		return JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version || "unknown";
+	} catch {
+		return "unknown";
+	}
+})();
 
 const host = process.env.HOST || "0.0.0.0";
 const port = parseInt(process.env.PORT || "1234", 10);
@@ -202,7 +213,7 @@ const server = new Server({
 	},
 
 	/** 헬스체크(리버스 프록시/모니터링 확인용). throw null = 기본 응답 중단(v4 onRequest 규약).
-	 *  첫 줄("CoVault realtime server OK")은 호환성 계약 — 뒤에 CouchDB 스냅샷 상태를 덧붙인다. */
+	 *  첫 줄("CoVault realtime server OK")은 호환성 계약 — 둘째 줄 CouchDB 상태, 셋째 줄 빌드 버전을 덧붙인다. */
 	async onRequest({ response }) {
 		const couchLine = !couch
 			? "couch: disabled"
@@ -210,7 +221,7 @@ const server = new Server({
 				? "couch: ok"
 				: `couch: failing(${couchFailCount}) last=${lastCouchError?.at ?? "?"} ${lastCouchError?.msg ?? ""}`;
 		response.writeHead(200, { "Content-Type": "text/plain" });
-		response.end(`CoVault realtime server OK\n${couchLine}`);
+		response.end(`CoVault realtime server OK\n${couchLine}\nversion: ${SERVER_VERSION}`);
 		throw null;
 	},
 

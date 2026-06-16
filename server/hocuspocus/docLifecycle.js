@@ -274,18 +274,18 @@ export function createDocLifecycle(deps) {
 		}
 	}
 
-	/** 언로드: 스냅샷이 CouchDB에 안착했으면 SQLite 행 삭제, 앞서 있으면 보존(미반영 편집의 유일한 사본). */
-	function handleUnload(documentName, dbPath) {
+	/**
+	 * 언로드: SQLite의 Yjs 상태(=CRDT 이력)를 **보존**한다(전이 플래그만 해제).
+	 *
+	 * 예전엔 CouchDB 스냅샷이 안착하면 SQLite 행을 지웠다. 그러면 다음 로드가 CouchDB 내용으로 **새 이력**을
+	 * 시드하는데, 잠금/절전으로 옛 이력을 메모리에 들고 있던 클라이언트가 재접속하면 같은 내용이 서로 독립적인
+	 * 삽입으로 병합돼 **노트 전체가 중복**된다(현장 버그: 절전 후 세션 재접속 시 누적). 이력을 보존하면 재로드가
+	 * `Y.applyUpdate`로 같은 이력을 복원해 클라이언트와 정상 병합된다(중복 없음). 세션 사이 외부(파일 동기화)
+	 * 편집은 loadDocument의 신선도 검사가 그때만 재시드하므로 정합성은 유지된다.
+	 */
+	function handleUnload(documentName) {
 		lastCouchHash.delete(documentName);
-		if (couch && isSnapshotTarget(dbPath)) {
-			if (sqliteAhead.has(documentName)) {
-				// 마지막 스냅샷이 CouchDB에 못 갔다 — SQLite 행이 미반영 편집의 유일한 사본이므로 보존.
-				sqliteAhead.delete(documentName);
-				log.warn(`[snapshot] "${documentName}" unloaded with CouchDB snapshot pending — keeping SQLite state`);
-			} else {
-				sqlite.del(documentName);
-			}
-		}
+		sqliteAhead.delete(documentName);
 	}
 
 	return { loadDocument, storeDocument, handleUnload, sqliteAhead, lastCouchHash };

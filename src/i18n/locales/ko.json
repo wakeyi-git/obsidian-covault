@@ -780,6 +780,7 @@
 	"command": {
 		"invite_password_rotated": "초대 비밀번호를 회전했습니다 — 사용한 초대 코드는 더 이상 유효하지 않습니다.",
 		"invite_password_rotate_failed": "비밀번호 자동 회전 실패 — 초대 코드가 계속 유효하니 코드를 안전하게 보관하세요. ({error})",
+		"invite_password_rotate_blocked": "이 서버는 멤버의 자체 비밀번호 회전을 허용하지 않아 초대가 자동으로 1회용이 되지는 않습니다. 정상입니다 — 초대는 관리자가 짧은 만료와 '비밀번호 재발급'으로 관리합니다.",
 		"reinvite_rotates_password": "재초대로 비밀번호가 회전됩니다 — 이 구성원의 기존 기기는 새 초대를 다시 적용해야 합니다.",
 		"open_covault_panel": "CoVault 패널 열기",
 		"covault_loaded_role_setup": "CoVault 로드됨 (role={role}, setup={setup}).",

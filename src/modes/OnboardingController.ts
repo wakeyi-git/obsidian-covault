@@ -86,6 +86,11 @@ export class OnboardingController {
 				persistCouchPassword(this.d.app, s, next);
 				await this.d.saveSettings();
 				this.d.logger.ok(t("command.invite_password_rotated"), true);
+			} else if ((rot.error ?? "").includes("403")) {
+				// 403 = 이 서버가 멤버의 _users self-edit를 막아 회전이 구조적으로 불가(예: _users가 admin 전용).
+				// 의도된 하드닝일 수 있으므로 "실패" 경고로 놀래키지 않고 조용히 안내만 한다 — 초대 무효화는
+				// 관리자가 짧은 만료 + '비밀번호 재발급'으로 관리한다(운영 A안). 동기화엔 영향 없다.
+				this.d.logger.info(t("command.invite_password_rotate_blocked"));
 			} else {
 				// 회전 실패는 온보딩을 막지 않는다 — 초대 비밀번호로 계속 동작하되, 코드가 살아있음을 알린다.
 				this.d.logger.warn(t("command.invite_password_rotate_failed", { error: rot.error ?? "" }), true);

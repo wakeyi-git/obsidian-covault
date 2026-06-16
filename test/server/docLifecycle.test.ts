@@ -35,10 +35,11 @@ function makeEnv(opts: { note?: unknown; getDocError?: boolean; putConflict?: bo
 	const calls = { putDoc: [] as any[], putDocWithRev: [] as any[], closed: [] as string[] };
 	const sqliteRows = new Map<string, Buffer>();
 	const sqliteMeta = new Map<string, string>();
+	let currentNote: unknown = opts.note ?? null; // 세션 사이 외부(파일 동기화) 편집을 흉내내려면 setNote로 교체.
 	const couch = {
 		async getDoc() {
 			if (opts.getDocError) throw new Error("network down");
-			return opts.note ?? null;
+			return currentNote;
 		},
 		async putDoc(_db: string, doc: any) {
 			calls.putDoc.push(doc);
@@ -62,7 +63,7 @@ function makeEnv(opts: { note?: unknown; getDocError?: boolean; putConflict?: bo
 		closeConnections: (n: string) => void calls.closed.push(n),
 		log: { log() {}, warn() {}, error() {} },
 	});
-	return { lifecycle, couch, sqliteRows, sqliteMeta, calls };
+	return { lifecycle, couch, sqliteRows, sqliteMeta, calls, setNote: (n: unknown) => { currentNote = n; } };
 }
 
 describe("onLoadDocument — 시드·재시드 분기 매트릭스", () => {
@@ -271,21 +272,68 @@ describe("onStoreDocument — 스냅샷·보존·rev 전제조건", () => {
 	});
 });
 
-describe("unload — SQLite 행 보존/정리", () => {
-	it("스냅샷이 CouchDB에 안착했으면 SQLite 행 삭제(다음 세션은 note에서 시드)", async () => {
-		const { lifecycle, sqliteRows, calls } = makeEnv({ note: note("이전") });
+describe("unload — SQLite Yjs 상태 보존(이력 유지)", () => {
+	it("스냅샷이 CouchDB에 안착해도 SQLite 행을 보존(이력 유지로 절전-재접속 중복 방지)", async () => {
+		const { lifecycle, sqliteRows } = makeEnv({ note: note("이전") });
 		await lifecycle.storeDocument({ document: (() => { const d = new Y.Doc(); d.getText("content").insert(0, "내용"); return d; })(), documentName: NAME, room: ROOM, claims: CLAIMS });
-		expect(calls.putDocWithRev).toHaveLength(1);
 		lifecycle.handleUnload(NAME, ROOM.dbPath);
-		expect(sqliteRows.has(NAME)).toBe(false);
+		expect(sqliteRows.has(NAME)).toBe(true); // 삭제하지 않는다 — 이력 보존
+		expect(lifecycle.sqliteAhead.has(NAME)).toBe(false); // 전이 플래그만 해제
 	});
 
-	it("CouchDB 미반영(sqliteAhead)이면 SQLite 행 보존 — 미반영 편집의 유일한 사본", () => {
+	it("CouchDB 미반영(sqliteAhead)이어도 SQLite 행 보존 + 플래그 해제", () => {
 		const { lifecycle, sqliteRows } = makeEnv({});
 		sqliteRows.set(NAME, encodeState("미반영 편집"));
 		lifecycle.sqliteAhead.add(NAME);
 		lifecycle.handleUnload(NAME, ROOM.dbPath);
 		expect(sqliteRows.has(NAME)).toBe(true);
 		expect(lifecycle.sqliteAhead.has(NAME)).toBe(false);
+	});
+
+	it("절전 후 재접속 중복 회귀: unload가 이력을 보존해 재접속 클라이언트와 정상 병합(중복 없음)", async () => {
+		const { lifecycle } = makeEnv({ note: note("ABC") });
+		// 세션 1: 서버가 시드(H1) → 클라이언트(태블릿)가 같은 이력 H1을 받아 보유.
+		const server1 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		expect(server1.getText("content").toString()).toBe("ABC");
+		const client = new Y.Doc();
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server1)); // 태블릿 보유분(절전 중에도 메모리 유지)
+		await lifecycle.storeDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		lifecycle.handleUnload(NAME, ROOM.dbPath); // 둘 다 끊김 → unload(이력 보존)
+
+		// 세션 2: 서버 재로드 → 이력 보존이면 같은 H1 복원(새 이력 H2를 시드하지 않음).
+		const server2 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server2, documentName: NAME, room: ROOM, claims: CLAIMS });
+		// 태블릿 잠금 해제 → 보유 H1로 재접속해 양방향 병합.
+		Y.applyUpdate(server2, Y.encodeStateAsUpdate(client));
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server2));
+		// 이력을 보존하지 않으면 H1↔H2 독립 삽입이 합쳐져 "ABCABC"가 된다. 보존하면 "ABC" 그대로.
+		expect(client.getText("content").toString()).toBe("ABC");
+		expect(server2.getText("content").toString()).toBe("ABC");
+	});
+
+	it("세션 사이 외부 편집으로 재시드돼도, 보존된 이력 위 delete+insert라 재접속 클라이언트가 중복 없이 새 내용으로 수렴", async () => {
+		const env = makeEnv({ note: note("ABC") });
+		const { lifecycle } = env;
+		// 세션 1: 시드 H1="ABC", 클라이언트(태블릿) 보유.
+		const server1 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		const client = new Y.Doc();
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server1));
+		await lifecycle.storeDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		lifecycle.handleUnload(NAME, ROOM.dbPath);
+
+		// 세션 사이 비실시간(파일 동기화) 외부 편집으로 note가 "XYZ"로 바뀜.
+		env.setNote(note("XYZ"));
+
+		// 세션 2: 재로드 → SQLite(H1) 복원 후 note와 다름 + non-RT → 제자리 재시드(delete "ABC" + insert "XYZ").
+		const server2 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server2, documentName: NAME, room: ROOM, claims: CLAIMS });
+		expect(server2.getText("content").toString()).toBe("XYZ");
+		// 태블릿 재접속: 보유 H1("ABC")이 서버의 delete+insert를 함께 받아 중복 없이 "XYZ"로 수렴.
+		Y.applyUpdate(server2, Y.encodeStateAsUpdate(client));
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server2));
+		expect(client.getText("content").toString()).toBe("XYZ");
+		expect(server2.getText("content").toString()).toBe("XYZ");
 	});
 });

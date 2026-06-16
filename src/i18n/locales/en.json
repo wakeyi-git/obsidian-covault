@@ -780,6 +780,7 @@
 	"command": {
 		"invite_password_rotated": "Rotated the invite password — the used invite code is no longer valid.",
 		"invite_password_rotate_failed": "Automatic password rotation failed — the invite code remains valid; keep it safe. ({error})",
+		"invite_password_rotate_blocked": "This server doesn't allow members to rotate their own password, so the invite isn't made single-use automatically. This is fine — your manager controls invites via a short expiry and 'Reissue password'.",
 		"reinvite_rotates_password": "Re-inviting rotates the password — this member's existing devices must apply the new invite.",
 		"open_covault_panel": "Open CoVault panel",
 		"covault_loaded_role_setup": "CoVault loaded (role={role}, setup={setup}).",
