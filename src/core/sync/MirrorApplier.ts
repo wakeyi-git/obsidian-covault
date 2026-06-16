@@ -233,7 +233,11 @@ export class MirrorApplier {
 			return "conflict";
 		}
 
-		if (localHash === doc.contentHash) return "skipped-same";
+		// 충돌이 해소되어 양쪽이 같아졌으면 남은 _충돌/ 원격본을 정리(노트 applyDoc과 동형) — 안 지우면 사본이 쌓인다.
+		if (localHash === doc.contentHash) {
+			await this.conflicts.cleanupCopy(doc.path);
+			return "skipped-same";
+		}
 		// 노트와 동일 — 전체 다운로드에서 파일이 없으면 내 기기 문서라도 복원한다.
 		if (doc.lastModifiedDeviceId === ctx.settings.deviceId && !(opts?.restoreMissing && local == null)) return "skipped-self";
 
@@ -260,6 +264,7 @@ export class MirrorApplier {
 		const applied = await ctx.writeVaultBinaryIf(localPath, localHash, data);
 		ctx.guard.releaseAfterDelay(localPath);
 		if (!applied) return "skipped-pending";
+		await this.conflicts.cleanupCopy(doc.path); // 해소 전파로 들어온 갱신이면 남은 _충돌/ 원격본 정리(노트와 동형)
 		ctx.status.lastDownloadAt = Date.now();
 		ctx.logger.ok(t("sync.applied_remote_local_attachment", { path: localPath }));
 		return "applied";

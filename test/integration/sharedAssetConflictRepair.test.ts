@@ -126,6 +126,23 @@ describe("공유 asset 충돌 — 삭제 부활 차단 + 읽기전용 숨김 (Pl
 		expect(sync.conflictCount()).toBe(1);
 	});
 
+	it("충돌 해소 후 asset의 _충돌/ 원격본이 정리된다(사본 누적 방지)", async () => {
+		cluster = new Cluster();
+		const m = cluster.device({ deviceId: "m", role: "manager", remoteDb: "share_x" });
+		m.vault.seedBinary("자료/p.pdf", buf("X"));
+		await m.uploader.uploadPath("자료/p.pdf");
+
+		// 충돌 시 남았던 _충돌/ 원격본을 모사.
+		const copyPath = m.ctx.conflictLocalPath("자료/p.pdf");
+		await m.ctx.writeVaultBinary(copyPath, buf("old-remote"));
+		expect(m.ctx.getFile(copyPath)).not.toBeNull();
+
+		// 충돌이 해소되어 양쪽이 같아진(_conflicts 없음) doc를 적용 → 남은 사본을 정리해야 한다.
+		const doc = await m.ctx.pouch.getWithConflicts<any>(assetId("자료/p.pdf"));
+		expect(await m.applier.applyAsset(doc)).toBe("skipped-same");
+		expect(m.ctx.getFile(copyPath)).toBeNull(); // 누적되던 _충돌/ 사본이 정리됨
+	});
+
 	it("수정4: asset 충돌 해소가 notifyLocalWrite로 push를 깨운다", async () => {
 		const { b } = await makeRemoteConflict();
 		const doc = await b.ctx.pouch.getWithConflicts<any>(assetId("자료/p.pdf"));
