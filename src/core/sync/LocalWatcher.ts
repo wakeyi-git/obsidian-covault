@@ -1,5 +1,5 @@
 import { EventRef, Platform, TAbstractFile, TFile, TFolder } from "obsidian";
-import { errMessage } from "../util/err";
+import { errMessage, isDbClosingError } from "../util/err";
 import { MirrorContext } from "./MirrorContext";
 import { Uploader } from "./Uploader";
 import { exceedsAttachmentLimit } from "./attachment";
@@ -53,6 +53,15 @@ export class LocalWatcher {
 			this.ctx.clearPending(entry.dbPath); // 타이머가 보유한 pending 카운트 반환
 		}
 		this.timers.clear();
+	}
+
+	/**
+	 * 동기화 쓰기 실패 로깅. 비활성화/리로드 중 로컬 DB가 닫혀 난 종료 레이스(isDbClosingError)는 실제
+	 * 실패가 아니라 다음 시작의 reconcileDeletions로 치유되므로 info로 강등한다 — 진짜 실패만 error로 남긴다.
+	 */
+	private logWriteFailure(path: string, e: unknown, normal: string): void {
+		if (isDbClosingError(e)) this.ctx.logger.info(t("sync.write_skipped_db_closing", { path }));
+		else this.ctx.logger.error(normal);
 	}
 
 	private onChange(file: TAbstractFile): void {
@@ -148,12 +157,10 @@ export class LocalWatcher {
 				}
 			}
 		} catch (e) {
-			this.ctx.logger.error(
-				t("sync.rename_handling_failed", {
-					from: oldPath,
-					to: newPath,
-					err: errMessage(e),
-				}),
+			this.logWriteFailure(
+				newPath,
+				e,
+				t("sync.rename_handling_failed", { from: oldPath, to: newPath, err: errMessage(e) }),
 			);
 		}
 	}
@@ -169,7 +176,7 @@ export class LocalWatcher {
 		if (file instanceof TFolder) {
 			if (this.ctx.isStructuralSuppressed(file.path)) return; // applier가 일으킨 폴더 이동/삭제 echo
 			void this.handleFolderDelete(file.path).catch((e) =>
-				this.ctx.logger.error(t("sync.delete_handling_failed", { path: file.path, err: errMessage(e) })),
+				this.logWriteFailure(file.path, e, t("sync.delete_handling_failed", { path: file.path, err: errMessage(e) })),
 			);
 			return;
 		}
@@ -183,9 +190,7 @@ export class LocalWatcher {
 			void this.uploader
 				.purgePath(archivedDb)
 				.catch((e) =>
-					this.ctx.logger.error(
-						t("sync.purge_failed", { path: localPath, err: errMessage(e) }),
-					),
+					this.logWriteFailure(localPath, e, t("sync.purge_failed", { path: localPath, err: errMessage(e) })),
 				);
 			return;
 		}
@@ -195,7 +200,7 @@ export class LocalWatcher {
 		const dbPath = this.ctx.toDbPath(localPath);
 		if (dbPath == null) return;
 		void this.handleDelete(dbPath, localPath).catch((e) =>
-			this.ctx.logger.error(t("sync.delete_handling_failed", { path: localPath, err: errMessage(e) })),
+			this.logWriteFailure(localPath, e, t("sync.delete_handling_failed", { path: localPath, err: errMessage(e) })),
 		);
 	}
 
