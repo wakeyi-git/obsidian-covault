@@ -1,7 +1,7 @@
 import PouchDB from "pouchdb-browser";
 import { NoteDoc, AssetDoc, PouchDocBase } from "../model/types";
 import { createObsidianFetch } from "./obsidianFetch";
-import { isOverLimitAsset } from "../sync/attachment";
+import { isOverLimitAsset, effectiveMaxAttachmentMB } from "../sync/attachment";
 
 /**
  * PouchDB 기반 동기화 서비스. 기술문서 §23.4 CouchClient 역할을 대체한다.
@@ -39,7 +39,7 @@ export class PouchService {
 	private local: PouchDB.Database | null = null;
 	private replication: PouchDB.Replication.Sync<{}> | null = null;
 	private readonly fetchImpl: typeof fetch;
-	/** 복제에서 제외할 첨부 크기 한도(바이트). 0이면 무제한(필터 없음). setMaxAttachmentBytes로 주입. */
+	/** 복제에서 제외할 첨부 크기 한도(바이트). setMaxAttachmentBytes 주입 전(0)에만 필터 없음 — 주입 후엔 항상 양수. */
 	private maxAttachmentBytes = 0;
 
 	constructor(
@@ -373,21 +373,20 @@ export class PouchService {
 
 	// --- 로컬 ↔ 원격 live replication ---
 
-	/** 복제 단계에서 한도 초과 첨부를 제외하기 위한 크기 한도(MB) 주입. 0/음수면 무제한. */
-	setMaxAttachmentBytes(maxMB: number): void { this.maxAttachmentBytes = maxMB > 0 ? maxMB * 1024 * 1024 : 0; }
+	/** 복제 제외 첨부 크기 한도(MB) 주입. "무제한(0)"도 내부 안전 상한을 적용해 필터를 항상 켠다(거대 첨부 버퍼링 프리즈 방지). */
+	setMaxAttachmentBytes(maxMB: number): void { this.maxAttachmentBytes = effectiveMaxAttachmentMB(maxMB) * 1024 * 1024; }
 
 	/**
-	 * 복제 옵션(필터). 한도 초과 첨부(asset 문서)는 push/pull 어느 방향으로도 복제하지 않는다.
-	 *
-	 * 이미 DB에 박힌 대용량 첨부를 push할 때 PouchDB가 바이너리를 통째 메모리에 버퍼링해 앱이
-	 * 멈추고(0.125.x 현장 하드 프리즈) CouchDB도 질식해 502를 낸다. applyAsset 수신 게이트는
-	 * 본문을 받은 뒤라 늦으므로, 복제 진입 자체를 막는다. size는 asset 문서의 메타데이터.
-	 * (한도 미설정 시 빈 옵션 → 거동 불변.)
+	 * 복제 옵션(필터 + 배치 한정). 한도 초과 첨부(asset 문서)는 push/pull 어느 방향으로도 복제하지 않는다.
+	 * 이미 DB에 박힌 대용량 첨부를 push할 때 PouchDB가 바이너리를 통째 버퍼링해 앱이 멈추고(0.125.x
+	 * 현장 하드 프리즈) CouchDB도 502를 낸다. applyAsset 수신 게이트는 본문을 받은 뒤라 늦으므로 복제
+	 * 진입 자체를 막는다. batch_size×batches_limit는 한 번에 적재할 문서 수를 묶어 배치 폭주를 막는다(기본 100×10).
 	 */
-	private replicateOpts(): { filter?: (doc: any) => boolean } {
+	private replicateOpts(): { filter?: (doc: any) => boolean; batch_size: number; batches_limit: number } {
 		const maxBytes = this.maxAttachmentBytes;
-		if (maxBytes <= 0) return {};
-		return { filter: (doc: any) => !isOverLimitAsset(doc, maxBytes) };
+		const batching = { batch_size: 25, batches_limit: 5 };
+		if (maxBytes <= 0) return batching;
+		return { filter: (doc: any) => !isOverLimitAsset(doc, maxBytes), ...batching };
 	}
 
 	/** 1회성 push만(로컬→원격). 수동 "업로드만"에서 원격 변경을 끌어오지 않기 위해 사용. */
@@ -411,12 +410,15 @@ export class PouchService {
 	/** 원격 문서를 현재 원격 rev 위에 직접 tombstone(정합 복구용) — 로컬 분기 충돌·누락이 있어도 원격 live를
 	 *  확실히 덮어 재생을 막는다. patch=deleted 외 메타. 이미 없음/삭제/거부 시 false(관리자 admin이라 통과). */
 	async tombstoneRemoteDoc(id: string, patch: Record<string, unknown>): Promise<boolean> {
-		const cur = (await this.remote.get(id).catch(() => null)) as (Record<string, unknown> & { deleted?: boolean; version?: number }) | null;
+		const cur = (await this.remote.get(id, { conflicts: true }).catch(() => null)) as (Record<string, unknown> & { deleted?: boolean; version?: number; _conflicts?: string[] }) | null;
 		if (!cur || cur.deleted) return false;
 		const doc: Record<string, unknown> = { ...cur, deleted: true, version: (cur.version ?? 0) + 1, ...patch };
 		delete doc._attachments;
+		delete doc._conflicts; // winner spread 시 충돌 메타가 문서 필드로 새지 않게 제거
 		try {
 			await this.remote.put(doc as PouchDB.Core.PutDocument<Record<string, unknown>>);
+			// winner만 tombstone하면 live 충돌 리프가 승격돼 부활한다 — 원격 충돌 리프도 제거(admin이라 validate 우회).
+			for (const rev of cur._conflicts ?? []) await this.remote.remove(id, rev).catch(() => undefined);
 			return true;
 		} catch {
 			return false;

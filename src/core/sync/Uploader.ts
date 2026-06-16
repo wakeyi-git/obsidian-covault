@@ -2,6 +2,7 @@ import { MirrorContext } from "./MirrorContext";
 import { NoteDoc, AssetDoc, noteId, assetId } from "../model/types";
 import { sha256 } from "../hash/hash";
 import { recordPurge, abToB64, PURGE_ASSET_CAP, PurgeSnapshot } from "./recentPurge";
+import { effectiveMaxAttachmentMB, isInternalCap } from "./attachment";
 import { t } from "../../i18n";
 
 export type UploadResult =
@@ -106,29 +107,32 @@ export class Uploader {
 		const ctx = this.ctx;
 		if (!ctx.settings.syncAssets) return "skipped-asset-off";
 
-		const maxBytes = (ctx.settings.maxAttachmentMB || 0) * 1024 * 1024;
+		// 사용자가 "무제한(0)"을 골라도 내부 안전 상한이 적용된다 — 단일 거대 파일의 동기 base64 인코딩이
+		// 메인스레드를 멈추는 것을 원천 차단한다. 사용자 상한/내부 상한에 따라 경고 메시지를 분기한다.
+		const effMB = effectiveMaxAttachmentMB(ctx.settings.maxAttachmentMB);
+		const maxBytes = effMB * 1024 * 1024;
+		const internalCap = isInternalCap(ctx.settings.maxAttachmentMB);
+		const warnTooLarge = (sizeBytes: number): void => {
+			const params = { path: dbPath, size: (sizeBytes / 1024 / 1024).toFixed(1), mb: effMB };
+			ctx.logger.warn(
+				internalCap
+					? t("sync.skipped_attachment_internal_cap", params)
+					: t("sync.skipped_attachment_exceeds_size_limit_mb", params),
+			);
+		};
 
 		// 큰 파일을 메모리에 읽기 전에 stat.size로 먼저 한도 초과를 판정(모바일 메모리 보호, §24.6).
-		if (maxBytes > 0) {
-			const size = ctx.getFile(localPath)?.stat.size;
-			if (size != null && size > maxBytes) {
-				ctx.logger.warn(
-					t("sync.skipped_attachment_exceeds_size_limit_mb", { path: dbPath, size: (size / 1024 / 1024).toFixed(1) }),
-				);
-				return "skipped-toolarge";
-			}
+		const size = ctx.getFile(localPath)?.stat.size;
+		if (size != null && size > maxBytes) {
+			warnTooLarge(size);
+			return "skipped-toolarge";
 		}
 
 		const data = await ctx.readVaultBinary(localPath);
 		if (data == null) return "skipped-missing";
 
-		if (maxBytes > 0 && data.byteLength > maxBytes) {
-			ctx.logger.warn(
-				t("sync.skipped_attachment_exceeds_size_limit_mb", {
-					path: dbPath,
-					size: (data.byteLength / 1024 / 1024).toFixed(1),
-				}),
-			);
+		if (data.byteLength > maxBytes) {
+			warnTooLarge(data.byteLength);
 			return "skipped-toolarge";
 		}
 
@@ -215,7 +219,7 @@ export class Uploader {
 		const id = ctx.isMarkdown(dbPath) ? noteId(dbPath) : assetId(dbPath);
 		// rev 검증 put + 재시도(L-1): 읽기→쓰기 사이에 새 원격 내용이 끼어들면 그 버전을 스냅샷한 뒤 tombstone.
 		for (let attempt = 0; attempt < 3; attempt++) {
-			const existing = await ctx.pouch.get<NoteDoc | AssetDoc>(id);
+			const existing = await ctx.pouch.getWithConflicts<NoteDoc | AssetDoc>(id);
 			if (!existing || existing.deleted) return "skipped";
 
 			// 삭제 직전 내용을 버전 히스토리에 보존(마크다운).
@@ -239,13 +243,33 @@ export class Uploader {
 				updatedAt: new Date(now).toISOString(),
 			};
 			delete doc._attachments; // tombstone은 바이너리 불필요
+			delete doc._conflicts; // winner를 spread했으므로 충돌 메타는 문서 필드로 새지 않게 제거
 			if ((await ctx.pouch.putWithRev(doc, existing._rev)) === "conflict") continue;
+			// winner만 tombstone하면 live 충돌 리프가 승격돼 파일이 부활한다(purgePath와 동형) — 모든 리프 제거.
+			// 마크다운 리프 내용은 제거 전 버전 히스토리에 보존(에셋은 버전 히스토리 없음).
+			await this.tombstoneConflictLeaves(dbPath, id, (existing as { _conflicts?: string[] })._conflicts);
 			ctx.logger.ok(t("sync.tombstone_marked_deleted", { path: dbPath }));
 			ctx.notifyLocalWrite?.();
 			return "tombstoned";
 		}
 		ctx.logger.warn(t("sync.upload_retry_conflict", { path: dbPath }));
 		return "skipped";
+	}
+
+	/**
+	 * tombstone 시 winner 외 충돌 리프를 제거한다 — 남겨두면 live 리프가 승격돼 삭제가 부활한다(평가 P2-4).
+	 * 마크다운 리프 내용은 제거 전 버전 히스토리에 보존(복구 가능). 제거 실패는 무시(다음 정합에서 재시도).
+	 */
+	private async tombstoneConflictLeaves(dbPath: string, id: string, conflictRevs: string[] | undefined): Promise<void> {
+		const ctx = this.ctx;
+		const isMd = ctx.isMarkdown(dbPath);
+		for (const rev of conflictRevs ?? []) {
+			if (isMd) {
+				const leaf = await ctx.pouch.getRev<NoteDoc>(id, rev).catch(() => null);
+				if (leaf?.content != null) await ctx.versions.snapshot(dbPath, leaf.content, "delete", leaf.version ?? 0);
+			}
+			await ctx.pouch.removeRev(id, rev).catch(() => undefined);
+		}
 	}
 
 	/** DB 문서 영구 제거(purge, note/asset 공통). .deleted/에서 지웠을 때. */

@@ -116,6 +116,8 @@ export class ConflictManager {
 	private async listAssets(): Promise<ConflictInfo[]> {
 		const ctx = this.ctx;
 		if (!ctx.settings.syncAssets) return [];
+		// 읽기전용 공유 구성원은 asset 충돌을 해소할 수 없다(applyAsset이 winner를 정본으로 적용해 숨김) — 목록 제외.
+		if (ctx.isReadOnlyShared) return [];
 		const items = await ctx.pouch.listAssetConflicts();
 		const out: ConflictInfo[] = [];
 		for (const { doc } of items) {
@@ -192,6 +194,7 @@ export class ConflictManager {
 			}
 
 			await this.removeConflictCopy(dbPath);
+			ctx.notifyLocalWrite?.(); // collapse+리프 제거를 원격에 즉시 push(이벤트 구동 모드)
 			ctx.logger.ok(t("sync.conflict_resolved", { choice, path: dbPath }), true);
 			return;
 		}
@@ -250,6 +253,7 @@ export class ConflictManager {
 				}
 			}
 			await this.removeConflictCopy(dbPath);
+			ctx.notifyLocalWrite?.(); // collapse+리프 제거를 원격에 즉시 push(이벤트 구동 모드)
 			ctx.logger.ok(t("mode.attachment_conflict_resolved", { choice, path: dbPath }), true);
 			return;
 		}
@@ -275,6 +279,7 @@ export class ConflictManager {
 		// changes feed가 따라오기 전에도 카운트가 즉시 맞도록 집계에서 직접 내린다.
 		ctx.conflictIds.delete(id);
 		await this.removeConflictCopy(dbPath);
+		ctx.notifyLocalWrite?.(); // 리프 제거를 원격에 즉시 push(이벤트 구동 모드)
 		ctx.logger.info(t("sync.phantom_conflict_collapsed", { path: dbPath, n: conflictRevs.length }));
 	}
 

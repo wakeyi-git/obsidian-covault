@@ -4,7 +4,7 @@ import { ConflictManager } from "./ConflictManager";
 import { recordDeleteModify } from "./deleteModifyQueue";
 import { NoteDoc, AssetDoc, assetId } from "../model/types";
 import { sha256 } from "../hash/hash";
-import { exceedsAttachmentLimit } from "./attachment";
+import { exceedsAttachmentLimit, effectiveMaxAttachmentMB, isInternalCap } from "./attachment";
 import { t } from "../../i18n";
 
 /** 삭제(tombstone) 적용에 필요한 최소 형태(note/asset 공통). */
@@ -193,17 +193,21 @@ export class MirrorApplier {
 		// 수신(pull) 크기 게이트(평가 P1-1 #4) — readVaultBinary/sha256보다 먼저 둔다: 한도 초과 첨부는
 		// 로컬 본문을 읽지도(수백 MB를 메인스레드에서 읽고 해싱하면 앱이 멈춘다 — 현장 프리즈) 다운로드하지도
 		// 않고 멱등 스킵한다. doc.size(원격 메타) 또는 로컬 stat.size(메타만, 본문 미독) 중 하나라도 초과면.
-		const maxMB = ctx.settings.maxAttachmentMB || 0;
+		// 사용자가 "무제한(0)"을 골라도 내부 안전 상한이 적용된다 — 거대 첨부를 본문 읽기/다운로드 전에 멱등 스킵.
+		const maxMB = effectiveMaxAttachmentMB(ctx.settings.maxAttachmentMB);
 		const localStatSize = ctx.getFile(localPath)?.stat.size ?? 0;
 		if (exceedsAttachmentLimit(doc.size ?? 0, maxMB) || exceedsAttachmentLimit(localStatSize, maxMB)) {
 			if (!this.loggedTooLarge.has(doc.path)) {
 				this.loggedTooLarge.add(doc.path);
+				const params = {
+					path: localPath,
+					mb: maxMB,
+					size: Math.round((Math.max(doc.size ?? 0, localStatSize) / (1024 * 1024)) * 10) / 10,
+				};
 				ctx.logger.warn(
-					t("sync.attachment_too_large_to_download", {
-						path: localPath,
-						mb: maxMB,
-						size: Math.round((Math.max(doc.size ?? 0, localStatSize) / (1024 * 1024)) * 10) / 10,
-					}),
+					isInternalCap(ctx.settings.maxAttachmentMB)
+						? t("sync.attachment_internal_cap_download", params)
+						: t("sync.attachment_too_large_to_download", params),
 					true,
 				);
 			}
@@ -212,7 +216,9 @@ export class MirrorApplier {
 
 		const local = await ctx.readVaultBinary(localPath);
 		const localHash = local == null ? null : await sha256(local);
-		const hasConflict = !!doc._conflicts && doc._conflicts.length > 0;
+		// 읽기전용 공유 구성원은 asset 충돌을 해소할 수 없다(서버 validate가 비참여자 asset 쓰기 거부) — 충돌로
+		// 다루면 해소 불가능한 항목을 영구히 보게 된다. 원격=정본이므로 winner를 그대로 적용한다(충돌 숨김).
+		const hasConflict = !!doc._conflicts && doc._conflicts.length > 0 && !ctx.isReadOnlyShared;
 
 		// 업로드 대기 중인 로컬 편집이면 덮지 않되, 다른 기기의 원격 바이너리는 곧 덮여 사라지므로 _충돌/에 보존.
 		if (ctx.isPending(doc.path)) {

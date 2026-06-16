@@ -424,6 +424,8 @@ export class MirrorSync {
 		let n = 0;
 		for (const id of this.ctx.conflictIds) {
 			if (id.startsWith("asset:") && !this.ctx.settings.syncAssets) continue; // listAssets와 동일 규칙
+			// 읽기전용 공유 구성원은 asset 충돌을 해소할 수 없어 목록에서 숨긴다(listAssets와 동일) — 배지도 0으로.
+			if (id.startsWith("asset:") && this.ctx.isReadOnlyShared) continue;
 			n++;
 		}
 		return n;

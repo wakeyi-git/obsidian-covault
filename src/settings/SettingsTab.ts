@@ -5,7 +5,7 @@ import { validateFolderName, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
 import { hasSecretStorage, getYjsSecret } from "../core/secret";
 import { renderManager as renderManagerSection, ManagerCtx } from "./managerSection";
-import { noAutoCorrect } from "./settingsUi";
+import { noAutoCorrect, renderMaxAttachmentSetting } from "./settingsUi";
 import { t } from "../i18n";
 
 // SettingGroup.listEl은 Obsidian 런타임에 1.11.0부터 존재하지만(공식 @since 1.11.0),
@@ -314,18 +314,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				),
 		);
 
-		g.addSetting((set) =>
-			set
-				.setName(t("settings.max_attachment_size_mb"))
-				.setDesc(t("settings.attachments_larger_than_this_are_not"))
-				.addText((txt) =>
-					txt.setValue(String(s.maxAttachmentMB)).onChange(async (v) => {
-						const n = parseInt(v, 10);
-						s.maxAttachmentMB = Number.isFinite(n) && n >= 0 ? n : 20;
-						await this.host.saveSettings();
-					}),
-				),
-		);
+		renderMaxAttachmentSetting(g, s, () => this.host.saveSettings());
 
 		g.addSetting((set) =>
 			set
