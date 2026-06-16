@@ -37,9 +37,27 @@ function pluginsApi(app: App): PluginsLike | null {
 	return (app as unknown as { plugins?: PluginsLike }).plugins ?? null;
 }
 
-/** P2는 데스크톱 전용 — 모바일은 `.obsidian` 쓰기·플러그인 관리가 제약적이고 위험. */
-export function pluginInstallSupported(): boolean {
-	return !Platform.isMobile;
+/**
+ * 배포 플러그인이 manifest에서 데스크톱 전용으로 표시됐는지(파싱 실패/누락 시 false).
+ * 모바일 기기는 isDesktopOnly 플러그인을 로드하지 못하므로, 설치를 건너뛸지 판단하는 데 쓴다.
+ */
+export function deployedPluginIsDesktopOnly(doc: PluginDeployDoc): boolean {
+	const mf = doc.files.find((f) => f.name === "manifest.json");
+	if (!mf) return false;
+	try {
+		return (JSON.parse(b64ToUtf8(mf.b64)) as { isDesktopOnly?: boolean }).isDesktopOnly === true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * 이 기기에서 그 배포 플러그인을 설치·실행할 수 있는가.
+ * 설치 자체는 vault adapter(`.obsidian` 쓰기)와 app.plugins(로드/활성화)로만 이뤄져 데스크톱·모바일 모두
+ * 지원한다 — 단, 데스크톱 전용 플러그인은 모바일에서 로드되지 않으므로 그 기기에서는 설치하지 않는다.
+ */
+export function deployRunnableHere(doc: PluginDeployDoc): boolean {
+	return !(Platform.isMobile && deployedPluginIsDesktopOnly(doc));
 }
 
 /** 현재 사용자 식별(자기 자신 배포 제외) — CoVault 본체. */

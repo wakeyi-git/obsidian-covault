@@ -69,9 +69,12 @@ export class MirrorApplier {
 
 		const local = await ctx.readVaultFile(localPath);
 		const localHash = local == null ? null : await sha256(local);
+		const hasConflict = !!doc._conflicts && doc._conflicts.length > 0;
 
-		// 이미 동일 내용 (충돌이 해소되어 양쪽이 같아졌을 수 있으니 남은 원격본 정리)
-		if (localHash === doc.contentHash) {
+		// 이미 동일 내용 (충돌이 해소되어 양쪽이 같아졌을 수 있으니 남은 원격본 정리).
+		// 단 _conflicts가 남아 있으면 아직 미해소다 — 라이브가 winner와 같아도 분기 리프를 위해
+		// _충돌/ 사본을 지우지 않고 아래 충돌 처리로 넘긴다(빈 볼트에 winner 적용 후의 정상 상태).
+		if (localHash === doc.contentHash && !hasConflict) {
 			await this.conflicts.cleanupCopy(doc.path);
 			return "skipped-same";
 		}
@@ -95,18 +98,26 @@ export class MirrorApplier {
 			return "skipped-pending";
 		}
 
-		const hasConflict = !!doc._conflicts && doc._conflicts.length > 0;
 		if (hasConflict) {
+			// 빈 로컬(첫 동기화 등)에는 보존할 로컬 편집이 없다 — 원격에 이미 미해소 충돌(여러 리프)이
+			// 있는 문서를 받은 경우다. winner를 정상 경로에 먼저 적용해 노트가 제자리에 나타나게 하고,
+			// 분기 리프는 아래 materialize가 _충돌/에 꺼내 '충돌 목록'에서 해소 가능하게 한다(데이터 손실 없음).
+			if (local == null) {
+				ctx.guard.mark(localPath, doc.contentHash);
+				const applied = await ctx.writeVaultFileIf(localPath, null, doc.content);
+				ctx.guard.releaseAfterDelay(localPath);
+				if (!applied) return "skipped-pending"; // 읽기 이후 끼어든 생성 — 다음 change에서 재평가
+				ctx.status.lastDownloadAt = Date.now();
+			}
 			// 양쪽이 서로 다르게 편집 → 로컬 유지(preserve-local) + 원격본을 _충돌/에 꺼내 둠
 			await this.conflicts.materialize(doc);
 			if (!this.loggedConflicts.has(doc.path)) {
 				this.loggedConflicts.add(doc.path);
-				ctx.logger.warn(
-					t("sync.conflict_held_preserve_local_both_sides",
-						{ path: localPath },
-					),
-					true,
-				);
+				const msg =
+					local == null
+						? t("sync.unresolved_remote_conflict_applied_winner", { path: localPath })
+						: t("sync.conflict_held_preserve_local_both_sides", { path: localPath });
+				ctx.logger.warn(msg, true);
 			}
 			return "conflict";
 		}

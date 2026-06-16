@@ -8,7 +8,7 @@ import {
 	listInstalledCommunityPlugins,
 	readInstalledPlugin,
 	installDeployedPlugin,
-	pluginInstallSupported,
+	deployRunnableHere,
 	InstalledPlugin,
 } from "../core/plugindeploy/configInstall";
 import { errMessage } from "../core/util/err";
@@ -35,11 +35,6 @@ export interface PluginDeployDeps {
 export class PluginDeployController {
 	constructor(private d: PluginDeployDeps) {}
 
-	/** 데스크톱(설치 가능)인지. UI 가드용. */
-	supported(): boolean {
-		return pluginInstallSupported();
-	}
-
 	// --- 운영자(배포) ---
 
 	/** 운영자 기기에 설치된 커뮤니티 플러그인 목록(CoVault 제외). */
@@ -63,10 +58,6 @@ export class PluginDeployController {
 	): Promise<boolean> {
 		const s = this.d.settings();
 		if (s.role !== "manager") return false;
-		if (!this.supported()) {
-			this.d.logger.warn(t("plugindeploy.desktop_only"), true);
-			return false;
-		}
 		if (!this.d.classroom.ready()) {
 			this.d.logger.warn(t("plugindeploy.needs_homeroom"), true);
 			return false;
@@ -136,9 +127,11 @@ export class PluginDeployController {
 				if (!shouldOfferInstall(doc, s.userId, handled[doc.pluginId])) continue;
 				if (this.promptedThisSession.has(doc.pluginId)) continue;
 				this.promptedThisSession.add(doc.pluginId);
-				if (!this.supported()) {
+				if (!deployRunnableHere(doc)) {
+					// 데스크톱 전용 플러그인은 이 모바일 기기에서 로드되지 않는다 — 건너뛰되 기록하지 않아
+					// 데스크톱에서 다시 안내한다.
 					this.d.logger.info(t("plugindeploy.member_desktop_only", { name: doc.pluginName }), true);
-					continue; // 데스크톱에서 다시 안내 — 처리 기록하지 않음
+					continue;
 				}
 				const choice = await this.d.confirmInstall(doc);
 				if (choice === "later") continue; // 다음 실행에 재안내(기록 안 함)

@@ -283,13 +283,12 @@
 		"collapse_all": "Collapse all"
 	},
 	"plugindeploy": {
-		"desktop_only": "Plugin deployment is desktop-only.",
 		"needs_homeroom": "Set a home shared space first — plugin deployment rides the home space.",
 		"not_installed": "Plugin not installed on this device: {id}",
 		"deployed": "Deployed plugin: {name}",
 		"deploy_failed": "Failed to deploy {name}: {err}",
 		"undeployed": "Withdrew plugin deployment: {name} (members keep their installed copy).",
-		"member_desktop_only": "A shared plugin '{name}' is available — install it from a desktop.",
+		"member_desktop_only": "Shared plugin '{name}' is desktop-only and can't run on this mobile device — install it on a desktop.",
 		"installed": "Installed shared plugin: {name}",
 		"installed_enabled": "Installed and enabled shared plugin: {name}",
 		"install_failed": "Failed to install {name}: {err}",
@@ -302,7 +301,7 @@
 		"install_only": "Install only",
 		"install_and_enable": "Install and enable",
 		"section_title": "Shared plugins",
-		"section_hint": "Deploy plugins everyone uses together to members' devices (desktop only). Members confirm before install.",
+		"section_hint": "Deploy plugins everyone uses together to members' devices. Members confirm before install. Desktop-only plugins skip mobile devices.",
 		"share_settings": "Include settings (data.json)",
 		"managed_settings": "Keep settings managed (overwrite on each deploy)",
 		"deploy_button": "Deploy to everyone",
@@ -736,7 +735,12 @@
 		"keep_local": "Keep local",
 		"apply_remote": "Apply remote",
 		"keep_both_versions": "Keep both versions",
-		"resolution_failed": "Resolution failed: {error}"
+		"resolution_failed": "Resolution failed: {error}",
+		"resolve_all": "Resolve all {count}",
+		"resolve_all_confirm_title": "Resolve all conflicts",
+		"resolve_all_confirm_body": "Apply \"{action}\" to all {count} conflicts at once? Each file is resolved the same way; you can still recover earlier versions from history afterward.",
+		"resolve_all_done": "Resolved {resolved} conflicts.",
+		"resolve_all_done_failed": "Resolved {resolved}, {failed} failed. See the log for details."
 	},
 	"reset": {
 		"reset_server_data": "⚠️ Reset server data",
@@ -861,6 +865,7 @@
 	},
 	"sync": {
 		"conflict_held_preserve_local_both_sides": "Conflict held (preserve-local): {path} — both sides edited divergently. Keeping local; remote copy saved to _conflict/. Resolve it from 'Conflicts'.",
+		"unresolved_remote_conflict_applied_winner": "Unresolved remote conflict: {path} — applied one version and saved the other to _conflict/. Resolve it from 'Conflicts'.",
 		"the_other_side_resolved_the_conflict": "The other side resolved the conflict — your edit will be overwritten. Your version was kept at '{path}'.",
 		"remote_change_received_while_editing_keeping": "Remote change received while editing: {path} — keeping your edit; remote copy saved to _conflict/. Check it in 'Conflicts'.",
 		"applied_remote_local": "Applied remote→local: {path}",

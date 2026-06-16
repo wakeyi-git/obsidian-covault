@@ -252,8 +252,6 @@ export interface RecoveryHost {
 
 /** 함께 쓰는 플러그인 배포(정책 엔진 P2 — 교사 배포 탭). */
 export interface PluginDeployHost {
-	/** 플러그인 배포가 가능한 환경(데스크톱)인지. */
-	pluginDeploySupported(): boolean;
 	/** 이 기기에 설치된 커뮤니티 플러그인 목록(CoVault 제외). */
 	listInstalledPlugins(): InstalledPlugin[];
 	/** 현재 학급에 배포된 플러그인 목록. */

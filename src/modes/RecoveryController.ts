@@ -44,6 +44,27 @@ export class RecoveryController {
 		await row.sync.resolveConflict(row.info.dbPath, choice);
 	}
 
+	/**
+	 * 충돌 일괄 해소 — 넘겨받은 행을 모두 같은 선택지로 처리한다. 한 건 실패가 나머지를 막지 않도록
+	 * 행마다 격리해 진행하고(성공/실패 집계 반환), 첨부에 무효한 "both-remote"는 "both"로 강등한다.
+	 */
+	async resolveAllConflicts(rows: ConflictRow[], choice: ResolveChoice): Promise<{ resolved: number; failed: number }> {
+		await this.d.openLog();
+		let resolved = 0;
+		let failed = 0;
+		for (const row of rows) {
+			const c: ResolveChoice = choice === "both-remote" && row.info.kind === "asset" ? "both" : choice;
+			try {
+				await row.sync.resolveConflict(row.info.dbPath, c);
+				resolved++;
+			} catch (e) {
+				failed++;
+				this.d.logger.error(t("conflict.resolution_failed", { error: errMessage(e) }) + ` (${row.info.dbPath})`);
+			}
+		}
+		return { resolved, failed };
+	}
+
 	async openConflictFiles(row: ConflictRow): Promise<void> {
 		const local = this.d.app.vault.getAbstractFileByPath(row.info.localPath);
 		const conflict = this.d.app.vault.getAbstractFileByPath(row.info.conflictPath);

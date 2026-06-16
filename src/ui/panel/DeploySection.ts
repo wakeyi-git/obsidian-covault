@@ -278,10 +278,6 @@ export class DeploySection implements PanelSection {
 		container.createDiv({ cls: "covault-panel-label", text: t("plugindeploy.section_title") });
 		container.createDiv({ cls: "covault-panel-hint", text: t("plugindeploy.section_hint") });
 
-		if (!this.host.pluginDeploySupported()) {
-			container.createDiv({ cls: "covault-feedback-empty", text: t("plugindeploy.desktop_only") });
-			return;
-		}
 		if (!this.host.homeroomConfigured()) {
 			container.createDiv({ cls: "covault-feedback-empty", text: t("plugindeploy.needs_homeroom") });
 			return;

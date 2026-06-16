@@ -272,7 +272,6 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 		// --- 동기화 상태·배포·복구 — Deployment/RecoveryController + main 글루 ---
 		...pick(d.deploymentCtl, ["redeployRealtime", "deployShared", "testConnection", "bulkCopy", "bulkCopyPreview"] as const),
 		// 함께 쓰는 플러그인 배포(PluginDeployHost) — PluginDeployController 위임
-		pluginDeploySupported: () => d.pluginDeployCtl.supported(),
 		listInstalledPlugins: () => d.pluginDeployCtl.listInstalled(),
 		listDeployedPlugins: () => d.pluginDeployCtl.listDeployed(),
 		deployPlugin: (id, opts) => d.pluginDeployCtl.deploy(id, opts),

@@ -1,8 +1,9 @@
-import { App, Modal, Setting } from "obsidian";
+import { App, Modal, Notice, Setting } from "obsidian";
 import { errMessage } from "../core/util/err";
 import { ConflictInfo, ResolveChoice } from "../core/sync/ConflictManager";
 import { MirrorSync } from "../core/sync/MirrorSync";
 import { lineDiff, diffStats } from "../core/diff/lineDiff";
+import { confirm } from "./ConfirmModal";
 import { t } from "../i18n";
 
 export interface ConflictRow {
@@ -13,6 +14,7 @@ export interface ConflictRow {
 export interface ConflictHost {
 	listConflicts(): Promise<ConflictRow[]>;
 	resolveConflict(row: ConflictRow, choice: ResolveChoice): Promise<void>;
+	resolveAllConflicts(rows: ConflictRow[], choice: ResolveChoice): Promise<{ resolved: number; failed: number }>;
 	openConflictFiles(row: ConflictRow): Promise<void>;
 }
 
@@ -57,6 +59,8 @@ export class ConflictModal extends Modal {
 			text: t("conflict.both_sides_edited_the_same_file"),
 		});
 
+		if (rows.length > 1) this.renderBulkBar(contentEl, rows);
+
 		for (const row of rows) {
 			const card = contentEl.createDiv({ cls: "covault-conflict-card" });
 			const isAsset = row.info.kind === "asset";
@@ -90,6 +94,16 @@ export class ConflictModal extends Modal {
 					.addButton((b) => b.setButtonText(t("mode.keep_both_remote_as_final")).onClick(() => this.act(row, "both-remote")));
 			}
 		}
+	}
+
+	/** 충돌이 여럿일 때 같은 선택지로 한 번에 해소하는 일괄 처리 줄(노트·첨부 공통으로 안전한 3개만 노출). */
+	private renderBulkBar(container: HTMLElement, rows: ConflictRow[]): void {
+		new Setting(container)
+			.setName(t("conflict.resolve_all", { count: rows.length }))
+			.setClass("covault-conflict-bulk")
+			.addButton((b) => b.setButtonText(t("conflict.keep_local")).onClick(() => this.actAll(rows, "local")))
+			.addButton((b) => b.setButtonText(t("conflict.apply_remote")).onClick(() => this.actAll(rows, "remote")))
+			.addButton((b) => b.setButtonText(t("conflict.keep_both_versions")).onClick(() => this.actAll(rows, "both")));
 	}
 
 	/** 첨부 충돌: 미리보기가 어려우므로 종류·크기만 요약. */
@@ -137,6 +151,23 @@ export class ConflictModal extends Modal {
 				text: t("conflict.resolution_failed", { error: errMessage(e) }),
 			});
 		}
+		await this.render();
+	}
+
+	/** 일괄 해소: 되돌리기 어려우므로 확인을 거친 뒤 진행하고, 결과를 알림으로 요약한다. */
+	private async actAll(rows: ConflictRow[], choice: ResolveChoice): Promise<void> {
+		const action =
+			choice === "local" ? t("conflict.keep_local") : choice === "remote" ? t("conflict.apply_remote") : t("conflict.keep_both_versions");
+		const ok = await confirm(this.app, {
+			title: t("conflict.resolve_all_confirm_title"),
+			message: t("conflict.resolve_all_confirm_body", { count: rows.length, action }),
+			confirmText: action,
+			warning: choice === "remote",
+		});
+		if (!ok) return;
+
+		const { resolved, failed } = await this.host.resolveAllConflicts(rows, choice);
+		new Notice(failed > 0 ? t("conflict.resolve_all_done_failed", { resolved, failed }) : t("conflict.resolve_all_done", { resolved }));
 		await this.render();
 	}
 
