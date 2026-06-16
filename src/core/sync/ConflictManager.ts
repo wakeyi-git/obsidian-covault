@@ -202,8 +202,11 @@ export class ConflictManager {
 	}
 
 	/**
-	 * 첨부(asset) 충돌 해소. 원격본은 applier가 _충돌/에 보존한 바이너리 사본을 출처로 쓴다.
-	 * local=로컬 유지, remote=원격 적용, both=원격 사본을 동기화 위치에 보관(로컬 최종).
+	 * 첨부(asset) 충돌 해소. local=로컬 유지, remote=원격 적용, both=원격 사본을 동기화 위치에 보관(로컬 최종).
+	 *
+	 * 원격/로컬 바이너리는 **PouchDB(복제된 원본)** 에서 복원한다 — 이전엔 디스크의 _충돌/ 사본에만 의존해,
+	 * 사용자가 그 사본을 지웠거나(흔함) materialize가 안 됐으면 '원격 적용'이 조용히 로컬을 유지하고
+	 * '두 버전 보관'이 원격본을 잃었다(PDF 등 첨부 충돌이 해소되지 않던 원인). _충돌/ 사본은 폴백으로만 쓴다.
 	 */
 	private async resolveAsset(dbPath: string, choice: ResolveChoice): Promise<void> {
 		const ctx = this.ctx;
@@ -218,8 +221,14 @@ export class ConflictManager {
 				return;
 			}
 			const conflictRevs = winner._conflicts;
-			const localBin = await ctx.readVaultBinary(localPath);
-			const remoteBin = await ctx.readVaultBinary(ctx.conflictLocalPath(dbPath)); // materialize된 원격 사본
+			const liveBin = await ctx.readVaultBinary(localPath);
+			const liveHash = liveBin == null ? null : await sha256(liveBin);
+			// 원격(분기) 바이너리: PouchDB 리프에서 live와 다른 것을 고르고(applier의 보존 로직과 동형),
+			// 없으면 디스크 _충돌/ 사본으로 폴백.
+			const remoteBin = (await this.remoteAssetBinaryFromPouch(id, winner, conflictRevs, liveHash))
+				?? (await ctx.readVaultBinary(ctx.conflictLocalPath(dbPath)));
+			// 로컬(라이브)이 비어 있으면 winner 바이너리로 보완(파일이 사라진 채 해소되지 않도록).
+			const localBin = liveBin ?? (await ctx.pouch.getAssetBinary(id));
 
 			const remoteFinal = choice === "remote" || choice === "both-remote";
 
@@ -235,10 +244,12 @@ export class ConflictManager {
 				return;
 			}
 
-			// 원격을 최종으로 선택하면 라이브 파일도 갱신(에코는 guard로 차단).
-			if (remoteFinal && remoteBin) {
-				ctx.guard.mark(localPath, await sha256(remoteBin));
-				await ctx.writeVaultBinary(localPath, remoteBin);
+			// 최종 선택이 현재 라이브와 다르면 라이브 파일을 갱신한다(에코는 guard로 차단).
+			// remote 최종이면 원격본으로, local 최종인데 라이브가 비어 있으면 복원본(winner)으로 쓴다.
+			const chosenHash = await sha256(chosen);
+			if (chosenHash !== liveHash) {
+				ctx.guard.mark(localPath, chosenHash);
+				await ctx.writeVaultBinary(localPath, chosen);
 				ctx.guard.releaseAfterDelay(localPath);
 			}
 
@@ -258,6 +269,29 @@ export class ConflictManager {
 			return;
 		}
 		ctx.logger.warn(t("sync.conflict_resolve_retry_failed", { path: dbPath }), true);
+	}
+
+	/**
+	 * 분기(원격) 첨부 바이너리를 PouchDB에서 고른다 — winner 또는 충돌 리프 중 live와 내용이 다른 것.
+	 * (MirrorApplier.pickRemoteAssetBinary와 동형: winner가 로컬 branch면 리프에서 원격본을 찾는다.)
+	 * 모든 리프가 live와 같거나 바이너리가 없으면 null.
+	 */
+	private async remoteAssetBinaryFromPouch(
+		id: string,
+		winner: AssetDoc,
+		conflictRevs: string[],
+		liveHash: string | null,
+	): Promise<ArrayBuffer | null> {
+		const ctx = this.ctx;
+		const differs = async (bin: ArrayBuffer | null): Promise<boolean> =>
+			bin != null && (liveHash == null || (await sha256(bin)) !== liveHash);
+		const winnerBin = await ctx.pouch.getAssetBinary(id);
+		if (await differs(winnerBin)) return winnerBin;
+		for (const rev of conflictRevs) {
+			const bin = await ctx.pouch.getAssetBinaryRev(id, rev);
+			if (await differs(bin)) return bin;
+		}
+		return null;
 	}
 
 	// --- 내부 ---
