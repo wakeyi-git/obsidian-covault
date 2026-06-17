@@ -5,7 +5,7 @@ import { validateFolderName, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
 import { hasSecretStorage, getYjsSecret } from "../core/secret";
 import { renderManager as renderManagerSection, ManagerCtx } from "./managerSection";
-import { noAutoCorrect, renderMaxAttachmentSetting } from "./settingsUi";
+import { noAutoCorrect, renderMaxAttachmentSetting, commitOnBlur } from "./settingsUi";
 import { t } from "../i18n";
 
 // SettingGroup.listEl은 Obsidian 런타임에 1.11.0부터 존재하지만(공식 @since 1.11.0),
@@ -333,7 +333,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.setName(t("settings.mobile_upload_delay_ms"))
 				.setDesc(t("settings.delay_from_edit_to_upload_on"))
 				.addText((txt) =>
-					txt.setValue(String(s.mobileDebounceMs)).onChange(async (v) => {
+					commitOnBlur(txt.setValue(String(s.mobileDebounceMs)), async (v) => {
 						const n = parseInt(v, 10);
 						s.mobileDebounceMs = Number.isFinite(n) && n >= 0 ? n : 4000;
 						await this.host.saveSettings();
@@ -365,7 +365,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.addText((txt) => {
 					txt.setPlaceholder("0").setValue(String(s.deleteReconcileMax ?? 0));
 					txt.inputEl.type = "number";
-					txt.onChange(async (v) => {
+					commitOnBlur(txt, async (v) => {
 						const n = parseInt(v, 10);
 						s.deleteReconcileMax = Number.isFinite(n) && n >= 0 ? n : 0;
 						await this.host.saveSettings();
@@ -392,7 +392,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.addText((txt) => {
 					txt.setPlaceholder("10").setValue(String(s.versionMaxCount ?? 10));
 					txt.inputEl.type = "number";
-					txt.onChange(async (v) => {
+					commitOnBlur(txt, async (v) => {
 						const n = parseInt(v, 10);
 						s.versionMaxCount = Number.isFinite(n) && n > 0 ? n : 10;
 						await this.host.saveSettings();
@@ -407,7 +407,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.addText((txt) => {
 					txt.setPlaceholder("30").setValue(String(s.versionMaxAgeDays ?? 30));
 					txt.inputEl.type = "number";
-					txt.onChange(async (v) => {
+					commitOnBlur(txt, async (v) => {
 						const n = parseInt(v, 10);
 						s.versionMaxAgeDays = Number.isFinite(n) && n > 0 ? n : 30;
 						await this.host.saveSettings();
@@ -420,7 +420,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.setName(t("settings.archive_folder"))
 				.setDesc(t("settings.deleted_files_collect_here_under_the"))
 				.addText((txt) =>
-					txt.setPlaceholder(t("settings.deleted")).setValue(s.archiveFolder).onChange(async (v) => {
+					commitOnBlur(txt.setPlaceholder(t("settings.deleted")).setValue(s.archiveFolder), async (v) => {
 						const v2 = v.trim();
 						if (!this.okFolder(v2)) return;
 						if (v2 && foldersOverlap(v2, s.conflictFolder)) {
@@ -438,7 +438,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.setName(t("settings.conflict_folder"))
 				.setDesc(t("settings.folder_where_the_remote_version_is"))
 				.addText((txt) =>
-					txt.setPlaceholder(t("settings.conflict")).setValue(s.conflictFolder).onChange(async (v) => {
+					commitOnBlur(txt.setPlaceholder(t("settings.conflict")).setValue(s.conflictFolder), async (v) => {
 						const v2 = v.trim();
 						if (!this.okFolder(v2)) return;
 						if (v2 && foldersOverlap(v2, s.archiveFolder)) {
@@ -456,7 +456,7 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.setName(t("settings.excluded_folders"))
 				.setDesc(t("settings.enter_folders_to_exclude_from_sync"))
 				.addText((txt) =>
-					txt.setValue(s.excludeFolders.join(", ")).onChange(async (v) => {
+					commitOnBlur(txt.setValue(s.excludeFolders.join(", ")), async (v) => {
 						const folders = v.split(",").map((x) => x.trim()).filter((x) => x.length > 0);
 						const bad = folders.find((f) => !validateFolderName(f));
 						if (bad) {
@@ -561,12 +561,10 @@ export class CoVaultSettingTab extends PluginSettingTab {
 		const s = this.host.settings;
 		group.addSetting((set) =>
 			set.setName(name).addText((t) => {
-				t.setPlaceholder(placeholder)
-					.setValue(String(s[key] ?? ""))
-					.onChange(async (v) => {
-						(s[key] as unknown as string) = v.trim();
-						await this.host.saveSettings();
-					});
+				commitOnBlur(t.setPlaceholder(placeholder).setValue(String(s[key] ?? "")), async (v) => {
+					(s[key] as unknown as string) = v.trim();
+					await this.host.saveSettings();
+				});
 				noAutoCorrect(t.inputEl);
 				if (opts?.applyOnBlur) this.applyOnBlur(t.inputEl);
 			}),

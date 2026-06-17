@@ -5,21 +5,31 @@ services:
     restart: unless-stopped
     ports:
       - "1234:1234"        # NAS 내부 포트(외부 직접 노출 금지 — 리버스 프록시로만)
+    # 비밀·인스턴스별 값(YJS_SECRET·COUCHDB_*)은 .env에 둔다 — .env.example을 복사해 채우세요.
+    # (compose 파일에 평문 시크릿을 남기지 않는다. .env는 .gitignore로 커밋 제외.)
+    env_file:
+      - .env
     environment:
+      # 비밀이 아닌 고정 설정만 인라인(필요 시 .env에서 덮어쓸 수 있다).
       - HOST=0.0.0.0
       - PORT=1234
       - SQLITE_PATH=/data/hocuspocus.sqlite   # Yjs 문서 상태 영속화(서버 재시작 복원)
-      # (필수) HMAC 시크릿 — 플러그인의 ‘Yjs 공간 시크릿’과 동일하게 두세요. (예: openssl rand -hex 32)
-      # ⚠ CHANGE_ME_로 시작하거나 16자 미만이면 서버가 기동을 거부합니다(알려진 시크릿 사용 방지).
-      - YJS_SECRET=CHANGE_ME_replace-with-output-of-openssl-rand-hex-32
-      # (권장) CouchDB 연동 — 파일 단위 인가(rtpart) + 문서 시드/스냅샷(note)에 필요합니다.
-      # 계정은 플러그인 설정의 ‘실시간 서버 계정’(전용 서비스 계정)을 권장. admin 계정도 동작하지만
-      # 유출 시 피해 범위가 커집니다. 비우면 공간 단위 인가 + SQLite 영속만 동작합니다.
-      - COUCHDB_URL=http://<NAS_IP>:5984
-      - COUCHDB_USER=covault-rt
-      - COUCHDB_PASSWORD=CHANGE_ME_service-account-password
-      # 스냅샷 디바운스(ms): 변경 후 이 시간 안에 묶어서 저장, MAX 안엔 반드시 저장.
-      # - STORE_DEBOUNCE_MS=2000
-      # - STORE_MAX_DEBOUNCE_MS=10000
     volumes:
       - ./data:/data
+    # 헬스체크: /health(onRequest)가 200을 주면 정상. slim 이미지엔 curl/wget이 없어 node로 확인한다.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://localhost:1234/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # 로그 회전: NAS에서 컨테이너 로그가 무한 증가하는 것을 막는다(10MB×3개).
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

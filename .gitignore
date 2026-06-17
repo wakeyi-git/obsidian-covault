@@ -11,5 +11,10 @@ data.json
 # docs (로컬 전용 — 저장소에 포함하지 않음)
 docs/
 
+# secrets / local env (실시간 서버 .env — .env.example만 커밋)
+.env
+# 실시간 서버 로컬 상태(SQLite 등)
+server/hocuspocus/data/
+
 # os
 .DS_Store

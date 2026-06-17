@@ -4,7 +4,7 @@ import { ConfirmModal } from "../ui/ConfirmModal";
 import { DeviceAccountsModal } from "../ui/DeviceAccountsModal";
 import { MultiSelectModal } from "../ui/MultiSelectModal";
 import { sharedSpaceStatus } from "./sharedSpaceStatus";
-import { noAutoCorrect, cardCollapsible } from "./settingsUi";
+import { noAutoCorrect, cardCollapsible, commitOnBlur } from "./settingsUi";
 import type { ManagerCtx } from "./managerSection";
 import { t } from "../i18n";
 
@@ -54,7 +54,7 @@ export function renderSharedCard(c: ManagerCtx, group: SettingGroup, sp: SharedS
 	// 세부 항목은 기본 접힘(평가 P2-2) — 카드 첫 화면엔 이름·배포 상태만, 편집은 펼쳐서.
 	const body = cardCollapsible(card, t("settings.space_details"));
 	new Setting(body).setName(t("settings.name")).addText((txt) => {
-		txt.setPlaceholder(t("settings.group_1")).setValue(sp.name).onChange(async (v) => {
+		commitOnBlur(txt.setPlaceholder(t("settings.group_1")).setValue(sp.name), async (v) => {
 			sp.name = v.trim();
 			if (!sp.folder) sp.folder = v.trim();
 			await c.host.saveSettings();
@@ -63,7 +63,7 @@ export function renderSharedCard(c: ManagerCtx, group: SettingGroup, sp: SharedS
 		c.applyOnBlur(txt.inputEl);
 	});
 	new Setting(body).setName(t("settings.folder")).addText((txt) => {
-		txt.setPlaceholder(t("settings.group_1")).setValue(sp.folder).onChange(async (v) => {
+		commitOnBlur(txt.setPlaceholder(t("settings.group_1")).setValue(sp.folder), async (v) => {
 			const v2 = v.trim();
 			if (!c.okFolder(v2)) return;
 			sp.folder = v2;
@@ -115,7 +115,7 @@ export function renderSharedCard(c: ManagerCtx, group: SettingGroup, sp: SharedS
 			.addText((txt) => {
 				txt.setPlaceholder("10").setValue(String(s.dashboardPageSize ?? 10));
 				txt.inputEl.type = "number";
-				txt.onChange(async (v) => {
+				commitOnBlur(txt, async (v) => {
 					const n = parseInt(v, 10);
 					s.dashboardPageSize = Number.isFinite(n) && n > 0 ? n : 10;
 					await c.host.saveSettings();
@@ -219,14 +219,12 @@ export function renderMemberCard(c: ManagerCtx, group: SettingGroup, st: MemberC
 
 function memberField(c: ManagerCtx, card: HTMLElement, name: string, st: MemberConfig, key: keyof MemberConfig, placeholder: string): void {
 	new Setting(card).setName(name).addText((tx) => {
-		tx.setPlaceholder(placeholder)
-			.setValue(String(st[key] ?? ""))
-			.onChange(async (v) => {
-				const v2 = v.trim();
-				if (key === "localRoot" && !c.okFolder(v2)) return; // 잘못된 폴더 경로는 저장하지 않음
-				(st[key] as unknown as string) = v2;
-				await c.host.saveSettings();
-			});
+		commitOnBlur(tx.setPlaceholder(placeholder).setValue(String(st[key] ?? "")), async (v) => {
+			const v2 = v.trim();
+			if (key === "localRoot" && !c.okFolder(v2)) return; // 잘못된 폴더 경로는 저장하지 않음
+			(st[key] as unknown as string) = v2;
+			await c.host.saveSettings();
+		});
 		noAutoCorrect(tx.inputEl);
 		c.applyOnBlur(tx.inputEl); // 칸을 벗어나면 자동 적용
 	});

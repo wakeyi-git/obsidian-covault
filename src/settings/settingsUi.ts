@@ -51,11 +51,11 @@ export function renderMaxAttachmentSetting(g: SettingGroup, s: CoVaultSettings, 
 			.setName(t("settings.max_attachment_size_mb"))
 			.setDesc(t("settings.attachments_larger_than_this_are_not", { cap: HARD_ATTACHMENT_CAP_MB }))
 			.addText((txt) =>
-				txt.setValue(String(s.maxAttachmentMB)).onChange(async (v) => {
+				commitOnBlur(txt.setValue(String(s.maxAttachmentMB)), async (v) => {
 					const n = parseInt(v, 10);
 					const clamped = Number.isFinite(n) && n >= 0 ? Math.min(n, HARD_ATTACHMENT_CAP_MB) : 20;
 					s.maxAttachmentMB = clamped;
-					if (clamped !== n) txt.setValue(String(clamped)); // 1GB 초과/잘못된 입력은 즉시 정직하게 보정
+					if (clamped !== n) txt.setValue(String(clamped)); // 한도 초과/잘못된 입력은 정직하게 보정
 					await onSave();
 					refreshWarning();
 				}),
@@ -63,6 +63,33 @@ export function renderMaxAttachmentSetting(g: SettingGroup, s: CoVaultSettings, 
 	);
 	g.listEl.appendChild(warnBox); // addSetting이 항목을 끝에 추가하므로 경고를 그 아래로 이동
 	refreshWarning();
+}
+
+/**
+ * 텍스트/숫자 인풋의 변경을 **포커스가 빠질 때(blur) 또는 Enter** 에만 커밋한다(Obsidian onChange 대체).
+ * Obsidian의 onChange는 매 입력(키 한 글자)마다 발화해, 한 글자마다 저장·검증·모드 재시작을 유발한다 —
+ * 입력을 마치고 칸을 벗어날 때만 cb를 실행해 타이핑 도중의 비싼 적용·검증 깜빡임을 없앤다.
+ * 체이닝을 위해 같은 컴포넌트를 반환한다(예: commitOnBlur(txt.setValue(x), cb)).
+ */
+export function commitOnBlur<T extends { inputEl: HTMLInputElement }>(txt: T, cb: (value: string) => unknown): T {
+	const el = txt.inputEl;
+	let last = el.value;
+	const run = (): void => {
+		if (el.value === last) return; // 변화 없으면 무시(빈 blur마다 저장 방지)
+		// cb가 값을 보정(clamp)할 수 있으니, 실행 후의 실제 값으로 last를 갱신해 다음 blur의 중복 실행을 막는다.
+		void Promise.resolve(cb(el.value)).finally(() => {
+			last = el.value;
+		});
+	};
+	el.addEventListener("blur", run);
+	el.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			run();
+			el.blur();
+		}
+	});
+	return txt;
 }
 
 /** 모바일에서 자격증명/ID가 자동 대문자화·자동완성으로 망가지는 것을 방지. */

@@ -8,7 +8,7 @@ import { PathSuggest } from "../ui/PathSuggest";
 import { resolveMemberNames } from "../core/classroom/people";
 import { renderSharedCard, renderMemberCard } from "./managerCards";
 import { setSecretValue, getYjsSecret, getCouchPassword, persistCouchPassword, YJS_SECRET_ID, RT_SERVICE_PASSWORD_ID } from "../core/secret";
-import { noAutoCorrect } from "./settingsUi";
+import { noAutoCorrect, commitOnBlur } from "./settingsUi";
 import { t } from "../i18n";
 
 /**
@@ -59,7 +59,7 @@ export function renderManager(c: ManagerCtx, s: CoVaultSettings): void {
 			.addText((txt) => {
 				txt.setPlaceholder("0").setValue(String(s.inviteTtlDays ?? 0));
 				txt.inputEl.type = "number";
-				txt.onChange(async (v) => {
+				commitOnBlur(txt, async (v) => {
 					const n = Number(v);
 					s.inviteTtlDays = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 					await c.host.saveSettings();
@@ -171,7 +171,7 @@ export function renderManager(c: ManagerCtx, s: CoVaultSettings): void {
 			.setName(t("group.max_per_member"))
 			.setDesc(t("group.max_per_member_desc"))
 			.addText((tx) =>
-				tx.setValue(String(s.groupMaxPerMember ?? 3)).onChange(async (v) => {
+				commitOnBlur(tx.setValue(String(s.groupMaxPerMember ?? 3)), async (v) => {
 					const n = parseInt(v, 10);
 					if (Number.isFinite(n) && n >= 0) {
 						s.groupMaxPerMember = n;
@@ -243,7 +243,7 @@ export function renderManager(c: ManagerCtx, s: CoVaultSettings): void {
 		.setName(t("settings.yjs_space_secret_hmac_recommended"))
 		.setDesc(t("settings.when_set_issues_a_signed_token"))
 		.addText((txt) => {
-			txt.setPlaceholder(t("settings.same_as_server_yjs_secret")).setValue(getYjsSecret(c.host.app, s.yjsSecret)).onChange(async (v) => {
+			commitOnBlur(txt.setPlaceholder(t("settings.same_as_server_yjs_secret")).setValue(getYjsSecret(c.host.app, s.yjsSecret)), async (v) => {
 				const val = v.trim();
 				setSecretValue(c.host.app, YJS_SECRET_ID, val);
 				s.yjsSecretSet = !!val;
@@ -259,7 +259,7 @@ export function renderManager(c: ManagerCtx, s: CoVaultSettings): void {
 		.addText((txt) => {
 			txt.setPlaceholder("0").setValue(String(s.yjsTokenTtlDays ?? 0));
 			txt.inputEl.type = "number";
-			txt.onChange(async (v) => {
+			commitOnBlur(txt, async (v) => {
 				const n = Number(v);
 				s.yjsTokenTtlDays = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 				await c.host.saveSettings();
@@ -273,7 +273,7 @@ export function renderManager(c: ManagerCtx, s: CoVaultSettings): void {
 		.addText((txt) => {
 			txt.setPlaceholder("covault-rt").setValue(s.rtServiceUsername ?? "");
 			noAutoCorrect(txt.inputEl);
-			txt.onChange(async (v) => {
+			commitOnBlur(txt, async (v) => {
 				s.rtServiceUsername = v.trim() || undefined;
 				await c.host.saveSettings();
 			});
@@ -282,7 +282,7 @@ export function renderManager(c: ManagerCtx, s: CoVaultSettings): void {
 		.setName(t("settings.rt_service_password"))
 		.setDesc(t("settings.rt_service_password_desc"))
 		.addText((txt) => {
-			txt.setPlaceholder(s.rtServicePasswordSet ? t("common.set") : "").onChange(async (v) => {
+			commitOnBlur(txt.setPlaceholder(s.rtServicePasswordSet ? t("common.set") : ""), async (v) => {
 				const val = v.trim();
 				setSecretValue(c.host.app, RT_SERVICE_PASSWORD_ID, val);
 				s.rtServicePasswordSet = !!val;
@@ -324,7 +324,7 @@ function templateRow(c: ManagerCtx, group: SettingGroup, name: string, key: keyo
 		set.setName(name)
 			.setDesc(t("settings.template_path_optional_desc"))
 			.addText((txt) => {
-				txt.setPlaceholder(t("settings.blank_uses_built_in")).setValue(String(s[key] ?? "")).onChange(async (v) => {
+				commitOnBlur(txt.setPlaceholder(t("settings.blank_uses_built_in")).setValue(String(s[key] ?? "")), async (v) => {
 					(s[key] as unknown as string) = v.trim();
 					await c.host.saveSettings();
 				});
@@ -346,7 +346,7 @@ function passwordSetting(c: ManagerCtx, group: SettingGroup): void {
 	group.addSetting((set) =>
 		set.setName(t("settings.admin_password")).addText((txt) => {
 			// Secret Storage 우선 저장(평문 data.json 회피), 미지원 환경만 평문 폴백.
-			txt.setPlaceholder("********").setValue(getCouchPassword(c.host.app, s.password)).onChange(async (v) => {
+			commitOnBlur(txt.setPlaceholder("********").setValue(getCouchPassword(c.host.app, s.password)), async (v) => {
 				persistCouchPassword(c.host.app, s, v.trim());
 				await c.host.saveSettings();
 			});
