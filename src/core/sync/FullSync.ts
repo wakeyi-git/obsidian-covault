@@ -1,5 +1,5 @@
 import { TFile } from "obsidian";
-import { errMessage } from "../util/err";
+import { errMessage, isDbClosingError } from "../util/err";
 import { MirrorContext } from "./MirrorContext";
 import { MirrorApplier } from "./MirrorApplier";
 import { Uploader } from "./Uploader";
@@ -106,8 +106,14 @@ export class FullSync {
 			ctx.logger.info(t("version.startup_reconcile_done_docs", { pushed, pulled }));
 		} catch (e) {
 			const msg = errMessage(e);
-			ctx.logger.error(t("version.startup_reconcile_failed", { err: msg }), true);
-			if (isAuthError(msg)) logAuthDiagnostic(ctx, ctx.remoteDb); // 잠금이 어느 자격증명 경로에서 비롯됐는지
+			// 비활성화/리로드/설정 적용(실시간 토글 등)으로 모드가 재시작하며 로컬 DB가 닫혀 난 종료 레이스는
+			// 실제 실패가 아니다 — 다음 시작의 정합으로 치유되므로 info로 강등(삭제 쓰기 경로와 동일 처리).
+			if (isDbClosingError(e)) {
+				ctx.logger.info(t("sync.startup_reconcile_skipped_db_closing", { db: ctx.remoteDb }));
+			} else {
+				ctx.logger.error(t("version.startup_reconcile_failed", { err: msg }), true);
+				if (isAuthError(msg)) logAuthDiagnostic(ctx, ctx.remoteDb); // 잠금이 어느 자격증명 경로에서 비롯됐는지
+			}
 		}
 
 		await this.writeManifestSnapshot(baseline);

@@ -918,6 +918,7 @@
 		"purge_failed": "Purge failed: {path} — {err}",
 		"delete_handling_failed": "Delete handling failed: {path} — {err}",
 		"write_skipped_db_closing": "Skipped a sync write — the local DB was closing (plugin disable/reload): {path}. It will reconcile on next startup.",
+		"startup_reconcile_skipped_db_closing": "Startup reconcile skipped — the local DB was closing (settings apply/disable/reload): {db}. It will reconcile on next startup.",
 		"upload_failed": "Upload failed: {path} — {err}",
 		"localapplier_started_since": "LocalApplier started: {db} (since={since})",
 		"start": "start",

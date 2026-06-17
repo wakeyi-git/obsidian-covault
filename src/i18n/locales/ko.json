@@ -918,6 +918,7 @@
 		"purge_failed": "purge 실패: {path} — {err}",
 		"delete_handling_failed": "삭제 처리 실패: {path} — {err}",
 		"write_skipped_db_closing": "동기화 쓰기 건너뜀 — 종료 중 로컬 DB가 닫혔습니다(플러그인 비활성화/리로드): {path}. 다음 시작 시 자동 정합됩니다.",
+		"startup_reconcile_skipped_db_closing": "시작 정합 건너뜀 — 종료 중 로컬 DB가 닫혔습니다(설정 적용/비활성화/리로드): {db}. 다음 시작 시 자동 정합됩니다.",
 		"upload_failed": "업로드 실패: {path} — {err}",
 		"localapplier_started_since": "LocalApplier 시작: {db} (since={since})",
 		"start": "처음",
