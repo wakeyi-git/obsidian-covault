@@ -1,6 +1,5 @@
 import { App, Notice, SecretStorage } from "obsidian";
 import { t } from "../i18n";
-import { utf8ToB64 } from "./util/b64";
 
 /**
  * Obsidian SecretStorage(@since 1.11.4) 래퍼. 비밀값을 vault별 로컬 스토리지에 저장해 data.json 평문 노출을 막는다.
@@ -14,17 +13,25 @@ export const COUCH_PASSWORD_ID = "covault-couch-password";
 /** 실시간 서버 전용 CouchDB 서비스 계정 비밀번호(교사 보유). 배포 시 계정 생성·DB 멤버 추가에 사용. */
 export const RT_SERVICE_PASSWORD_ID = "covault-rt-service-password";
 
-/** base64url 인코딩(UTF-8 안전). 키에 memberId를 충돌 없이 담는 용도. */
-function b64url(s: string): string {
-	return utf8ToB64(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+/**
+ * Secret Storage 키 슬러그 — Obsidian `setSecret`은 **소문자 영숫자+하이픈** id만 허용하고 그 외엔 throw한다
+ * (obsidian.d.ts: "Lowercase alphanumeric ID with optional dashes"). memberId/spaceId의 임의 문자(대문자·`_`·
+ * 유니코드)를 UTF-8 16진수로 인코딩해 항상 `[0-9a-f]`만 남긴다 — 충돌 없이 유효한 키를 만든다.
+ * (이전엔 base64url을 써서 대문자·`_`가 섞여 setSecret이 throw → 토큰·구성원 비밀번호가 평문으로 떨어졌다.)
+ */
+function keySlug(s: string): string {
+	const bytes = new TextEncoder().encode(s);
+	let hex = "";
+	for (const b of bytes) hex += b.toString(16).padStart(2, "0");
+	return hex;
 }
 
 /**
- * 구성원별 비밀번호 Secret Storage 키(교사 보유분). memberId를 base64url로 담아 충돌을 없앤다.
+ * 구성원별 비밀번호 Secret Storage 키(교사 보유분). memberId를 16진수로 담아 충돌을 없앤다.
  * (정규화 방식은 `member_a`와 `member-a`가 같은 키로 충돌하므로 쓰지 않는다.)
  */
 export function memberPasswordId(memberId: string): string {
-	return `covault-member-pw-${b64url(memberId)}`;
+	return `covault-member-pw-${keySlug(memberId)}`;
 }
 
 export function getMemberPassword(app: App, memberId: string, fallback: string | undefined): string {
@@ -140,15 +147,15 @@ function warnPlaintextFallbackOnce(): void {
 
 /** 공유 공간의 교사 본인용 토큰(sp.token) 키. */
 export function spaceTokenId(spaceId: string): string {
-	return `covault-rt-space-token-${b64url(spaceId)}`;
+	return `covault-rt-space-token-${keySlug(spaceId)}`;
 }
 /** 개인 mirror 구성원용 토큰(member.realtimeToken) 키 — shares 배포 시 읽는다. */
 export function memberMirrorTokenId(memberId: string): string {
-	return `covault-rt-member-token-${b64url(memberId)}`;
+	return `covault-rt-member-token-${keySlug(memberId)}`;
 }
 /** 개인 mirror 운영자 본인용 토큰(member.managerMirrorToken) 키. */
 export function managerMirrorTokenId(memberId: string): string {
-	return `covault-rt-manager-token-${b64url(memberId)}`;
+	return `covault-rt-manager-token-${keySlug(memberId)}`;
 }
 
 /** 토큰 저장. Secret Storage 성공 시 true(호출측: 평문 비우고 *Set 플래그), 실패 시 false(평문 보관 + 1회 경고). */
