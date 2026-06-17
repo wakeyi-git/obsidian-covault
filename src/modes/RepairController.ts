@@ -1,8 +1,10 @@
-import { App, Notice } from "obsidian";
+import { App, Notice, TFile, normalizePath } from "obsidian";
 import { Logger } from "../core/log/Logger";
 import { CoVaultSettings } from "../settings/types";
 import { MirrorSync } from "../core/sync/MirrorSync";
 import { dbPathOfId } from "../core/sync/orphanRepair";
+import { detectPeriodicRepeat } from "../core/sync/dedupRepeat";
+import { ensureParentFolders } from "../core/vault/folders";
 import { errMessage } from "../core/util/err";
 import { confirm } from "../ui/ConfirmModal";
 import { t } from "../i18n";
@@ -22,7 +24,20 @@ export interface RepairDeps {
 	logger: Logger;
 	settings(): CoVaultSettings;
 	getSyncs(): MirrorSync[];
+	/** 공동 공간 폴더(개인 mirror 제외). 중복 누적 정리 대상. */
+	sharedFolders(): string[];
 	openLog(): Promise<void>;
+}
+
+/** 중복 누적 정리 후보(노트 전체 내용이 정확 k회 반복). */
+interface DedupCandidate {
+	file: TFile;
+	folder: string;
+	rel: string;
+	before: number;
+	after: number;
+	copies: number;
+	unit: string;
 }
 
 /** 멈춤 방지: p가 ms 안에 끝나지 않으면 onTimeout 값으로 진행. 거부도 onTimeout으로 흡수. */
@@ -114,5 +129,94 @@ export class RepairController {
 			return n;
 		});
 		this.d.logger.ok(t("sync.repair_done", { n: tombstoned }), true);
+	}
+
+	/** 경로가 folder 아래인가(folder 자신 제외 — 하위만). */
+	private under(path: string, folder: string): boolean {
+		return path === folder || path.startsWith(folder + "/");
+	}
+
+	/** 공유 폴더 아래 markdown을 훑어 정확 주기 반복(오염) 후보를 모은다. */
+	private async scanDuplicates(folders: string[]): Promise<DedupCandidate[]> {
+		const s = this.d.settings();
+		const out: DedupCandidate[] = [];
+		for (const file of this.d.app.vault.getMarkdownFiles()) {
+			const folder = folders.find((f) => this.under(file.path, f));
+			if (!folder) continue;
+			const rel = file.path.slice(folder.length + 1);
+			// 보관·충돌 폴더는 정본 대상이 아니다(백업 사본이 다시 탐지되는 것도 막는다).
+			if (this.under(rel, s.archiveFolder) || this.under(rel, s.conflictFolder)) continue;
+			// excalidraw(.excalidraw.md)는 JSON 그림이라 반복 축소 위험 — 제외.
+			if (file.path.toLowerCase().endsWith(".excalidraw.md")) continue;
+			const content = await this.d.app.vault.cachedRead(file);
+			const hit = detectPeriodicRepeat(content);
+			if (hit) out.push({ file, folder, rel, before: content.length, after: hit.unit.length, copies: hit.copies, unit: hit.unit });
+		}
+		return out;
+	}
+
+	/** 원본을 공유 폴더의 충돌 폴더(동기화 제외)에 백업. 경로 충돌은 타임스탬프로 회피. */
+	private async backupBeforeCollapse(c: DedupCandidate): Promise<void> {
+		const conflict = this.d.settings().conflictFolder;
+		const flat = c.rel.replace(/\//g, "_");
+		const path = normalizePath(`${c.folder}/${conflict}/dedup/${flat}.${Date.now()}.bak.md`);
+		await ensureParentFolders(this.d.app, path);
+		const original = await this.d.app.vault.read(c.file);
+		await this.d.app.vault.adapter.write(path, original);
+	}
+
+	/**
+	 * 중복 누적(ABCABC) 노트 정리(멱등·역할 무관). 실시간 절전-재접속 레이스가 남긴 '전체 내용 정확 k회 반복'을
+	 * 단위 1개로 축소한다 — 내용 기반 탐지만이 stale 재전송과 오염을 구분한다(시각·버전·rev로는 불가: 재전송이
+	 * 늘 '최신 쓰기'로 위장). [dedupRepeat] 참고. 탐지→목록 확인→백업 후 정본으로 덮기. vault 쓰기는
+	 * LocalWatcher가 업로드해 전파 → 모든 볼트가 수렴. 어느 볼트든 오염본이 남으면 재전송하므로 각 볼트에서 실행.
+	 */
+	async cleanupDuplicates(): Promise<void> {
+		await this.d.openLog();
+		const folders = this.d.sharedFolders();
+		this.d.logger.info(t("dedup.scan_started", { n: folders.length }), true);
+		if (folders.length === 0) {
+			this.d.logger.warn(t("dedup.no_shared_folders"), true);
+			return;
+		}
+		let candidates: DedupCandidate[];
+		try {
+			candidates = await this.scanDuplicates(folders);
+		} catch (e) {
+			this.d.logger.error(t("dedup.scan_failed", { err: errMessage(e) }), true);
+			return;
+		}
+		if (candidates.length === 0) {
+			this.d.logger.ok(t("dedup.none_found"), true);
+			return;
+		}
+		const sample = candidates
+			.slice(0, 12)
+			.map((c) => t("dedup.sample_line", { path: `${c.folder}/${c.rel}`, copies: c.copies, before: c.before, after: c.after }))
+			.join("\n");
+		const ok = await confirm(this.d.app, {
+			title: t("dedup.confirm_title"),
+			message: t("dedup.confirm_body", { n: candidates.length, sample }),
+			confirmText: t("dedup.confirm_action"),
+			warning: true,
+		});
+		if (!ok) return;
+		let cleaned = 0;
+		for (const c of candidates) {
+			try {
+				// 스캔 이후 바뀌었을 수 있으니 최신 내용으로 재검증(멱등·레이스 안전).
+				const fresh = await this.d.app.vault.read(c.file);
+				const hit = detectPeriodicRepeat(fresh);
+				if (!hit) continue;
+				await this.backupBeforeCollapse(c);
+				await this.d.app.vault.process(c.file, () => hit.unit);
+				cleaned++;
+				this.d.logger.ok(t("dedup.cleaned_one", { path: `${c.folder}/${c.rel}`, copies: hit.copies }));
+			} catch (e) {
+				this.d.logger.warn(t("dedup.clean_failed_one", { path: `${c.folder}/${c.rel}`, err: errMessage(e) }), true);
+			}
+		}
+		new Notice(t("dedup.done", { n: cleaned }));
+		this.d.logger.ok(t("dedup.done", { n: cleaned }), true);
 	}
 }

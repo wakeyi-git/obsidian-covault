@@ -684,6 +684,8 @@
 		"reset_local_cache": "로컬 캐시 초기화",
 		"repair_shared_consistency": "공유 공간 정합 복구",
 		"repair_shared_consistency_hint": "내 vault엔 없는데 공유 DB엔 살아있는 파일을 tombstone해 삭제를 전파합니다(폴더 삭제 후 구성원에게 남은 파일 등). 먼저 목록을 확인합니다.",
+		"cleanup_duplicates": "중복 누적 정리",
+		"cleanup_duplicates_hint": "공유 폴더에서 노트 전체 내용이 반복된(ABCABC 실시간 누적 버그) 파일을 찾아 한 벌로 축소합니다. 먼저 목록을 확인하며, 원본은 _충돌/에 백업됩니다. 멱등이라 반복 실행해도 무해하고, 각 볼트에서 실행해야 완전히 정리됩니다.",
 		"reset_server_data": "서버 데이터 초기화…",
 		"refresh_shared_spaces": "공동 공간 새로고침",
 		"checks_the_couchdb_connection_and_read": "CouchDB 서버 연결과 DB 읽기/쓰기 권한을 확인합니다.",
@@ -855,6 +857,7 @@
 		"download_only": "다운로드만 실행",
 		"toggle_auto_sync": "자동 동기화 켜기/끄기",
 		"repair_shared_consistency": "공유 공간 정합 복구 (관리자)",
+		"cleanup_duplicates": "중복 누적 노트 정리",
 		"reset_local_cache_re_fetch_from": "로컬 캐시 초기화 (서버에서 다시 받기)",
 		"open_conflict_list": "충돌 목록 열기",
 		"open_sync_status": "동기화 상태 열기",
@@ -863,6 +866,19 @@
 		"realtime": "🟢 실시간 {n}명",
 		"invalid_id_or_db_name": "구성원 ID/계정/DB 이름이 CouchDB 규칙(소문자·숫자·_·-)에 맞지 않습니다: {id}",
 		"invalid_share_db_name": "공동 DB 이름이 CouchDB 규칙에 맞지 않습니다: {db}"
+	},
+	"dedup": {
+		"scan_started": "공유 폴더 {n}개에서 중복 누적을 검사합니다…",
+		"no_shared_folders": "검사할 공유 폴더가 없습니다.",
+		"scan_failed": "중복 검사 실패: {err}",
+		"none_found": "중복 누적이 없습니다 — 정리할 것이 없습니다.",
+		"sample_line": "{path} — ×{copies} ({before} → {after}자)",
+		"confirm_title": "중복 누적 정리",
+		"confirm_body": "{n}개 노트의 전체 내용이 반복된 것으로 보입니다(ABCABC 누적 버그). 각각 한 벌로 축소할까요? 원본은 _충돌/에 백업됩니다.\n\n{sample}",
+		"confirm_action": "정리",
+		"cleaned_one": "{path} 정리 완료(×{copies})",
+		"clean_failed_one": "{path} 정리 실패: {err}",
+		"done": "중복 노트 {n}개를 정리했습니다."
 	},
 	"sync": {
 		"conflict_held_preserve_local_both_sides": "충돌 보류(preserve-local): {path} — 양쪽 분기 편집. 로컬 유지, 원격본을 _충돌/에 저장. '충돌 목록'에서 해소하세요.",

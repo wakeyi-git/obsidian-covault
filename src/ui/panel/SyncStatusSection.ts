@@ -112,6 +112,8 @@ export class SyncStatusSection implements PanelSection {
 		item(t("panel.run_full_diagnostics"), t("panel.checks_server_reachability_per_link_permissions"), () => this.host.runDiagnostics());
 		item(t("panel.check_realtime_status"), t("panel.logs_the_current_file_s_realtime"), () => this.host.realtimeStatus());
 		item(t("panel.reset_local_cache"), t("panel.clears_the_local_pouchdb_and_re"), () => this.host.resetLocalCache());
+		// 중복 누적(ABCABC) 정리 — 역할 무관(각 볼트에서 실행해야 완전히 마름). 멱등이라 반복 실행 무해.
+		item(t("panel.cleanup_duplicates"), t("panel.cleanup_duplicates_hint"), () => this.host.cleanupDuplicates(), { warning: true });
 		if (this.host.settings.role === "manager") {
 			item(t("panel.repair_shared_consistency"), t("panel.repair_shared_consistency_hint"), () => this.host.repairSharedConsistency(), { warning: true });
 			item(t("panel.reset_server_data"), t("panel.deletes_the_member_shared_dbs_on"), () => this.host.openResetModal(), { warning: true });

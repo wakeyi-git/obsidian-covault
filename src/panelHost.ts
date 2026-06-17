@@ -134,6 +134,7 @@ export interface PanelHostDeps {
 	runDiagnostics(): Promise<void>;
 	openResetModal(): void;
 	repairSharedConsistency(): Promise<void>;
+	cleanupDuplicates(): Promise<void>;
 }
 
 export function buildPanelHost(d: PanelHostDeps): PanelHost {
@@ -306,5 +307,6 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 		runDiagnostics: d.runDiagnostics,
 		openResetModal: d.openResetModal,
 		repairSharedConsistency: d.repairSharedConsistency,
+		cleanupDuplicates: d.cleanupDuplicates,
 	};
 }

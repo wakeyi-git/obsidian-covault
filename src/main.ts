@@ -227,6 +227,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			logger: this.logger,
 			settings: () => this.settings,
 			getSyncs: () => this.mode?.getSyncs() ?? [],
+			sharedFolders: () => this.core.sharedSpaces.filter((sp) => sp.kind !== "mirror" && sp.folder !== "").map((sp) => sp.folder),
 			openLog: () => this.nav.openLog(),
 		});
 		this.onboardingCtl = new OnboardingController({
@@ -268,9 +269,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			}, 2000);
 		};
 		// 함께 쓰는 플러그인 배포 수신(구성원) → 설치 안내. 교사는 배포 패널이 폴링으로 갱신.
-		this.core.onPluginDeployChange = () => {
-			if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming();
-		};
+		this.core.onPluginDeployChange = () => { if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming(); };
 		// 알림장·수업은 편집창 + 프론트매터로 작성한다 — 파일 프론트매터 변경/삭제/이름변경을 게시 메타에 반영(교사).
 		this.registerEvent(this.app.metadataCache.on("changed", (file) => { if (file instanceof TFile) void this.classroomCtls.noticeCtl.syncNoticeFromFile(file); }));
 		this.registerEvent(this.app.vault.on("delete", (file) => {
@@ -322,6 +321,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			runDiagnostics: () => this.runDiagnostics(),
 			openResetModal: () => this.openResetModal(),
 			repairSharedConsistency: () => this.repairCtl.repairSharedConsistency(),
+			cleanupDuplicates: () => this.repairCtl.cleanupDuplicates(),
 		});
 		this.registerView(PANEL_VIEW_TYPE, (leaf: WorkspaceLeaf) => new CoVaultPanelView(leaf, this.panelHost));
 		this.addSettingTab(new CoVaultSettingTab(this.app, this));
@@ -671,6 +671,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			toggleAutoSync: () => void this.toggleAutoSync(),
 			resetLocalCache: () => void this.panelHost.resetLocalCache(),
 			repairSharedConsistency: () => void this.repairCtl.repairSharedConsistency(),
+			cleanupDuplicates: () => void this.repairCtl.cleanupDuplicates(),
 			openConflicts: () => this.panelHost.openConflictModal(),
 			realtimeStatus: () => void this.realtimeStatus(),
 			refreshShares: () => void this.refreshShares(),

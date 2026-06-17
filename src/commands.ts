@@ -18,6 +18,7 @@ export interface CommandActions {
 	toggleAutoSync(): void;
 	resetLocalCache(): void;
 	repairSharedConsistency(): void;
+	cleanupDuplicates(): void;
 	openConflicts(): void;
 	realtimeStatus(): void;
 	refreshShares(): void;
@@ -48,6 +49,7 @@ export function registerCommands(plugin: Plugin, a: CommandActions): void {
 	plugin.addCommand({ id: "open-feedback", name: t("command.open_feedback_panel"), callback: () => a.openTab("feedback") });
 	plugin.addCommand({ id: "refresh-shares", name: t("panel.refresh_shared_spaces"), callback: () => a.refreshShares() });
 	plugin.addCommand({ id: "repair-shared-consistency", name: t("command.repair_shared_consistency"), callback: () => a.repairSharedConsistency() });
+	plugin.addCommand({ id: "cleanup-duplicates", name: t("command.cleanup_duplicates"), callback: () => a.cleanupDuplicates() });
 	plugin.addCommand({
 		id: "version-history",
 		name: t("version.open_version_history"),

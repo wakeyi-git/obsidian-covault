@@ -684,6 +684,8 @@
 		"reset_local_cache": "Reset local cache",
 		"repair_shared_consistency": "Repair shared-space consistency",
 		"repair_shared_consistency_hint": "Tombstone files missing from your vault but still live in shared DBs, to propagate deletions (e.g. files left after a folder delete). Shows a list to confirm first.",
+		"cleanup_duplicates": "Clean up duplicated content",
+		"cleanup_duplicates_hint": "Scan shared folders for notes whose entire content is repeated (the ABCABC realtime accumulation bug) and collapse them to one copy. Shows a list to confirm first; originals are backed up to _conflict/. Idempotent — safe to re-run, and run it in each vault.",
 		"reset_server_data": "Reset server data…",
 		"refresh_shared_spaces": "Refresh shared spaces",
 		"checks_the_couchdb_connection_and_read": "Checks the CouchDB connection and read/write permissions on the DBs.",
@@ -855,6 +857,7 @@
 		"download_only": "Download only",
 		"toggle_auto_sync": "Toggle auto-sync",
 		"repair_shared_consistency": "Repair shared-space consistency (manager)",
+		"cleanup_duplicates": "Clean up duplicated note content",
 		"reset_local_cache_re_fetch_from": "Reset local cache (re-fetch from server)",
 		"open_conflict_list": "Open conflict list",
 		"open_sync_status": "Open sync status",
@@ -863,6 +866,19 @@
 		"realtime": "🟢 Realtime {n}",
 		"invalid_id_or_db_name": "Member ID/account/DB name doesn't meet CouchDB rules (lowercase letters/digits/_/-): {id}",
 		"invalid_share_db_name": "Shared DB name doesn't meet CouchDB rules: {db}"
+	},
+	"dedup": {
+		"scan_started": "Scanning {n} shared folder(s) for duplicated content…",
+		"no_shared_folders": "No shared folders to scan.",
+		"scan_failed": "Duplicate scan failed: {err}",
+		"none_found": "No duplicated content found — nothing to clean up.",
+		"sample_line": "{path} — ×{copies} ({before} → {after} chars)",
+		"confirm_title": "Clean up duplicated content",
+		"confirm_body": "{n} note(s) appear to have their entire content repeated (the ABCABC accumulation bug). Collapse each to one copy? Originals are backed up to _conflict/.\n\n{sample}",
+		"confirm_action": "Clean up",
+		"cleaned_one": "Cleaned up {path} (was ×{copies})",
+		"clean_failed_one": "Failed to clean {path}: {err}",
+		"done": "Cleaned up {n} duplicated note(s)."
 	},
 	"sync": {
 		"conflict_held_preserve_local_both_sides": "Conflict held (preserve-local): {path} — both sides edited divergently. Keeping local; remote copy saved to _conflict/. Resolve it from 'Conflicts'.",
