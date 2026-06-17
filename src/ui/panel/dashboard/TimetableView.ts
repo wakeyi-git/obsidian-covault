@@ -6,6 +6,8 @@ import { defaultTimetableDays as defaultDays, DEFAULT_PERIODS } from "../../../c
 import { captureScroll } from "../scroll";
 import { t } from "../../../i18n";
 
+const DAY_MS = 86_400_000;
+
 /** 시간표 — 주간 그리드(요일×교시). 주(週)별 문서. 수업 안내 뷰에 임베드되며 주는 NoticesView가 제어. */
 export class TimetableView {
 	private container: HTMLElement | null = null;
@@ -73,10 +75,14 @@ export class TimetableView {
 		const table = wrap.createEl("table", { cls: "covault-timetable" });
 		// 이번 주를 보고 있을 때만 오늘 요일 열을 강조.
 		const todayCol = this.weekKey === weekStart(Date.now()) ? (new Date().getDay() + 6) % 7 : -1;
+		// 컬럼 di의 실제 날짜 = 주 시작(월요일) + di일. 헤더는 "요일(일)" 형식(예: 월(16)).
+		const [wy, wm, wd] = this.weekKey.split("-").map(Number);
+		const weekStartMs = new Date(wy, wm - 1, wd).getTime();
 		const headRow = table.createEl("tr");
 		headRow.createEl("th", { text: "" });
 		doc.days.forEach((d, di) => {
-			const th = headRow.createEl("th", { text: d });
+			const date = new Date(weekStartMs + di * DAY_MS);
+			const th = headRow.createEl("th", { text: `${d}(${date.getDate()})` });
 			if (di === todayCol) th.addClass("is-today");
 		});
 

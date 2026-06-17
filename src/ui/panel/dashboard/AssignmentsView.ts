@@ -81,6 +81,11 @@ export class AssignmentsView {
 		void this.reload();
 	}
 
+	/** 원격 변경(다른 구성원의 제출·반환 등) 시 호출 — 탭·펼침·페이지 등 자체 상태를 보존한 채 다시 그린다. */
+	refresh(): void {
+		void this.reload();
+	}
+
 	private get manager(): boolean {
 		return this.host.settings.role === "manager";
 	}

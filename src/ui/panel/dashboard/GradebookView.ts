@@ -45,6 +45,11 @@ export class GradebookView {
 		void this.reload();
 	}
 
+	/** 원격 변경 시 호출 — 기간·뷰모드·정렬·펼침 등 자체 상태를 보존한 채 통계를 다시 집계해 그린다. */
+	refresh(): void {
+		void this.reload();
+	}
+
 	private get manager(): boolean {
 		return this.host.settings.role === "manager";
 	}

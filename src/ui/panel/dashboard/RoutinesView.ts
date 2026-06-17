@@ -21,6 +21,8 @@ export class RoutinesView {
 	private readonly today = Date.now();
 	// 교사: 조회 날짜 / 항목 상세 펼침
 	private selectedDay = dayStr(Date.now());
+	/** 교사: 펼쳐 둔 항목 키(`routineUid:itemId`) — 원격 갱신·재렌더에도 펼침 상태를 유지한다. */
+	private expandedItems = new Set<string>();
 	// 학생: 달력 월 / 선택 날짜(달력 1개 공통, 그날의 모든 루틴 표시)
 	private calYear = new Date().getFullYear();
 	private calMonth0 = new Date().getMonth();
@@ -33,6 +35,16 @@ export class RoutinesView {
 	render(container: HTMLElement): void {
 		this.container = container;
 		void this.reload();
+	}
+
+	/** 원격 변경(다른 학생의 체크 등) 시 호출 — 선택 날짜·달력 월 등 자체 상태를 보존한 채 다시 그린다. */
+	refresh(): void {
+		void this.reload();
+	}
+
+	/** 체크 저장이 진행 중이면 true — 빠른 연속 탭 도중 재렌더로 입력이 씹히지 않도록 갱신을 미룬다. */
+	busy(): boolean {
+		return this.persistQueue.size > 0;
 	}
 
 	private get manager(): boolean {
@@ -127,11 +139,14 @@ export class RoutinesView {
 			const detailEls: HTMLElement[] = [];
 			const chevEls: HTMLElement[] = [];
 			const itemEls: HTMLElement[] = [];
+			const itemKeys: string[] = [];
 			const setAll = (open: boolean): void => {
 				for (let i = 0; i < detailEls.length; i++) {
 					detailEls[i].style.display = open ? "" : "none";
 					itemEls[i].toggleClass("is-open", open);
 					setIcon(chevEls[i], open ? "chevron-down" : "chevron-right");
+					if (open) this.expandedItems.add(itemKeys[i]);
+					else this.expandedItems.delete(itemKeys[i]);
 				}
 				setIcon(expandAll, open ? "chevrons-down-up" : "chevrons-up-down");
 				expandAll.setAttr("aria-label", open ? t("dashboard.collapse_all") : t("dashboard.expand_all"));
@@ -178,14 +193,17 @@ export class RoutinesView {
 				mp.createEl("i").style.width = `${members.length ? Math.round((doneMembers.length / members.length) * 100) : 0}%`;
 				row.createSpan({ cls: "covault-cr-score", text: `${doneMembers.length}/${members.length}` });
 				const chev = row.createSpan({ cls: "covault-cr-rowchev" });
-				setIcon(chev, "chevron-right");
+				const itemKey = `${r.uid}:${item.id}`;
+				const open0 = this.expandedItems.has(itemKey);
+				setIcon(chev, open0 ? "chevron-down" : "chevron-right");
 				// 상세(완료/미완료 명단)는 미리 만들어 두고 토글만 한다 — 펼칠 때마다 전수 재조회(reload) 제거.
 				const detail = itemEl.createDiv({ cls: "covault-cr-itemdetail" });
-				detail.style.display = "none";
-				itemEl.toggleClass("is-open", false);
+				detail.style.display = open0 ? "" : "none";
+				itemEl.toggleClass("is-open", open0);
 				detailEls.push(detail);
 				chevEls.push(chev);
 				itemEls.push(itemEl);
+				itemKeys.push(itemKey);
 				this.namesGroup(detail, t("dashboard.completed_n", { n: doneMembers.length }), doneMembers.map((m) => m.memberName), "is-ok");
 				this.namesGroup(detail, t("dashboard.incomplete_n", { n: notDone.length }), notDone.map((m) => m.memberName), "is-warn");
 				row.onclick = () => {
@@ -193,6 +211,8 @@ export class RoutinesView {
 					detail.style.display = open ? "" : "none";
 					itemEl.toggleClass("is-open", open);
 					setIcon(chev, open ? "chevron-down" : "chevron-right");
+					if (open) this.expandedItems.add(itemKey);
+					else this.expandedItems.delete(itemKey);
 				};
 			}
 		}

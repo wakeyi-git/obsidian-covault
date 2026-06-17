@@ -10,6 +10,15 @@ import { t } from "../../i18n";
 
 type DashView = "hub" | "notices" | "lessons" | "assignments" | "routines" | "gradebook";
 
+/** 허브에서 진입하는 모듈 뷰 공통 계약. 원격 변경 시 자체 상태를 보존한 채 갱신할 수 있다. */
+interface DashModule {
+	dispose(): void;
+	/** 원격 변경 알림 시 자체 상태(선택 주·날짜·페이지 등)를 잃지 않고 다시 그린다. */
+	refresh?(): void;
+	/** 로컬 저장이 진행 중이면 true — 재렌더를 미뤄 입력/탭 씹힘을 막는다. */
+	busy?(): boolean;
+}
+
 /**
  * 학급 운영 대시보드(홈). 허브에서 모듈(알림장·시간표/수업·과제·체크리스트)로 진입한다.
  * 알림장·시간표는 동작, 과제·체크리스트는 다음 단계(준비 중).
@@ -17,22 +26,55 @@ type DashView = "hub" | "notices" | "lessons" | "assignments" | "routines" | "gr
 export class DashboardSection implements PanelSection {
 	private root: HTMLElement | null = null;
 	private view: DashView = "hub";
-	private active: { dispose(): void } | null = null;
+	private active: DashModule | null = null;
 	private unsub: (() => void) | null = null;
+	/** 모듈 뷰 자동 갱신 디바운스 타이머(복제 변경 버스트를 합친다). */
+	private liveTimer: number | null = null;
 
 	constructor(private host: PanelHost) {}
 
 	render(container: HTMLElement): void {
 		this.root = container;
-		// 변경 알림 시 허브만 갱신(요약 최신화). 모듈 뷰는 자체 상태(선택한 주 등)를 잃지 않도록 재생성하지 않는다.
+		// 변경 알림 시: 허브는 즉시 요약 갱신, 모듈 뷰는 인스턴스를 보존한 채 디바운스 후 자체 갱신.
 		this.unsub = this.host.classroomStore.onChange(() => {
 			if (this.view === "hub") this.draw();
+			else this.scheduleLiveRefresh();
 		});
 		this.draw();
 	}
 
+	/**
+	 * 모듈 뷰가 열린 상태에서 원격 변경(다른 구성원의 읽음·제출·체크 등)이 오면 디바운스 후 자체 reload로 갱신.
+	 * 사용자가 입력 중(텍스트 필드 포커스)이거나 로컬 저장이 진행 중(busy)이면 클로버를 피해 잠시 미룬다.
+	 */
+	private scheduleLiveRefresh(): void {
+		const active = this.active;
+		if (!active?.refresh) return;
+		if (this.liveTimer != null) window.clearTimeout(this.liveTimer);
+		this.liveTimer = window.setTimeout(() => {
+			this.liveTimer = null;
+			if (this.active !== active) return; // 그새 다른 뷰로 이동했으면 취소
+			if (this.isEditing() || active.busy?.()) {
+				this.scheduleLiveRefresh(); // 입력/저장 중 — 안정될 때까지 다시 시도
+				return;
+			}
+			active.refresh!();
+		}, 600);
+	}
+
+	/** 패널 컨테이너 안의 편집 가능한 요소에 포커스가 있으면 true(타이핑 중 재렌더로 입력 유실 방지). */
+	private isEditing(): boolean {
+		const ae = document.activeElement;
+		if (!this.root || !(ae instanceof HTMLElement) || !this.root.contains(ae)) return false;
+		return ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable;
+	}
+
 	private draw(): void {
 		const c = this.root;
+		if (this.liveTimer != null) {
+			window.clearTimeout(this.liveTimer);
+			this.liveTimer = null;
+		}
 		if (!c) return;
 		this.active?.dispose();
 		this.active = null;
@@ -317,6 +359,10 @@ export class DashboardSection implements PanelSection {
 	}
 
 	dispose(): void {
+		if (this.liveTimer != null) {
+			window.clearTimeout(this.liveTimer);
+			this.liveTimer = null;
+		}
 		this.unsub?.();
 		this.unsub = null;
 		this.active?.dispose();
