@@ -965,7 +965,8 @@
 		"conflict_resolve_retry_failed": "Could not finalize the conflict resolution for {path} — new remote changes kept arriving. The conflict stays listed; try again.",
 		"tombstone_retention_stripped": "Trimmed {n} deleted-file record(s) past the {days}-day retention window (sync integrity unaffected; restore expires with version history).",
 		"upload_skipped_unchanged_by_stat": "Incremental scan: {n} file(s) unchanged since the last baseline (skipped without reading).",
-		"upload_reconcile_uploaded_of_files": "Upload reconcile: uploaded {uploaded} of {files} files."
+		"upload_reconcile_uploaded_of_files": "Upload reconcile: uploaded {uploaded} of {files} files.",
+		"upload_reconcile_file_failed": "Upload reconcile skipped a file (continuing): {path} — {err}"
 	},
 	"diagnostics": {
 		"full_diagnostics_started": "───────── Full diagnostics started ─────────",

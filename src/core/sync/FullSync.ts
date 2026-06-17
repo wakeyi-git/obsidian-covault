@@ -162,7 +162,16 @@ export class FullSync {
 				unchanged++;
 				continue;
 			}
-			const res = await this.uploader.uploadPath(file.path);
+			// per-file 격리: 한 파일의 처리 실패(예: 거대 첨부 base64가 V8 문자열 한계 초과 →
+			// RangeError)가 시작 정합 전체를 무너뜨리지 않게 한다(현장: 268MB PDF의 Invalid string
+			// length가 모든 파일 동기화를 중단시킴). 실패는 경고로 남기고 다음 파일로 넘어간다.
+			let res: Awaited<ReturnType<typeof this.uploader.uploadPath>>;
+			try {
+				res = await this.uploader.uploadPath(file.path);
+			} catch (e) {
+				ctx.logger.warn(t("sync.upload_reconcile_file_failed", { path: file.path, err: errMessage(e) }));
+				continue;
+			}
 			if (res === "uploaded") uploaded++;
 			// tombstone이 있는데 사본이 남은 파일(삭제 적용 보류·실패 잔재) — 부활시키지 않고 삭제를 재적용.
 			else if (res === "skipped-deleted") await this.applyPendingDeletion(file.path);

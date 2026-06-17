@@ -965,7 +965,8 @@
 		"conflict_resolve_retry_failed": "{path}의 충돌 해소를 확정하지 못했습니다 — 그 사이 새 원격 변경이 계속 도착했습니다. 충돌이 목록에 남아 있으니 다시 시도하세요.",
 		"tombstone_retention_stripped": "보존 기간({days}일)이 지난 삭제 파일 기록 {n}건의 내용을 정리했습니다(동기화 정합성 불변 — 복구는 버전 히스토리와 함께 만료).",
 		"upload_skipped_unchanged_by_stat": "증분 스캔: 직전 기준선 이후 변경 없는 파일 {n}개를 읽지 않고 건너뛰었습니다.",
-		"upload_reconcile_uploaded_of_files": "업로드 정합: {files}개 파일 중 {uploaded}개 업로드."
+		"upload_reconcile_uploaded_of_files": "업로드 정합: {files}개 파일 중 {uploaded}개 업로드.",
+		"upload_reconcile_file_failed": "업로드 정합에서 한 파일을 건너뜀(계속): {path} — {err}"
 	},
 	"diagnostics": {
 		"full_diagnostics_started": "───────── 종합 진단 시작 ─────────",
