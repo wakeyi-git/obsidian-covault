@@ -268,6 +268,8 @@ export function buildPanelHost(d: PanelHostDeps): PanelHost {
 			"setSharedReadOnly",
 			"isMirrorFile",
 			"setMirrorRealtime",
+			"requestMirrorRealtime",
+			"listMyMirrorRequests",
 		] as const),
 		setMemberRealtime: (memberId, allowed) => d.memberCtl.setMemberRealtime(memberId, allowed),
 		realtimeStatus: () => d.realtimeCtl.realtimeStatus(),

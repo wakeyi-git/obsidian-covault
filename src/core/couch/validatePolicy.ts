@@ -29,8 +29,8 @@ import { sha256 } from "../hash/hash";
  *  ystate를 주입하면 실시간 세션 시드를 오염시킬 수 있으므로 svc(없으면 admin만)만 쓰게 한다.
  */
 
-/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포). v6 = ystate 서버 전용 쓰기 제한. */
-export const VALIDATE_DOC_VERSION = 6;
+/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포). v7 = rtrequest(1:1 라이브 지도 요청) 본인 쓰기 허용. */
+export const VALIDATE_DOC_VERSION = 7;
 
 /** onDenied가 식별하는 거부 사유 문자열(서버↔클라이언트 프로토콜 — 변경 금지). */
 export const READONLY_FORBIDDEN_REASON = "covault:shared-read-only";
@@ -131,6 +131,12 @@ export function buildValidateSource(policy: ValidatePolicy): string {
 		"    if (!reqOwner || cn(reqOwner) !== me) throw({ forbidden: 'own request only' });\n" +
 		"    if (oldDoc && oldDoc.byUsername && cn(oldDoc.byUsername) !== me) throw({ forbidden: 'own request only' });\n" +
 		"    if (!newDoc._deleted && newDoc.status !== 'pending') throw({ forbidden: 'status is manager-only' });\n" +
+		"  }\n" +
+		// rtrequest: 1:1 라이브 지도 요청 — 본인(byUsername) 문서만 쓰기/취소. 교사는 _admin 우회로 승인(rtpart 변환)·삭제.
+		"  if (t === 'rtrequest') {\n" +
+		"    var rqOwner = newDoc._deleted ? (oldDoc && oldDoc.byUsername) : newDoc.byUsername;\n" +
+		"    if (!rqOwner || cn(rqOwner) !== me) throw({ forbidden: 'own request only' });\n" +
+		"    if (oldDoc && oldDoc.byUsername && cn(oldDoc.byUsername) !== me) throw({ forbidden: 'own request only' });\n" +
 		"  }\n" +
 		"  if (POLICY.ro && (t === 'note' || t === 'asset')) {\n" +
 		"    var u = userCtx && userCtx.name;\n" +

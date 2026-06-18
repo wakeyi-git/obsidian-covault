@@ -53,6 +53,14 @@ describe("validate v2 규칙 회귀 (정책과 무관하게 유지)", () => {
 		expect(() => validate({ type: "grouprequest", byUsername: "student_a", status: "approved" }, null, member)).toThrow();
 	});
 
+	it("rtrequest(1:1 지도 요청): 본인 요청 허용·soft-취소 허용·타인 위조 거부, 교사는 우회", () => {
+		expect(() => validate({ type: "rtrequest", byUsername: "student_a", dbPath: "x.md" }, null, member)).not.toThrow();
+		const old = { type: "rtrequest", byUsername: "student_a", dbPath: "x.md" };
+		expect(() => validate({ ...old, deleted: true }, old, member)).not.toThrow();
+		expect(() => validate({ type: "rtrequest", byUsername: "student_b", dbPath: "x.md" }, null, member)).toThrow();
+		expect(() => validate({ type: "rtrequest", byUsername: "student_a", dbPath: "x.md" }, null, admin)).not.toThrow();
+	});
+
 	it("response는 본인 것만", () => {
 		expect(() => validate({ type: "response", byUser: "student_a" }, null, member)).not.toThrow();
 		expect(() => validate({ type: "response", byUser: "student_b" }, null, member)).toThrow();

@@ -45,6 +45,8 @@
 		"one_to_one_not_mirror": "개인(1:1) 폴더 파일이 아니라 라이브 지도를 켤 수 없습니다.",
 		"one_to_one_start": "1:1 라이브 지도 시작",
 		"one_to_one_stop": "1:1 라이브 지도 종료",
+		"one_to_one_request": "1:1 라이브 지도 요청",
+		"one_to_one_cancel": "1:1 라이브 지도 요청 취소",
 		"member_allowed": "{name}: 실시간 허용",
 		"member_blocked": "{name}: 실시간 차단",
 		"configure_in_settings": "서버 URL·공간 시크릿·만료는 설정 탭에서 변경합니다.",

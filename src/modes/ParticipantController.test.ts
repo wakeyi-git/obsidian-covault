@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ParticipantController, ParticipantDeps } from "./ParticipantController";
 import { DEFAULT_SETTINGS, CoVaultSettings } from "../settings/types";
-import { RtPartDoc, rtPartId } from "../core/model/types";
+import { RtPartDoc, rtPartId, RtRequestDoc, rtRequestId } from "../core/model/types";
 
 /**
  * mirror(1:1) 실시간 옵트인 게이팅 + 토글 + 자동 만료. 공유 폴더 동작은 종전대로 유지되는지 함께 고정.
@@ -126,6 +126,97 @@ describe("setMirrorRealtime / 자동 만료", () => {
 
 		const stu = make({ role: "member", userId: "stu", mirror: true, rtpart: ["stu"] });
 		await stu.ctl.onMirrorSessionClosedAlone("stu/note.md");
+		expect(stu.puts.length).toBe(0);
+	});
+});
+
+/** 학생 요청(rtrequest) → 교사 자동 승인(rtpart 변환). 접두사 필터 + rtrequest 시드를 지원하는 별도 fake. */
+function makeReq(role: "manager" | "member", userId: string, seed?: { rtrequests?: Array<{ dbPath: string; byUser: string }>; rtpart?: string[] }) {
+	const s: CoVaultSettings = {
+		...DEFAULT_SETTINGS,
+		role,
+		userId,
+		username: userId,
+		workspaceId: "ws",
+		members: [{ memberId: "stu", memberName: "학생", username: "stu", remoteDb: "mirror_stu", localRoot: "stu", provisioned: true } as any],
+	};
+	const store = new Map<string, any>();
+	for (const r of seed?.rtrequests ?? []) {
+		store.set(rtRequestId(r.dbPath), { _id: rtRequestId(r.dbPath), type: "rtrequest", schemaVersion: 1, workspaceId: "ws", dbPath: r.dbPath, byUser: r.byUser, byUsername: r.byUser, createdAtMs: 1 } as RtRequestDoc);
+	}
+	if (seed?.rtpart) store.set(rtPartId("note.md"), { _id: rtPartId("note.md"), type: "rtpart", schemaVersion: 1, workspaceId: "ws", dbPath: "note.md", memberIds: seed.rtpart, updatedAtMs: 1 } as RtPartDoc);
+	const puts: any[] = [];
+	const sync = {
+		ctx: {
+			remoteDb: "mirror_stu",
+			toDbPath: () => "note.md",
+			toLocalPath: (d: string) => d,
+			notifyLocalWrite: () => {},
+			pouch: {
+				get: async <T>(id: string): Promise<T> => {
+					const d = store.get(id);
+					if (!d) throw new Error("not found");
+					return d as T;
+				},
+				put: async (doc: any) => {
+					puts.push(doc);
+					store.set(doc._id, doc);
+				},
+				allDocsByPrefix: async <T>(prefix: string): Promise<T[]> => [...store.values()].filter((d) => d._id.startsWith(prefix)) as T[],
+			},
+		},
+	};
+	const deps: ParticipantDeps = {
+		app: { vault: { getAbstractFileByPath: () => ({}) } } as any,
+		logger: { warn() {}, error() {}, ok() {}, info() {} } as any,
+		settings: () => s,
+		realtime: () => ({ isMirrorPath: () => true, mirrorMemberIdFor: () => "stu", invalidateParticipants: () => {} }) as any,
+		getSyncs: () => [sync as any],
+		findSyncOwning: () => sync as any,
+		sharedSpaces: () => [],
+		saveSettings: async () => {},
+		refreshMemberShares: async () => {},
+		writeRtControl: async () => {},
+		redeployValidate: async () => {},
+		requestValidateRedeploy: () => {},
+	};
+	return { ctl: new ParticipantController(deps), puts, store };
+}
+
+describe("학생 요청(rtrequest) → 교사 자동 승인", () => {
+	it("requestMirrorRealtime: 학생 ON은 rtrequest 기록, OFF는 soft-delete; 교사는 무동작", async () => {
+		const on = makeReq("member", "stu");
+		expect(await on.ctl.requestMirrorRealtime("note.md", true)).toBe(true);
+		expect(on.puts.at(-1)).toMatchObject({ type: "rtrequest", byUser: "stu", byUsername: "stu" });
+		expect(on.puts.at(-1)?.deleted).toBeFalsy();
+
+		const off = makeReq("member", "stu", { rtrequests: [{ dbPath: "note.md", byUser: "stu" }] });
+		await off.ctl.requestMirrorRealtime("note.md", false);
+		expect(off.puts.at(-1)?.deleted).toBe(true);
+
+		const mgr = makeReq("manager", "mgr");
+		expect(await mgr.ctl.requestMirrorRealtime("note.md", true)).toBe(false);
+	});
+
+	it("listMyMirrorRequests: 내 대기 요청만 반환", async () => {
+		const m = makeReq("member", "stu", { rtrequests: [{ dbPath: "note.md", byUser: "stu" }] });
+		expect(await m.ctl.listMyMirrorRequests()).toEqual(["note.md"]);
+		const other = makeReq("member", "other", { rtrequests: [{ dbPath: "note.md", byUser: "stu" }] });
+		expect(await other.ctl.listMyMirrorRequests()).toEqual([]);
+	});
+
+	it("processMirrorRequests(교사): 요청을 rtpart 참여자로 승인하고 요청을 정리", async () => {
+		const mgr = makeReq("manager", "mgr", { rtrequests: [{ dbPath: "note.md", byUser: "stu" }] });
+		await mgr.ctl.processMirrorRequests();
+		const rtpart = mgr.puts.find((p) => p.type === "rtpart");
+		expect(rtpart?.memberIds).toEqual(["stu"]);
+		const reqDel = mgr.puts.find((p) => p.type === "rtrequest");
+		expect(reqDel?.deleted).toBe(true);
+	});
+
+	it("processMirrorRequests: 학생이면 무동작", async () => {
+		const stu = makeReq("member", "stu", { rtrequests: [{ dbPath: "note.md", byUser: "stu" }] });
+		await stu.ctl.processMirrorRequests();
 		expect(stu.puts.length).toBe(0);
 	});
 });

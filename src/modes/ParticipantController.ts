@@ -3,7 +3,7 @@ import { Logger } from "../core/log/Logger";
 import { CoVaultSettings } from "../settings/types";
 import { MirrorSync } from "../core/sync/MirrorSync";
 import { RealtimeManager } from "../core/realtime/RealtimeManager";
-import { RtPartDoc, rtPartId, RTPART_ID_PREFIX } from "../core/model/types";
+import { RtPartDoc, rtPartId, RTPART_ID_PREFIX, RtRequestDoc, rtRequestId, RTREQUEST_ID_PREFIX } from "../core/model/types";
 import { memberAllowed, visibleToUser, memberNameMap, nameBackfillNeeded } from "../core/realtime/participants";
 import { t } from "../i18n";
 
@@ -110,6 +110,82 @@ export class ParticipantController {
 		if (s.role !== "manager") return;
 		const cur = await this.getFileRealtimeParticipants(path);
 		if (cur && cur.length > 0) await this.setFileRealtimeParticipants(path, null);
+	}
+
+	/**
+	 * 1:1 라이브 지도 요청 토글(구성원). on=내 mirror 파일에 요청(rtrequest)을 남긴다 — 교사 기기가 rtpart로 자동 승인해
+	 * 세션이 시작되고 양쪽이 자동 합류한다. off=요청 취소. 교사 전용인 rtpart를 학생이 못 쓰므로 요청 문서를 거친다.
+	 */
+	async requestMirrorRealtime(path: string, on: boolean): Promise<boolean> {
+		const s = this.d.settings();
+		if (s.role !== "member") return false;
+		const sync = this.d.findSyncOwning(path);
+		if (!sync) return false;
+		const dbPath = sync.ctx.toDbPath(path);
+		if (!dbPath) return false;
+		const id = rtRequestId(dbPath);
+		if (!on) {
+			const ex = await sync.ctx.pouch.get<RtRequestDoc>(id).catch(() => null);
+			if (ex && !ex.deleted) await sync.ctx.pouch.put({ ...ex, deleted: true });
+		} else {
+			await sync.ctx.pouch.put({
+				_id: id,
+				type: "rtrequest",
+				schemaVersion: 1,
+				workspaceId: s.workspaceId,
+				dbPath,
+				byUser: s.userId,
+				byUsername: s.username,
+				createdAtMs: Date.now(),
+			} as RtRequestDoc);
+		}
+		sync.ctx.notifyLocalWrite?.();
+		return true;
+	}
+
+	/** 내가 1:1 지도를 요청한(대기 중) 파일 경로 목록(구성원 UI 상태). */
+	async listMyMirrorRequests(): Promise<string[]> {
+		const s = this.d.settings();
+		const out: string[] = [];
+		for (const sync of this.d.getSyncs()) {
+			let docs: RtRequestDoc[];
+			try {
+				docs = await sync.ctx.pouch.allDocsByPrefix<RtRequestDoc>(RTREQUEST_ID_PREFIX);
+			} catch {
+				continue;
+			}
+			for (const d of docs) {
+				if (!d || d.deleted || d.byUser !== s.userId || !d.dbPath) continue;
+				out.push(sync.ctx.toLocalPath(d.dbPath));
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * 대기 중인 1:1 라이브 지도 요청 처리(교사) — 각 요청을 rtpart 참여자 지정으로 승인하고 요청 문서를 정리한다.
+	 * onRtRequestChange(수신)·시작 시 호출. 고아 요청(파일 없음)은 승인 없이 정리만.
+	 */
+	async processMirrorRequests(): Promise<void> {
+		const s = this.d.settings();
+		if (s.role !== "manager") return;
+		for (const sync of this.d.getSyncs()) {
+			let docs: RtRequestDoc[];
+			try {
+				docs = await sync.ctx.pouch.allDocsByPrefix<RtRequestDoc>(RTREQUEST_ID_PREFIX);
+			} catch {
+				continue;
+			}
+			for (const d of docs) {
+				if (!d || d.deleted || !d.byUser || !d.dbPath) continue;
+				const path = sync.ctx.toLocalPath(d.dbPath);
+				if (this.d.app.vault.getAbstractFileByPath(path)) {
+					const cur = await this.getFileRealtimeParticipants(path);
+					if (!cur || !cur.includes(d.byUser)) await this.setFileRealtimeParticipants(path, [d.byUser]);
+				}
+				await sync.ctx.pouch.put({ ...d, deleted: true }).catch(() => {}); // 승인(또는 고아) 후 요청 정리
+			}
+		}
 	}
 
 	/** 파일의 실시간 참여자 명단(null=전원/미지정). */

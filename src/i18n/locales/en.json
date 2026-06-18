@@ -45,6 +45,8 @@
 		"one_to_one_not_mirror": "Not a personal (1:1) folder file — can't start live tutoring.",
 		"one_to_one_start": "Start 1:1 live tutoring",
 		"one_to_one_stop": "End 1:1 live tutoring",
+		"one_to_one_request": "Request 1:1 live tutoring",
+		"one_to_one_cancel": "Cancel 1:1 tutoring request",
 		"member_allowed": "{name}: realtime allowed",
 		"member_blocked": "{name}: realtime blocked",
 		"configure_in_settings": "Change the server URL, space secret, and expiry in the Settings tab.",

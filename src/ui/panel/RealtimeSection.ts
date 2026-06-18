@@ -23,6 +23,7 @@ export class RealtimeSection implements PanelSection {
 	private cfgCache: {
 		configured: Array<{ path: string; memberIds: string[]; memberNames?: Record<string, string> }>;
 		chatGroups: Array<{ channel: string; memberIds: string[]; temp?: boolean }>;
+		requests: string[]; // 구성원: 내가 1:1 지도를 요청한(대기 중) 파일 경로
 	} | null = null;
 	private cfgFetchedAt = 0;
 	private static readonly CFG_TTL_MS = 4000;
@@ -161,10 +162,12 @@ export class RealtimeSection implements PanelSection {
 			const configured = await this.host.listRealtimeFiles(); // 지정된 파일(닫혀도) — 역할별 필터됨
 			// 구성원: 설정 그룹이 없으므로 동기화로 받은 그룹 대화방(자신 소속분)으로 세션 참여자를 매칭.
 			const chatGroups = this.manager ? [] : await this.host.listChatGroups().catch(() => []);
-			this.cfgCache = { configured, chatGroups };
+			// 구성원: 내 1:1 지도 요청(대기 중) 목록 — 요청 토글 상태 표시용.
+			const requests = this.manager ? [] : await this.host.listMyMirrorRequests().catch(() => []);
+			this.cfgCache = { configured, chatGroups, requests };
 			this.cfgFetchedAt = Date.now();
 		}
-		const { configured, chatGroups } = this.cfgCache;
+		const { configured, chatGroups, requests } = this.cfgCache;
 		if (this.sessionEl !== el) return; // 비동기 대기 중 재드로우되었으면 중단
 
 		type Row = { path: string; open: boolean; participants: number; memberIds: string[] | null; memberNames?: Record<string, string> };
@@ -179,10 +182,10 @@ export class RealtimeSection implements PanelSection {
 		const activePath = this.host.app.workspace.getActiveFile()?.path ?? "";
 		// 활성 공유 파일이 세션/지정에 없으면(예: 아직 라이브가 아닌 Excalidraw, 읽기모드 노트) 카드로 추가해
 		// 마크다운과 똑같이 참여자를 설정·관리하게 한다(교사). 활성 카드에 참여자 칩이 붙는다.
-		if (this.manager && activePath && !byPath.has(activePath)) {
+		if (activePath && !byPath.has(activePath)) {
 			const sp = this.host.settings.sharedSpaces;
-			const inShared = sp.some((x) => x.folder && (activePath === x.folder || activePath.startsWith(x.folder + "/")));
-			// 개인 mirror 파일도 카드로 띄워 '1:1 라이브 지도' 토글을 제공한다(평소엔 파일 동기화만, 옵트인 시 실시간).
+			const inShared = this.manager && sp.some((x) => x.folder && (activePath === x.folder || activePath.startsWith(x.folder + "/")));
+			// 개인 mirror 파일도 카드로 띄워 '1:1 라이브 지도' 토글(교사)·'요청' 토글(구성원)을 제공한다 — 평소엔 파일 동기화만.
 			if (inShared || this.host.isMirrorFile(activePath)) byPath.set(activePath, { path: activePath, open: false, participants: 0, memberIds: null });
 		}
 		const rows = [...byPath.values()].sort((a, b) => Number(b.open) - Number(a.open) || a.path.localeCompare(b.path));
@@ -195,7 +198,9 @@ export class RealtimeSection implements PanelSection {
 			"#" +
 			activePath +
 			"#" +
-			chatGroups.map((g) => g.channel).join(","); // 그룹 문서 수신/삭제 시 버튼 갱신(구성원)
+			chatGroups.map((g) => g.channel).join(",") + // 그룹 문서 수신/삭제 시 버튼 갱신(구성원)
+			"#" +
+			requests.join(","); // 1:1 요청 토글 상태 갱신(구성원)
 		if (sig === this.sessSig && el.childElementCount > 0) return;
 		this.sessSig = sig;
 		el.empty();
@@ -217,20 +222,34 @@ export class RealtimeSection implements PanelSection {
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
-			// 개인 mirror(1:1) 파일: '라이브 지도' 토글. 켜면 그 학생을 참여자로 지정해 세션 시작(학생 자동 합류),
-			// 끄면 즉시 종료. 평소 mirror 파일은 파일 동기화만(중복 누적 차단). 카드 열기와 분리(stopPropagation).
-			if (this.manager && this.host.isMirrorFile(r.path)) {
-				const on = !!r.memberIds?.length;
-				const label = on ? t("realtime.one_to_one_stop") : t("realtime.one_to_one_start");
-				const btn = head.createEl("button", { cls: "clickable-icon covault-rt-1to1btn" });
-				setIcon(btn, on ? "user-check" : "user-plus");
-				btn.toggleClass("is-on", on);
-				btn.setAttr("aria-label", label);
-				btn.title = label;
-				btn.onclick = (e) => {
-					e.stopPropagation();
-					void this.toggle1to1(r.path, !on);
-				};
+			// 개인 mirror(1:1) 파일: 교사는 '라이브 지도' 토글(그 학생을 참여자로 지정 → 세션 시작/종료),
+			// 구성원은 '지도 요청' 토글(교사 자동 승인 → 자동 합류). 평소 mirror 파일은 파일 동기화만(중복 차단).
+			if (this.host.isMirrorFile(r.path)) {
+				if (this.manager) {
+					const on = !!r.memberIds?.length;
+					const label = on ? t("realtime.one_to_one_stop") : t("realtime.one_to_one_start");
+					const btn = head.createEl("button", { cls: "clickable-icon covault-rt-1to1btn" });
+					setIcon(btn, on ? "user-check" : "user-plus");
+					btn.toggleClass("is-on", on);
+					btn.setAttr("aria-label", label);
+					btn.title = label;
+					btn.onclick = (e) => {
+						e.stopPropagation();
+						void this.toggle1to1(r.path, !on);
+					};
+				} else {
+					const on = r.open || requests.includes(r.path);
+					const label = on ? t("realtime.one_to_one_cancel") : t("realtime.one_to_one_request");
+					const btn = head.createEl("button", { cls: "clickable-icon covault-rt-1to1btn" });
+					setIcon(btn, on ? "user-check" : "hand");
+					btn.toggleClass("is-on", on);
+					btn.setAttr("aria-label", label);
+					btn.title = label;
+					btn.onclick = (e) => {
+						e.stopPropagation();
+						void this.toggleRequest(r.path, !on);
+					};
+				}
 			}
 			// 그룹 대화: 참여자가 지정된 세션이면 표시. 교사는 일치하는 명명 그룹이 있으면 그 그룹 대화,
 			// 없으면 임시 그룹을 만들어(같은 명단의 임시 그룹은 재사용) 연다. 구성원은 그룹을 만들 수
@@ -304,6 +323,13 @@ export class RealtimeSection implements PanelSection {
 	private async toggle1to1(path: string, on: boolean): Promise<void> {
 		await this.host.setMirrorRealtime(path, on);
 		this.cfgFetchedAt = 0; // 지정 변경 → 세션 카드 즉시 갱신
+		await this.renderSessions();
+	}
+
+	/** mirror(1:1) 라이브 지도 요청 토글(구성원). 요청/취소를 즉시 카드에 반영. */
+	private async toggleRequest(path: string, on: boolean): Promise<void> {
+		await this.host.requestMirrorRealtime(path, on);
+		this.cfgFetchedAt = 0; // 요청 상태 → 세션 카드 즉시 갱신
 		await this.renderSessions();
 	}
 

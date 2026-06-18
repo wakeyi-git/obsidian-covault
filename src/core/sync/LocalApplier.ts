@@ -90,6 +90,9 @@ export class LocalApplier {
 			} else if (type === "grouprequest") {
 				// 그룹 신청 변경 → 교사: 대기 신청 처리, 구성원: 신청 상태 갱신
 				this.ctx.core.onGroupRequestChange();
+			} else if (type === "rtrequest") {
+				// 1:1 라이브 지도 요청 변경 → 교사: 대기 요청 자동 승인(rtpart 변환)
+				this.ctx.core.onRtRequestChange();
 			} else if (type === "plugindeploy") {
 				// 함께 쓰는 플러그인 배포 수신 → 구성원: 설치 안내, 교사: 배포 패널 갱신
 				this.ctx.core.onPluginDeployChange();

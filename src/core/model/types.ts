@@ -121,12 +121,7 @@ export interface SharesDoc extends PouchDocBase {
 		remoteDb: string;
 		folder: string;
 		token?: string;
-		/**
-		 * 공간 종류. "share"(기본)=공유 공간(별도 share_* DB·폴더 링크 생성).
-		 * "homeroom"=학급 운영 대시보드(알림장·시간표·과제·루틴)를 담는 학급 공동 공간(동기화는 share와 동일).
-		 * "mirror"=학생 개인 mirror 자체의 1:1 실시간 공간 — 학생은 이미 개인 mirror를 동기화하므로
-		 * 별도 링크를 만들지 않고 실시간(room/token) 용도로만 쓴다.
-		 */
+		/** 공간 종류. share(기본)=공유 DB·폴더 링크 생성, homeroom=학급 운영 대시보드 공동 공간, mirror=개인 mirror의 1:1 실시간(링크 없이 room/token만). */
 		kind?: "share" | "homeroom" | "mirror";
 		/** 이 공간에서 실시간 공동 편집을 쓸지(미설정/true=사용, false=끔). 파일 동기화와 무관. */
 		realtime?: boolean;
@@ -151,9 +146,8 @@ export interface RtConfigDoc extends PouchDocBase {
 export const RTCONFIG_DOC_ID = "rtconfig";
 
 /**
- * 실시간 인가 기본값(공유 공간 DB에 기록). 교사가 share_* DB에 직접 기록하고, Hocuspocus 서버가
- * 파일별 지정(rtpart)이 없을 때의 기본 허용을 판단하는 데 읽는다(rtpart 없음 + sharedReadOnly=true → 거부).
- * 서버의 _changes 감시 대상이기도 하다(변경 시 활성 연결 재인가).
+ * 실시간 인가 기본값(공유 공간 DB). 서버가 rtpart 없을 때의 기본 허용 판단에 읽음(rtpart 없음+sharedReadOnly=true → 거부).
+ * 서버 _changes 감시 대상(변경 시 활성 연결 재인가).
  */
 export interface RtControlDoc extends PouchDocBase {
 	type: "rtcontrol";
@@ -165,10 +159,8 @@ export interface RtControlDoc extends PouchDocBase {
 export const RTCONTROL_DOC_ID = "rtcontrol";
 
 /**
- * 함께 쓰는 플러그인 배포(정책 엔진 P2 — docs/plugin-theme-deploy-feasibility.md).
- * 학급 공유 DB에 두어 기존 classroom 문서 파이프라인으로 구성원에게 전파한다(vault에 쓰지 않는 메타데이터).
- * 배포 가능한 파일(manifest.json/main.js/styles.css/data.json)은 모두 UTF-8 텍스트라 base64로 담는다.
- * 수신 측은 확인 후 `.obsidian/plugins/<id>/`에 설치한다(adapter — configInstall.ts).
+ * 함께 쓰는 플러그인 배포(정책 엔진 P2). 학급 공유 DB에 두어 classroom 파이프라인으로 전파(vault 비기록 메타).
+ * 배포 파일(manifest.json/main.js/styles.css/data.json)은 UTF-8 텍스트라 base64로 담고, 수신 측이 .obsidian/plugins/<id>/에 설치(configInstall.ts).
  */
 export interface PluginDeployFile {
 	name: string; // DEPLOYABLE_PLUGIN_FILES allowlist만
@@ -199,10 +191,7 @@ export function pluginDeployId(pluginId: string): string {
 	return `${PLUGINDEPLOY_ID_PREFIX}${pluginId}`;
 }
 
-/**
- * 피드백 앵커(판별 유니온). 마크다운 본문은 텍스트 범위, Excalidraw 드로잉은 요소 id/좌표에 앵커한다.
- * 하위호환: 기존 문서는 `kind`가 없으므로 text로 간주한다(isTextAnchor 참조).
- */
+/** 피드백 앵커(판별 유니온). 마크다운=텍스트 범위, Excalidraw=요소 id/좌표. 기존 문서는 kind 없어 text로 간주(isTextAnchor). */
 export type TextAnchor = { kind?: "text"; textQuote: string; start: number; end: number };
 export type ExcalidrawAnchor = {
 	kind: "excalidraw";
@@ -220,9 +209,8 @@ export function isTextAnchor(a: FeedbackAnchor): a is TextAnchor {
 }
 
 /**
- * 피드백 레이어 문서. 기술문서 §19.5. 본문을 직접 고치지 않고 앵커 기반 댓글을 남긴다.
- * 대상 노트가 사는 DB(mirror_<id> 또는 share_<id>)에 함께 저장되어 기존 replication으로 동기화된다.
- * 파일이 아니라 메타데이터이므로 vault에는 쓰지 않는다(FeedbackStore만 처리).
+ * 피드백 레이어 문서(기술문서 §19.5). 본문 직접 수정 없이 앵커 기반 댓글. 대상 노트 DB에 저장되어 replication으로 동기화.
+ * 파일이 아닌 메타데이터라 vault에 쓰지 않음(FeedbackStore만 처리).
  */
 export interface FeedbackDoc extends PouchDocBase {
 	type: "feedback";
@@ -313,10 +301,7 @@ export function responsePrefix(targetId: string): string {
 	return `${RESPONSE_ID_PREFIX}${targetId}:`;
 }
 
-/**
- * 대화(메신저) 메시지. 학급 채널=학급 공유 DB(전원), 1:1 DM=구성원 개인 mirror DB(비공개).
- * body에 위키링크([[..]])·URL을 포함할 수 있고 렌더 시 클릭 가능하게 만든다.
- */
+/** 대화(메신저) 메시지. 학급 채널=공유 DB(전원), 1:1 DM=개인 mirror DB(비공개). body의 위키링크·URL은 렌더 시 클릭 가능. */
 export interface MessageDoc extends PouchDocBase {
 	type: "message";
 	schemaVersion: number;
@@ -340,10 +325,7 @@ export const CLASS_CHANNEL = "class";
 export function dmChannel(memberId: string): string {
 	return `dm:${memberId}`;
 }
-/**
- * 그룹 채널 id: 명명 그룹 대화방. 메시지는 그룹 문서가 사는 공유 DB(homeroom)에 저장된다.
- * remoteDb(콜론 없는 share_*)를 채널에 인코딩해 조회 시 pouch를 바로 해석한다.
- */
+/** 그룹 채널 id: 명명 그룹 대화방. 메시지는 그룹 문서가 사는 공유 DB(homeroom)에 저장. remoteDb를 채널에 인코딩해 바로 해석. */
 export function groupChannel(remoteDb: string, groupId: string): string {
 	return `group:${remoteDb}:${groupId}`;
 }
@@ -364,8 +346,7 @@ export function messagePrefix(channel?: string): string {
 }
 
 /**
- * 파일별 실시간 편집 참여자(공유 공간 DB에 저장). 문서가 없으면 그 파일은 공간 전원이 참여(기본).
- * 있으면 memberIds에 든 구성원만 라이브 세션에 참여(나머지는 파일 동기화만). 협업 환경의 소프트 게이팅.
+ * 파일별 실시간 편집 참여자(공유 공간 DB). 문서 없으면 공간 전원 참여(기본), 있으면 memberIds만 라이브(나머지는 파일 동기화만).
  */
 export interface RtPartDoc extends PouchDocBase {
 	type: "rtpart";
@@ -373,7 +354,7 @@ export interface RtPartDoc extends PouchDocBase {
 	workspaceId: string;
 	dbPath: string; // 공간 폴더 기준 상대 경로
 	memberIds: string[];
-	/** memberId → 표시 이름. 학생은 동료 명단이 없으므로 문서에 이름을 담아 카드에 이름으로 표시. */
+	/** memberId → 표시 이름(학생은 동료 명단이 없어 문서 이름으로 카드 표시). */
 	memberNames?: Record<string, string>;
 	updatedAtMs: number;
 	updatedBy: string;
@@ -386,9 +367,29 @@ export function rtPartId(dbPath: string): string {
 }
 
 /**
- * 명명 그룹(학급 공유 DB=homeroom에 저장). 교사가 구성원을 묶어 만든 재사용 그룹.
- * 그룹마다 대화방(채널)을 가지며, 라이브 세션 참가자 지정에도 적용한다. 그 공유 DB 구성원이 접근(소프트 그룹).
- * 멤버 이름을 담아 학생 기기(동료 명단 없음)에서도 이름으로 표시한다.
+ * 개인 mirror 파일의 1:1 라이브 지도 **요청**(구성원이 쓰고 교사 기기가 rtpart로 승인). mirror는 기본 파일 동기화만
+ * 하므로(중복 차단) 라이브 지도를 원하면 이 요청을 남긴다. validate가 본인(byUsername) 문서만 허용, 교사는 _admin 우회.
+ */
+export interface RtRequestDoc extends PouchDocBase {
+	type: "rtrequest";
+	schemaVersion: number;
+	workspaceId: string;
+	dbPath: string; // mirror 폴더 기준 상대 경로(파일당 1건)
+	byUser: string; // memberId — 승인 시 rtpart 참여자로
+	byUsername: string; // CouchDB 계정명 — validate 소유 검사
+	byName?: string;
+	createdAtMs: number;
+	deleted?: boolean;
+}
+
+export const RTREQUEST_ID_PREFIX = "rtrequest:";
+export function rtRequestId(dbPath: string): string {
+	return `${RTREQUEST_ID_PREFIX}${dbPath}`;
+}
+
+/**
+ * 명명 그룹(homeroom DB). 교사가 구성원을 묶은 재사용 그룹 — 대화방(채널) + 라이브 참가자 지정에 적용(소프트 그룹).
+ * 멤버 이름을 담아 학생 기기(동료 명단 없음)에서도 이름으로 표시.
  */
 export interface GroupDoc extends PouchDocBase {
 	type: "chatgroup";
@@ -411,9 +412,8 @@ export function chatGroupId(groupId: string): string {
 }
 
 /**
- * 구성원 자율 그룹 신청(homeroom DB). 구성원이 쓰고 교사 기기가 승인/거절한다.
- * validate_doc_update가 본인(byUsername=CouchDB 계정명) 문서만, status는 pending만 허용 —
- * 승인/거절 위조와 타인 신청 조작을 서버가 차단한다. 승인 시 교사가 그룹+전용 공간을 배포한다.
+ * 구성원 자율 그룹 신청(homeroom DB). 구성원이 쓰고 교사가 승인/거절. validate가 본인(byUsername) 문서·status=pending만
+ * 허용 — 승인 위조·타인 신청 조작을 서버가 차단. 승인 시 교사가 그룹+전용 공간을 배포.
  */
 export interface GroupRequestDoc extends PouchDocBase {
 	type: "grouprequest";

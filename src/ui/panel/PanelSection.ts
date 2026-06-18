@@ -152,6 +152,10 @@ export interface RealtimeHost {
 	isMirrorFile(path: string): boolean;
 	/** mirror(1:1) 파일의 실시간 옵트인 토글(교사). on=라이브 지도 시작(학생 자동 합류), off=종료. */
 	setMirrorRealtime(path: string, on: boolean): Promise<boolean>;
+	/** 1:1 라이브 지도 요청 토글(구성원). on=요청(교사 자동 승인), off=취소. */
+	requestMirrorRealtime(path: string, on: boolean): Promise<boolean>;
+	/** 내가 1:1 지도를 요청한(대기 중) 파일 경로 목록(구성원 UI 상태). */
+	listMyMirrorRequests(): Promise<string[]>;
 }
 
 /** 과제(배포·제출·채점). */

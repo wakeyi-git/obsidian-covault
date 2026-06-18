@@ -70,6 +70,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	private groupRequestCtl!: GroupRequestController;
 	private pluginDeployCtl!: PluginDeployController;
 	private groupRequestTimer: number | null = null; // grouprequest 변경 → 교사 처리 debounce
+	private rtRequestTimer: number | null = null; // rtrequest(1:1 요청) 변경 → 교사 자동 승인 debounce
 	private serverResetCtl!: ServerResetController;
 	private repairCtl!: RepairController;
 	private onboardingCtl!: OnboardingController;
@@ -257,19 +258,17 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			confirm: (opts) => confirm(this.app, opts),
 		});
 		this.core.onClassroomChange = () => this.classroom.refresh();
-		// 파일별 실시간 참여자 변경(수신 포함) → 게이트 재평가. 빠진 구성원의 활성 세션을 즉시 종료.
-		this.core.onParticipantsChange = () => this.realtime?.invalidateParticipants();
-		// 그룹 신청 변경 — 교사: debounce 후 대기 신청 처리(자동 승인이면 배포 포함), 구성원: 패널이 폴링으로 갱신.
-		this.core.onGroupRequestChange = () => {
+		this.core.onParticipantsChange = () => this.realtime?.invalidateParticipants(); // rtpart 변경 → 게이트 재평가(빠진 구성원 세션 즉시 종료)
+		// 그룹 신청·1:1 요청 변경(교사) — debounce 후 대기분 처리. grouprequest=승인+배포, rtrequest=rtpart 자동 승인. 구성원은 패널 폴링.
+		const debounceManager = (key: "groupRequestTimer" | "rtRequestTimer", fn: () => void) => {
 			if (this.settings.role !== "manager") return;
-			if (this.groupRequestTimer) window.clearTimeout(this.groupRequestTimer);
-			this.groupRequestTimer = window.setTimeout(() => {
-				this.groupRequestTimer = null;
-				void this.groupRequestCtl.processPending();
-			}, 2000);
+			const cur = this[key];
+			if (cur) window.clearTimeout(cur);
+			this[key] = window.setTimeout(() => { this[key] = null; fn(); }, 2000);
 		};
-		// 함께 쓰는 플러그인 배포 수신(구성원) → 설치 안내. 교사는 배포 패널이 폴링으로 갱신.
-		this.core.onPluginDeployChange = () => { if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming(); };
+		this.core.onGroupRequestChange = () => debounceManager("groupRequestTimer", () => void this.groupRequestCtl.processPending());
+		this.core.onRtRequestChange = () => debounceManager("rtRequestTimer", () => void this.participantCtl.processMirrorRequests());
+		this.core.onPluginDeployChange = () => { if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming(); }; // 플러그인 배포 수신(구성원) → 설치 안내
 		// 알림장·수업은 편집창 + 프론트매터로 작성한다 — 파일 프론트매터 변경/삭제/이름변경을 게시 메타에 반영(교사).
 		this.registerEvent(this.app.metadataCache.on("changed", (file) => { if (file instanceof TFile) void this.classroomCtls.noticeCtl.syncNoticeFromFile(file); }));
 		this.registerEvent(this.app.vault.on("delete", (file) => {
@@ -347,6 +346,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	async onunload(): Promise<void> {
 		if (this.applyTimer) window.clearTimeout(this.applyTimer);
 		if (this.groupRequestTimer) window.clearTimeout(this.groupRequestTimer);
+		if (this.rtRequestTimer) window.clearTimeout(this.rtRequestTimer);
 		this.deploymentCtl?.dispose(); // 대기 중인 validate 재배포 타이머 정리
 		await this.realtime?.dispose();
 		await this.mode?.stop();
