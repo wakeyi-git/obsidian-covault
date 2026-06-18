@@ -31,18 +31,21 @@ function note(content: string, over: Record<string, unknown> = {}) {
 }
 
 /** mock CouchClient + 인메모리 SQLite + 호출 기록. */
-function makeEnv(opts: { note?: unknown; getDocError?: boolean; putConflict?: boolean } = {}) {
+function makeEnv(opts: { note?: unknown; ystate?: unknown; getDocError?: boolean; putConflict?: boolean } = {}) {
 	const calls = { putDoc: [] as any[], putDocWithRev: [] as any[], closed: [] as string[] };
 	const sqliteRows = new Map<string, Buffer>();
 	const sqliteMeta = new Map<string, string>();
 	let currentNote: unknown = opts.note ?? null; // 세션 사이 외부(파일 동기화) 편집을 흉내내려면 setNote로 교체.
+	let ystateDoc: any = opts.ystate ?? null; // 서버가 CouchDB에 영속하는 CRDT 상태 사이드카(ystate:<dbPath>).
 	const couch = {
-		async getDoc() {
+		async getDoc(_db: string, id: string) {
 			if (opts.getDocError) throw new Error("network down");
+			if (typeof id === "string" && id.indexOf("ystate:") === 0) return ystateDoc;
 			return currentNote;
 		},
 		async putDoc(_db: string, doc: any) {
 			calls.putDoc.push(doc);
+			if (doc.type === "ystate") ystateDoc = doc; // 영속 모사 — 다음 로드가 여기서 정확한 이력을 복원한다.
 			return { ok: true };
 		},
 		async putDocWithRev(_db: string, doc: any, rev: string | undefined) {
@@ -63,7 +66,15 @@ function makeEnv(opts: { note?: unknown; getDocError?: boolean; putConflict?: bo
 		closeConnections: (n: string) => void calls.closed.push(n),
 		log: { log() {}, warn() {}, error() {} },
 	});
-	return { lifecycle, couch, sqliteRows, sqliteMeta, calls, setNote: (n: unknown) => { currentNote = n; } };
+	return {
+		lifecycle,
+		couch,
+		sqliteRows,
+		sqliteMeta,
+		calls,
+		setNote: (n: unknown) => { currentNote = n; },
+		getYState: () => ystateDoc,
+	};
 }
 
 describe("onLoadDocument — 시드·재시드 분기 매트릭스", () => {
@@ -228,6 +239,19 @@ describe("onStoreDocument — 스냅샷·보존·rev 전제조건", () => {
 		expect(lifecycle.lastCouchHash.get(NAME)).toBe(sha256Hex("세션 내용"));
 	});
 
+	it("스냅샷과 함께 CRDT 이력을 CouchDB ystate로 영속(durable — SQLite 유실 대비)", async () => {
+		const { lifecycle, calls } = makeEnv({ note: note("이전 내용") });
+		await lifecycle.storeDocument({ document: docWith("세션 내용"), documentName: NAME, room: ROOM, claims: CLAIMS });
+		const ys = calls.putDoc.filter((d) => d.type === "ystate");
+		expect(ys).toHaveLength(1);
+		expect(ys[0]._id).toBe(`ystate:${ROOM.dbPath}`);
+		expect(ys[0].contentHash).toBe(sha256Hex("세션 내용"));
+		// state는 실제 Yjs 업데이트(base64) — 복원하면 같은 내용이 나와야 한다.
+		const restored = new Y.Doc();
+		Y.applyUpdate(restored, Buffer.from(ys[0].state, "base64"));
+		expect(restored.getText("content").toString()).toBe("세션 내용");
+	});
+
 	it("교사 삭제 tombstone이 끼어들면 부활시키지 않고 세션 종료(SQLite 삭제 + closeConnections)", async () => {
 		const { lifecycle, sqliteRows, calls } = makeEnv({ note: note("x", { deleted: true, deletedByRole: "manager" }) });
 		sqliteRows.set(NAME, encodeState("세션 내용"));
@@ -250,10 +274,11 @@ describe("onStoreDocument — 스냅샷·보존·rev 전제조건", () => {
 		});
 		lifecycle.lastCouchHash.set(NAME, sha256Hex("로드 시점 내용")); // 서버가 마지막으로 알던 값과 다름
 		await lifecycle.storeDocument({ document: docWith("세션 내용"), documentName: NAME, room: ROOM, claims: CLAIMS });
-		expect(calls.putDoc).toHaveLength(1); // 보존 version 문서
-		expect(calls.putDoc[0].kind).toBe("conflict");
-		expect(calls.putDoc[0].content).toBe("외부에서 동기화로 들어온 편집");
-		expect(calls.putDoc[0].createdBy).toBe("m2");
+		const versionDocs = calls.putDoc.filter((d) => d.type === "version");
+		expect(versionDocs).toHaveLength(1); // 보존 version 문서
+		expect(versionDocs[0].kind).toBe("conflict");
+		expect(versionDocs[0].content).toBe("외부에서 동기화로 들어온 편집");
+		expect(versionDocs[0].createdBy).toBe("m2");
 		expect(calls.putDocWithRev).toHaveLength(1); // 보존 후 스냅샷
 	});
 
@@ -310,6 +335,62 @@ describe("unload — SQLite Yjs 상태 보존(이력 유지)", () => {
 		// 이력을 보존하지 않으면 H1↔H2 독립 삽입이 합쳐져 "ABCABC"가 된다. 보존하면 "ABC" 그대로.
 		expect(client.getText("content").toString()).toBe("ABC");
 		expect(server2.getText("content").toString()).toBe("ABC");
+	});
+
+	it("⭐ SQLite 유실(재배포·볼륨 초기화)에도 CouchDB ystate로 정확한 이력 복원 → 재접속 클라이언트 중복 없음", async () => {
+		const env = makeEnv({ note: note("ABC") });
+		const { lifecycle, sqliteRows } = env;
+		// 세션 1: 시드 H1="ABC" → 클라이언트(태블릿)가 같은 이력을 받아 보유 + store가 ystate를 CouchDB에 영속.
+		const server1 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		const client = new Y.Doc();
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server1));
+		await lifecycle.storeDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		lifecycle.handleUnload(NAME, ROOM.dbPath);
+		expect(env.getYState()).not.toBeNull(); // CRDT 이력이 CouchDB에 영속됨
+
+		// 서버 SQLite가 통째로 사라짐(컨테이너 재배포 + ./data 초기화, 또는 새 인스턴스로 라우팅).
+		sqliteRows.clear();
+
+		// 세션 2: 재로드 → SQLite 없음이지만 ystate에서 같은 이력 H1을 복원(텍스트 재시드 아님).
+		const server2 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server2, documentName: NAME, room: ROOM, claims: CLAIMS });
+		// 태블릿 잠금 해제 → 보유 H1로 재접속해 양방향 병합.
+		Y.applyUpdate(server2, Y.encodeStateAsUpdate(client));
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server2));
+		// ystate 복원이 없으면(텍스트 재시드) H1↔새이력이 합쳐져 "ABCABC". 복원하면 "ABC".
+		expect(client.getText("content").toString()).toBe("ABC");
+		expect(server2.getText("content").toString()).toBe("ABC");
+	});
+
+	it("SQLite 없음 + ystate 없음 + note 있음 → 최초 텍스트 시드(이력 없는 안전 케이스)", async () => {
+		const { lifecycle } = makeEnv({ note: note("처음 보는 노트") });
+		const document = new Y.Doc();
+		await lifecycle.loadDocument({ document, documentName: NAME, room: ROOM, claims: CLAIMS });
+		expect(document.getText("content").toString()).toBe("처음 보는 노트");
+	});
+
+	it("SQLite 유실 + ystate 복원 + 세션 사이 파일 동기화 외부 편집 → note로 수렴(중복 없음)", async () => {
+		const env = makeEnv({ note: note("ABC") });
+		const { lifecycle, sqliteRows } = env;
+		const server1 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		const client = new Y.Doc();
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server1));
+		await lifecycle.storeDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		lifecycle.handleUnload(NAME, ROOM.dbPath);
+		sqliteRows.clear(); // SQLite 유실
+
+		// 세션 사이 비실시간 멤버의 파일 동기화로 note가 "XYZ"로 바뀜(non-RT device).
+		env.setNote(note("XYZ"));
+
+		const server2 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server2, documentName: NAME, room: ROOM, claims: CLAIMS });
+		expect(server2.getText("content").toString()).toBe("XYZ"); // 복원 이력 위 delete+insert로 수렴
+		Y.applyUpdate(server2, Y.encodeStateAsUpdate(client));
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server2));
+		expect(client.getText("content").toString()).toBe("XYZ");
+		expect(server2.getText("content").toString()).toBe("XYZ");
 	});
 
 	it("세션 사이 외부 편집으로 재시드돼도, 보존된 이력 위 delete+insert라 재접속 클라이언트가 중복 없이 새 내용으로 수렴", async () => {

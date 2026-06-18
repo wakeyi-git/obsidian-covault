@@ -23,10 +23,14 @@ import { sha256 } from "../hash/hash";
  *    만들거나 타인의 메시지·피드백을 수정·삭제하지 못하게 한다. 운영자(_admin)는 전부 우회한다.
  *  - shares/rtconfig는 운영자(admin.putDoc)만 쓰므로 교사 전용에 넣어 구성원의 임의 주입을 막는다.
  *    mirror DB 정책은 readOnly:false(읽기전용은 공유 공간 전용 개념) — 소유·역할·교사전용 차단만 적용.
+ *
+ * v6 = ystate(실시간 CRDT 상태 사이드카) 쓰기를 실시간 서비스 계정(svc) 전용으로 제한. 서버가 SQLite 유실
+ *  후에도 정확한 Yjs 이력을 복원해 중복 누적을 막으려 CouchDB에 ystate:<dbPath>를 영속하는데, 구성원이 임의의
+ *  ystate를 주입하면 실시간 세션 시드를 오염시킬 수 있으므로 svc(없으면 admin만)만 쓰게 한다.
  */
 
-/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포). v5 = message/feedback 소유·역할 검사(P1-1). */
-export const VALIDATE_DOC_VERSION = 5;
+/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포). v6 = ystate 서버 전용 쓰기 제한. */
+export const VALIDATE_DOC_VERSION = 6;
 
 /** onDenied가 식별하는 거부 사유 문자열(서버↔클라이언트 프로토콜 — 변경 금지). */
 export const READONLY_FORBIDDEN_REASON = "covault:shared-read-only";
@@ -96,6 +100,12 @@ export function buildValidateSource(policy: ValidatePolicy): string {
 		"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
 		"  var teacherOnly = ['notice','timetable','routine','assignment','chatgroup','rtpart','rtcontrol','roster','shares','rtconfig'];\n" +
 		"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
+		// ystate: 실시간 서버가 영속하는 CRDT 상태 사이드카 — 서비스 계정만 쓴다(구성원 위조 차단). svc 미설정이면
+		// 서버는 admin 자격으로 쓰므로(_admin 우회) 여기서 막혀도 무방하고, 비-admin 구성원은 전부 거부된다.
+		"  if (t === 'ystate') {\n" +
+		"    if (POLICY.svc && (userCtx && userCtx.name) === POLICY.svc) return;\n" +
+		"    throw({ forbidden: 'server only' });\n" +
+		"  }\n" +
 		// ownedByMe: 신규/수정 문서와 기존 문서의 작성자(field)가 모두 나여야 한다(타인 문서 위조·수정·삭제 차단).
 		"  function ownedByMe(f) {\n" +
 		"    var nv = newDoc._deleted ? (oldDoc && oldDoc[f]) : newDoc[f];\n" +

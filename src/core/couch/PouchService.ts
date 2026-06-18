@@ -385,8 +385,9 @@ export class PouchService {
 	private replicateOpts(): { filter?: (doc: any) => boolean; batch_size: number; batches_limit: number } {
 		const maxBytes = this.maxAttachmentBytes;
 		const batching = { batch_size: 25, batches_limit: 5 };
-		if (maxBytes <= 0) return batching;
-		return { filter: (doc: any) => !isOverLimitAsset(doc, maxBytes), ...batching };
+		// ystate(실시간 CRDT 상태 사이드카)는 서버 전용(CouchClient 직접 접근) — 복제하면 base64 블롭이 모든 기기에 쌓여 양방향 제외.
+		const filter = (doc: any) => doc?.type !== "ystate" && (maxBytes <= 0 || !isOverLimitAsset(doc, maxBytes));
+		return { filter, ...batching };
 	}
 
 	/** 1회성 push만(로컬→원격). 수동 "업로드만"에서 원격 변경을 끌어오지 않기 위해 사용. */

@@ -58,6 +58,17 @@ describe("validate v2 규칙 회귀 (정책과 무관하게 유지)", () => {
 		expect(() => validate({ type: "response", byUser: "student_b" }, null, member)).toThrow();
 	});
 
+	it("ystate(실시간 CRDT 상태)는 서비스 계정만 쓴다(구성원 위조 거부, admin 우회)", () => {
+		const v = compile({ readOnly: false, svcUsername: "covault-rt", allowByPath: {} });
+		expect(() => v({ type: "ystate", _id: "ystate:x.md", state: "..." }, null, svc)).not.toThrow();
+		expect(() => v({ type: "ystate", _id: "ystate:x.md", state: "..." }, null, member)).toThrow();
+		expect(() => v({ type: "ystate", _id: "ystate:x.md", state: "..." }, null, admin)).not.toThrow();
+		// svc 미설정이면 비-admin은 전부 거부(서버는 admin 자격으로 우회).
+		const noSvc = compile({ readOnly: false, allowByPath: {} });
+		expect(() => noSvc({ type: "ystate", _id: "ystate:x.md" }, null, member)).toThrow();
+		expect(() => noSvc({ type: "ystate", _id: "ystate:x.md" }, null, admin)).not.toThrow();
+	});
+
 	it("message: 본인 것만 + manager 역할 위조 거부 + 타인 메시지 수정/삭제 거부 (P1-1)", () => {
 		// 본인 명의 신규
 		expect(() => validate({ type: "message", _id: "message:1", byUser: "student_a", byRole: "member" }, null, member)).not.toThrow();

@@ -48,6 +48,35 @@ export function createDocLifecycle(deps) {
 	const lastCouchHash = new Map();
 
 	/**
+	 * 실시간 CRDT 상태(Yjs 인코딩)를 CouchDB에 **durable·공유** 영속한다 — `ystate:<dbPath>` 사이드카 문서.
+	 *
+	 * 중복 누적(ABC→ABCABC)의 근본 원인은 CRDT 이력의 유일한 영속처가 서버 로컬 SQLite뿐이라는 점이었다.
+	 * 그 SQLite가 비면(재배포·볼륨 초기화·인스턴스 교체 등) 로드가 note **텍스트**를 새 Yjs 삽입으로 시드하고,
+	 * 절전/잠금으로 옛 이력을 메모리에 들고 있던 클라이언트가 재접속하면 같은 글자가 독립 삽입으로 병합돼 전체가
+	 * 중복됐다. ystate를 CouchDB에 두면 SQLite 유실 후에도 로드가 `Y.applyUpdate`로 **정확히 같은 이력**을 복원해
+	 * 재접속 클라이언트와 무손실 병합한다(서버 인스턴스가 바뀌어도 결정적). 베스트에포트 — 실패해도 note 스냅샷·
+	 * 세션을 막지 않는다(다음 store에서 재기록). 클라이언트는 이 문서를 복제하지 않는다(PouchService 복제 필터에서 제외).
+	 */
+	async function persistYState(document, room, claims, contentHash) {
+		if (!couch) return;
+		try {
+			const state = Buffer.from(Y.encodeStateAsUpdate(document)).toString("base64");
+			await couch.putDoc(claims.d, {
+				_id: `ystate:${room.dbPath}`,
+				type: "ystate",
+				schemaVersion: 1,
+				workspaceId: claims.c,
+				path: room.dbPath,
+				state,
+				contentHash,
+				updatedAt: new Date().toISOString(),
+			});
+		} catch (e) {
+			log.warn(`[ystate] persist failed for "${room.dbPath}": ${e?.message ?? e}`);
+		}
+	}
+
+	/**
 	 * Excalidraw(.excalidraw.md) 로드: 서버는 excalidraw를 CouchDB 스냅샷하지 않아 Y 상태→파일 해시를
 	 * 만들 수 없다(마크다운의 contentHash 재시드 가드 불가). 대신 CouchDB note(파일 동기화본)의 contentHash를
 	 * 앵커(covault_meta)에 저장해 두고, 세션 사이 비실시간(파일 동기화) 편집으로 note가 바뀌면 SQLite Y 상태를
@@ -115,37 +144,61 @@ export function createDocLifecycle(deps) {
 			}
 			// 로드 시점의 note 해시를 기억 — 스냅샷 직전 note가 이 값과 다르면 외부 편집(보존 대상).
 			if (note && !note.deleted && note.contentHash) lastCouchHash.set(documentName, note.contentHash);
+
+			// CRDT 이력 복원: ① 로컬 SQLite(가장 신선) → ② 없으면 CouchDB ystate(durable·공유 폴백).
+			// 둘 중 하나라도 복원되면 '정확한 같은 이력'이 살아나, 절전/잠금으로 옛 이력을 든 클라이언트가
+			// 재접속해도 독립 삽입 병합(중복)이 일어나지 않는다. 둘 다 없을 때만 ③ note 텍스트로 '최초' 시드한다
+			// (중복시킬 피어 이력이 애초에 없는 유일한 안전 케이스).
+			let restored = false;
+			let fromYstate = false;
 			if (row) {
 				Y.applyUpdate(document, row);
-				// SQLite 복원본은 마지막 세션 시점의 상태다. 그 사이 평문 파일 동기화로 note가
-				// 갱신됐다면(다른 기기 deviceId + 내용 불일치) CouchDB note가 정본 — Y.Text를
-				// note 내용으로 재시드해, 옛 세션 상태가 최신 편집을 되돌려 덮는 것을 막는다.
-				if (note && !note.deleted && typeof note.content === "string") {
+				restored = true;
+			} else {
+				const ys = await couch.getDoc(claims.d, `ystate:${room.dbPath}`).catch(() => null);
+				if (ys && !ys.deleted && typeof ys.state === "string") {
+					try {
+						Y.applyUpdate(document, Buffer.from(ys.state, "base64"));
+						restored = true;
+						fromYstate = true;
+					} catch (e) {
+						log.warn(`[seed] "${documentName}" ystate decode failed: ${e?.message ?? e} — falling back to text seed`);
+					}
+				}
+			}
+
+			if (restored) {
+				// 복원된 이력이 현재 note와 다르면 note로 수렴시킨다. 수렴 조건:
+				//  - ystate 복원: ystate 증분 쓰기가 note보다 지연/실패했을 수 있어(둘은 같은 store에서 기록되나
+				//    네트워크 독립) note가 더 신선할 수 있으므로 **항상** 수렴.
+				//  - SQLite 복원: 세션 사이 비실시간(파일 동기화) 외부 편집(non-RT deviceId)일 때만 수렴. 그 외
+				//    note가 서버 스냅샷인데 다르면 SQLite가 정본(직전 스냅샷 미반영) — ahead로 보존.
+				// 어느 경우든 '보존된 이력 위 delete+insert'라 재접속 클라이언트와 중복 없이 수렴한다.
+				if (note && !note.deleted && typeof note.content === "string" && note.content.length > 0) {
 					const ytext = document.getText("content");
 					const current = ytext.toString();
 					const differs = sha256Hex(current) !== (note.contentHash ?? sha256Hex(note.content));
-					if (differs && note.lastModifiedDeviceId !== RT_DEVICE_ID) {
+					if (differs && (fromYstate || note.lastModifiedDeviceId !== RT_DEVICE_ID)) {
 						document.transact(() => {
 							ytext.delete(0, current.length);
 							ytext.insert(0, note.content);
 						});
 						log.warn(
-							`[seed] "${documentName}" persisted Y state was stale — re-seeded from CouchDB note (v${note.version ?? "?"}, last device ${note.lastModifiedDeviceId ?? "?"})`,
+							`[seed] "${documentName}" restored ${fromYstate ? "ystate" : "SQLite"} differed from note — re-seeded from CouchDB note (v${note.version ?? "?"}, last device ${note.lastModifiedDeviceId ?? "?"})`,
 						);
 					} else if (differs) {
-						// 마지막 note가 서버 스냅샷인데 내용이 다르다 = 이전 세션의 마지막 스냅샷이
-						// CouchDB에 못 갔다(서버 재시작 등). SQLite가 정본 — 언로드 시 보존 표시.
 						sqliteAhead.add(documentName);
 					}
 				}
 				return;
 			}
+
 			if (note && !note.deleted && typeof note.content === "string" && note.content.length > 0) {
 				// Y.Text 키 "content"는 클라이언트 RealtimeManager.startSession()의 ydoc.getText("content")와 일치해야 한다.
 				// ⚠️ insert(0)을 무조건 하면, 메모리에 재사용된 Y.Doc(빠른 재접속 등)에 이미 내용이 있을 때
 				// 전체 내용이 한 번 더 붙어 **중복**된다(노트 전체가 끝에 반복적으로 덧붙는 현장 버그). 그래서
 				// 빈 경우에만 시드하고, 어쩌다 내용이 남아 있으면 정본(note.content)으로 **교체**해 멱등하게 만든다
-				// (중복 상태도 자체 치유). 교체 패턴은 위 SQLite 재시드(differs)와 동일.
+				// (중복 상태도 자체 치유). 교체 패턴은 위 재시드(differs)와 동일.
 				const ytext = document.getText("content");
 				const current = ytext.toString();
 				if (current !== note.content) {
@@ -195,6 +248,7 @@ export function createDocLifecycle(deps) {
 			if (existing && !existing.deleted && existing.contentHash === contentHash) {
 				sqliteAhead.delete(documentName); // CouchDB가 이미 같은 내용 — 앞섬 해제
 				lastCouchHash.set(documentName, contentHash);
+				await persistYState(document, room, claims, contentHash); // 같은 내용이라도 CRDT 이력은 영속(기존 노트 ystate 부트스트랩)
 				noteCouchOk();
 				return;
 			}
@@ -266,6 +320,7 @@ export function createDocLifecycle(deps) {
 			}
 			sqliteAhead.delete(documentName); // CouchDB 반영 완료 — 이 시점부터 note가 정본
 			lastCouchHash.set(documentName, contentHash);
+			await persistYState(document, room, claims, contentHash); // note 스냅샷과 함께 CRDT 이력도 durable 영속(SQLite 유실 대비)
 			noteCouchOk();
 			log.log(`[snapshot] "${documentName}" -> ${claims.d}/${id} (v${(existing?.version ?? 0) + 1})`);
 		} catch (e) {
