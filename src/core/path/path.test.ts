@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateVaultPath, validateFolderName, foldersOverlap, insertLabelBeforeExt, uniqueGroupFolder } from "./path";
+import { validateVaultPath, validateFolderName, validateExcludeFolder, foldersOverlap, insertLabelBeforeExt, uniqueGroupFolder } from "./path";
 
 describe("validateVaultPath / validateFolderName", () => {
 	it("정상 상대 경로는 허용", () => {
@@ -19,6 +19,23 @@ describe("validateVaultPath / validateFolderName", () => {
 	it(".obsidian 단독 경로도 거부", () => {
 		expect(validateVaultPath(".obsidian")).toBe(false);
 		expect(validateFolderName(".obsidian")).toBe(false);
+	});
+});
+
+describe("validateExcludeFolder", () => {
+	it("제외 목록은 .obsidian·.trash를 허용(기본값과 동일)", () => {
+		expect(validateExcludeFolder(".obsidian")).toBe(true);
+		expect(validateExcludeFolder(".obsidian/plugins")).toBe(true);
+		expect(validateExcludeFolder(".trash")).toBe(true);
+		expect(validateExcludeFolder("보관함")).toBe(true);
+	});
+
+	it("빈 값/상위 탈출/절대경로/드라이브는 여전히 거부", () => {
+		expect(validateExcludeFolder("")).toBe(false);
+		expect(validateExcludeFolder("../비밀")).toBe(false);
+		expect(validateExcludeFolder("a/../b")).toBe(false);
+		expect(validateExcludeFolder("/etc")).toBe(false);
+		expect(validateExcludeFolder("C:/temp")).toBe(false);
 	});
 });
 

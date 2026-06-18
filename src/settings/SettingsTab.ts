@@ -1,7 +1,7 @@
 import { App, Notice, Plugin, PluginSettingTab, Setting, SettingGroup } from "obsidian";
 import { CoVaultSettings, MemberConfig, SharedSpace, GroupConfig } from "./types";
 import { ExportModal, ImportModal } from "../ui/BackupModal";
-import { validateFolderName, foldersOverlap } from "../core/path/path";
+import { validateFolderName, validateExcludeFolder, foldersOverlap } from "../core/path/path";
 import { validateSettings, SettingsIssue } from "./validateSettings";
 import { hasSecretStorage, getYjsSecret } from "../core/secret";
 import { renderManager as renderManagerSection, ManagerCtx } from "./managerSection";
@@ -458,9 +458,9 @@ export class CoVaultSettingTab extends PluginSettingTab {
 				.addText((txt) =>
 					commitOnBlur(txt.setValue(s.excludeFolders.join(", ")), async (v) => {
 						const folders = v.split(",").map((x) => x.trim()).filter((x) => x.length > 0);
-						const bad = folders.find((f) => !validateFolderName(f));
+						const bad = folders.find((f) => !validateExcludeFolder(f));
 						if (bad) {
-							new Notice(t("settings.invalid_folder_path_no_absolute_paths", { path: bad }));
+							new Notice(t("settings.invalid_exclude_folder_path", { path: bad }));
 							return;
 						}
 						s.excludeFolders = folders;

@@ -19,12 +19,15 @@
  *   STORE_MAX_DEBOUNCE_MS (기본 10000) 최대 지연 — 이 시간 안엔 반드시 저장
  */
 import { Server } from "@hocuspocus/server";
+import { ResetConnection } from "@hocuspocus/common";
 import BetterSqlite3 from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import { rejectPlaceholder, parseRoom, verifyToken } from "./auth.js";
 import { CouchClient } from "./couch.js";
 // 문서 로드 시드·스냅샷·언로드 로직은 docLifecycle.js로 분리(의존성 주입 → vitest 검증 가능).
 import { createDocLifecycle, isSnapshotTarget } from "./docLifecycle.js";
+// 인가 규칙·권한 변경 재인가 대상 선별(순수 로직)은 authz.js로 분리 — vitest로 고정(test/server/authz.test.ts).
+import { memberAllowed, connectionsToClose } from "./authz.js";
 
 // 배포된 서버 빌드 버전(package.json) — health 엔드포인트에 노출해 NAS에 어떤 빌드가 떠 있는지 확인하게 한다.
 // (실시간 서버는 플러그인과 별도로 재배포되므로 배포 누락 진단에 필요.) 읽기 실패해도 기동을 막지 않는다.
@@ -89,10 +92,11 @@ async function authorize(claims, room) {
 	if (claims.r === "manager") return true;
 	if (room.spaceId.startsWith("mirror-")) return true; // 개인 mirror 1:1 — 파일 인가 없음
 	if (!couch) return true; // CouchDB 미연동: 공간 단위 인가만(기동 시 경고됨)
+	// rtpart가 있으면 rtcontrol은 무관하므로 추가 조회를 생략(원래 단축 평가 유지). 판정 규칙은 authz.memberAllowed.
 	const part = await couch.getDoc(claims.d, `rtpart:${room.dbPath}`);
-	if (part && !part.deleted) return Array.isArray(part.memberIds) && part.memberIds.includes(claims.m);
+	if (part && !part.deleted) return memberAllowed(claims, room, part, null);
 	const control = await couch.getDoc(claims.d, "rtcontrol").catch(() => null);
-	return !control?.sharedReadOnly;
+	return memberAllowed(claims, room, null, control);
 }
 
 // ---------------------------------------------------------------------------
@@ -147,18 +151,49 @@ const lifecycle = createDocLifecycle({
 	noteCouchFail,
 });
 
+// 권한 문서(rtpart/rtcontrol) 변경 → 영향 문서의 **연결별 재인가**. 전원 종료(closeConnections) 대신
+// 현재 권한으로 각 연결을 재평가해 더는 허용 안 되는 연결만 닫는다 → 멤버 추가는 누구도 안 끊기고(churn 0),
+// 제거는 그 멤버만 끊긴다. _changes는 한 번에 여러 id를 줄 수 있으나, 재인가는 '현재 권한 재조회+재평가'라
+// 멱등하므로(같은 연결을 두 번 닫아도 무해) 별도 순서 보장이 필요 없다.
 function onControlChange(dbName, changedIds) {
-	if (!hocuspocusInstance) return;
+	if (!hocuspocusInstance || !couch) return;
+	const affected = new Set();
 	for (const id of changedIds) {
 		for (const [name, info] of activeDocs) {
 			if (info.db !== dbName) continue;
-			// rtcontrol(기본 정책) 변경 → DB의 모든 활성 문서 재인가, rtpart 변경 → 해당 파일만.
-			if (id === "rtcontrol" || id === `rtpart:${info.dbPath}`) {
-				console.log(`[authz] ${id} changed in ${dbName} — closing connections of "${name}" for re-auth`);
-				hocuspocusInstance.closeConnections(name);
-			}
+			// rtcontrol(기본 정책) 변경 → DB의 모든 활성 문서, rtpart 변경 → 해당 파일만.
+			if (id === "rtcontrol" || id === `rtpart:${info.dbPath}`) affected.add(name);
 		}
 	}
+	for (const name of affected) {
+		void reauthDocument(name).catch((e) => console.error(`[authz] re-auth failed for "${name}": ${e?.message ?? e}`));
+	}
+}
+
+/**
+ * 한 문서의 연결을 현재 권한으로 재평가해 더는 허용되지 않는 연결만 닫는다(Hocuspocus 단건 종료).
+ * 닫힌 연결은 클라이언트가 재접속하며 onAuthenticate를 다시 통과해야 하므로, 제거된 멤버만 거부되고
+ * 나머지는 애초에 닫히지 않아 끊김이 없다. 조회 실패 시엔 아무도 닫지 않는다(가용성 우선 — 다음 변경/만료
+ * 점검이 재평가; 잘못 끊어 정상 협업을 깨지 않는다).
+ */
+async function reauthDocument(name) {
+	const info = activeDocs.get(name);
+	const doc = hocuspocusInstance?.documents?.get(name);
+	if (!info || !doc) return;
+	const rtpart = await couch.getDoc(info.db, `rtpart:${info.dbPath}`).catch(() => null);
+	const rtcontrol = await couch.getDoc(info.db, "rtcontrol").catch(() => null);
+	// Hocuspocus Connection: .context = onAuthenticate 반환값({claims, room}), .close({code,reason})로 단건 종료.
+	const conns = doc.getConnections().map((c) => ({ ref: c, claims: c.context?.claims, room: c.context?.room }));
+	const toClose = connectionsToClose(conns, rtpart, rtcontrol);
+	for (const c of toClose) {
+		console.log(`[authz] revoking ${c.claims?.m} from "${name}" — no longer authorized (rtpart/rtcontrol changed)`);
+		try {
+			c.ref.close(ResetConnection);
+		} catch (e) {
+			console.error(`[authz] close failed for ${c.claims?.m} on "${name}": ${e?.message ?? e}`);
+		}
+	}
+	if (toClose.length === 0) console.log(`[authz] "${name}" re-evaluated — all current participants still authorized (no churn)`);
 }
 
 function ensureWatcher(dbName) {

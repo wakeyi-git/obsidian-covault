@@ -533,6 +533,7 @@
 		"excluded_folders": "Excluded folders",
 		"enter_folders_to_exclude_from_sync": "Enter folders to exclude from sync, separated by commas.",
 		"invalid_folder_path_no_absolute_paths": "Invalid folder path: {path} (no ‘..’, absolute paths, or .obsidian)",
+		"invalid_exclude_folder_path": "Invalid exclude folder path: {path} (no ‘..’ or absolute paths)",
 		"archive_and_conflict_folders_overlap_use": "Archive and conflict folders overlap. Use different paths.",
 		"backup_device_transfer": "Backup / device transfer",
 		"export_import_settings": "Export / import settings",

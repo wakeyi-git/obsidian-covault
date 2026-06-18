@@ -533,6 +533,7 @@
 		"excluded_folders": "제외 폴더",
 		"enter_folders_to_exclude_from_sync": "동기화에서 제외할 폴더를 쉼표로 구분해 입력합니다.",
 		"invalid_folder_path_no_absolute_paths": "잘못된 폴더 경로입니다: {path} (‘..’·절대경로·.obsidian 불가)",
+		"invalid_exclude_folder_path": "잘못된 제외 폴더 경로입니다: {path} (‘..’·절대경로 불가)",
 		"archive_and_conflict_folders_overlap_use": "보관 폴더와 충돌 폴더가 겹칩니다. 다른 경로를 쓰세요.",
 		"backup_device_transfer": "백업 / 기기 이전",
 		"export_import_settings": "설정 내보내기 / 가져오기",

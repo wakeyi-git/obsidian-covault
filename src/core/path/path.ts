@@ -20,12 +20,19 @@ export function normalizePath(p: string): string {
  * 상위 경로 탈출(..), 절대 경로, 드라이브 경로, 플러그인 내부 경로를 거부한다.
  */
 export function validateVaultPath(dbPath: string): boolean {
-	if (!dbPath) return false;
+	if (!isSafeRelativePath(dbPath)) return false;
 	const p = dbPath.replace(/\\/g, "/");
+	if (p === ".obsidian" || p.startsWith(".obsidian/")) return false; // 플러그인 내부(단독 경로 포함)
+	return true;
+}
+
+/** 상위 탈출(..)·절대 경로·드라이브 경로가 아닌 안전한 상대 경로인지(빈 값 거부). */
+function isSafeRelativePath(p0: string): boolean {
+	if (!p0) return false;
+	const p = p0.replace(/\\/g, "/");
 	if (p.startsWith("/")) return false; // 절대 경로
 	if (/^[a-zA-Z]:/.test(p)) return false; // C:\...
 	if (p.split("/").some((seg) => seg === "..")) return false; // 상위 탈출
-	if (p === ".obsidian" || p.startsWith(".obsidian/")) return false; // 플러그인 내부(단독 경로 포함)
 	return true;
 }
 
@@ -46,6 +53,14 @@ export function insertLabelBeforeExt(dbPath: string, label: string): string {
 /** 사용자 입력 폴더 경로 검증(빈 값/`..`/절대경로/드라이브/.obsidian 차단). validateVaultPath와 동일 규칙. */
 export function validateFolderName(folder: string): boolean {
 	return validateVaultPath(folder);
+}
+
+/**
+ * 제외(excludeFolders) 폴더 입력 검증: `..`·절대경로·드라이브만 차단하고 `.obsidian`은 허용한다.
+ * 동기화 대상 경로(validateVaultPath)와 달리, 제외 목록은 .obsidian을 명시하는 것이 정상이다(기본값도 [".obsidian", ".trash"]).
+ */
+export function validateExcludeFolder(folder: string): boolean {
+	return isSafeRelativePath(folder);
 }
 
 /**
