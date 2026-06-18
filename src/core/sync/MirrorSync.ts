@@ -417,8 +417,9 @@ export class MirrorSync {
 	/**
 	 * 충돌 문서 수(증분 집계 — 평가 P-1). 대시보드 5초 폴링용 — listConflicts()의 전 문서 적재 없이
 	 * O(집계 크기)로 답한다. 상세 목록(충돌 탭)은 여전히 listConflicts()가 담당.
-	 * (집계는 _conflicts 기준이라 모든 리프가 live와 동일한 "유령 충돌"도 세지만, 충돌 목록을 열면
-	 * ConflictManager.list()가 해당 리프를 자동 정리(collapseIdentical)해 집계와 다시 일치한다.)
+	 * 집계에는 사람이 해소해야 하는 "실제 충돌"만 들어간다 — 유령 충돌(모든 리프가 live와 동일)은
+	 * 충돌이 들어오는 두 경로(시작 시 refreshConflictIds·라이브 changes→materialize)에서 선제적으로
+	 * 정리되므로, 배지가 시작 직후 부풀었다가 목록을 열어야 줄어드는 출렁임이 없다.
 	 */
 	conflictCount(): number {
 		let n = 0;
@@ -431,14 +432,22 @@ export class MirrorSync {
 		return n;
 	}
 
-	/** 충돌 집계 초기화(시작 시 1회 전수). 실패해도 동기화를 막지 않는다 — 카운트만 0에서 출발. */
+	/**
+	 * 충돌 집계 초기화(시작 시 1회 전수). 실패해도 동기화를 막지 않는다 — 카운트만 0에서 출발.
+	 * 노트 충돌은 materialize로 평가해 유령(모든 리프가 라이브와 동일)은 그 자리에서 정리하고
+	 * 실제 충돌만 센다 — 시작 직후 카운트가 유령으로 부풀었다가 줄어드는 출렁임을 없앤다.
+	 */
 	private async refreshConflictIds(): Promise<void> {
 		try {
-			const ids: string[] = [];
-			for (const { doc } of await this.ctx.pouch.listConflicts()) ids.push(noteId(doc.path));
-			for (const { doc } of await this.ctx.pouch.listAssetConflicts()) ids.push(assetId(doc.path));
 			this.ctx.conflictIds.clear();
-			for (const id of ids) this.ctx.conflictIds.add(id);
+			for (const { doc, conflictRevs } of await this.ctx.pouch.listConflicts()) {
+				if (await this.conflicts.materialize({ ...doc, _conflicts: conflictRevs })) {
+					this.ctx.conflictIds.add(noteId(doc.path));
+				}
+			}
+			for (const { doc } of await this.ctx.pouch.listAssetConflicts()) {
+				this.ctx.conflictIds.add(assetId(doc.path));
+			}
 		} catch {
 			/* 초기 집계 실패 — changes가 점진적으로 채운다 */
 		}

@@ -52,19 +52,31 @@ export class ConflictManager {
 		await saveEntries(this.ctx.pouch, CONFLICT_FLAGS_ID, [...f]).catch(() => undefined);
 	}
 
-	/** 충돌 감지 시: 원격(=라이브와 다른) 리프 내용을 _충돌/ 폴더에 기록. */
-	async materialize(doc: NoteDoc & { _conflicts?: string[] }): Promise<void> {
+	/**
+	 * 충돌 감지 시 처리. 사람이 해소할 게 있는 "실제 충돌"이면 원격(=라이브와 다른) 리프 내용을
+	 * _충돌/ 폴더에 기록하고 true를 반환한다. 모든 리프가 라이브와 동일한 "유령 충돌"이면 사람이
+	 * 해소할 게 없으므로 그 자리에서 리프를 정리하고 false를 반환한다 — 사용자가 충돌 목록을 열
+	 * 때까지 기다리지 않고 내부적으로 흡수해 집계(conflictCount)가 유령으로 부풀지 않게 한다.
+	 * 반환값으로 호출자가 증분 집계에 실제 충돌만 넣을 수 있다.
+	 */
+	async materialize(doc: NoteDoc & { _conflicts?: string[] }): Promise<boolean> {
 		const ctx = this.ctx;
 		const dbPath = doc.path;
-		const remote = await this.pickRemoteLeaf(dbPath, doc, doc._conflicts ?? []);
-		if (!remote) return;
+		const conflictRevs = doc._conflicts ?? [];
+		const remote = await this.pickRemoteLeaf(dbPath, doc, conflictRevs);
+		if (!remote) {
+			// 유령 충돌 — 내용이 같아 어느 쪽을 버려도 손실이 없으니 리프를 정리해 집계와 일치시킨다.
+			// (list()의 collapseIdentical과 같은 처리를 라이브·시작 스캔 경로에서 선제적으로 수행.)
+			if (conflictRevs.length > 0) await this.collapseIdentical(dbPath, conflictRevs);
+			return false;
+		}
 		// 사본 파일과 별개로 이력 플래그를 남긴다 — 사용자가 _충돌/ 사본을 지우거나 사본 쓰기가
 		// 실패해도, 상대 해소 시 preserveLocal(내편집 백업)이 빠지지 않게(평가 L-2).
 		await this.setFlag(dbPath, true);
 		const path = ctx.conflictLocalPath(dbPath);
 		// 이미 같은 내용의 보류본이 있으면 다시 쓰지 않는다(미해소 충돌이 매 변경/재시작마다
 		// _충돌/ 사본을 재기록해 mtime이 튀는 churn 방지).
-		if ((await ctx.readVaultFile(path)) === remote.content) return;
+		if ((await ctx.readVaultFile(path)) === remote.content) return true;
 		try {
 			await ctx.writeVaultFile(path, remote.content);
 		} catch (e) {
@@ -72,6 +84,7 @@ export class ConflictManager {
 				t("sync.failed_to_write_conflict_copy", { path, err: errMessage(e) }),
 			);
 		}
+		return true;
 	}
 
 	/** 현재 충돌 목록(노트 + 첨부). */

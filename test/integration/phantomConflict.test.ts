@@ -47,6 +47,49 @@ describe("유령 충돌 자동 정리 (collapseIdentical)", () => {
 		expect(b.vault.textOf("p.md")).toBe("same"); // 라이브 내용은 그대로
 	});
 
+	it("materialize는 목록을 열지 않아도 유령 충돌을 선제 정리하고 false를 돌려준다(집계 미포함)", async () => {
+		cluster = new Cluster();
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
+
+		await makePhantom(a, b, "p.md");
+		const id = noteId("p.md");
+		b.ctx.conflictIds.add(id); // 라이브 changes가 _conflicts만 보고 일단 집계에 넣은 상황 재현
+
+		const winner = await b.ctx.pouch.getWithConflicts<{ _conflicts?: string[] }>(id);
+		const real = await b.conflicts.materialize({ ...(winner as object), path: "p.md" } as never);
+
+		expect(real).toBe(false); // 사람이 해소할 게 없음 → 집계에 넣지 말 것
+		const after = await b.ctx.pouch.getWithConflicts<{ _conflicts?: string[] }>(id);
+		expect(after?._conflicts ?? []).toHaveLength(0); // 목록을 열지 않았는데도 리프 정리
+		expect(b.ctx.conflictIds.has(id)).toBe(false); // 집계에서도 빠짐
+	});
+
+	it("materialize는 진짜 충돌이면 _충돌/ 사본을 남기고 true를 돌려준다(집계 포함)", async () => {
+		cluster = new Cluster();
+		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
+		const b = cluster.device({ deviceId: "b", role: "member", remoteDb: "mirror_s1" });
+
+		a.vault.seed("r.md", "base");
+		await a.uploader.uploadPath("r.md");
+		await a.push();
+		await b.pull();
+		b.vault.seed("r.md", "B-edit");
+		await b.uploader.uploadPath("r.md");
+		a.vault.seed("r.md", "A-edit");
+		await a.uploader.uploadPath("r.md");
+		await a.push();
+		await b.pull();
+
+		const winner = await b.ctx.pouch.getWithConflicts<{ _conflicts?: string[] }>(noteId("r.md"));
+		const real = await b.conflicts.materialize({ ...(winner as object), path: "r.md" } as never);
+
+		expect(real).toBe(true);
+		const doc = await b.ctx.pouch.getWithConflicts<{ _conflicts?: string[] }>(noteId("r.md"));
+		expect(doc?._conflicts?.length).toBeGreaterThan(0); // 진짜 충돌은 collapse하지 않는다
+		expect(b.ctx.getFile(b.ctx.conflictLocalPath("r.md"))).not.toBeNull(); // _충돌/ 사본 생성
+	});
+
 	it("내용이 다른 진짜 충돌은 정리하지 않고 그대로 나열한다", async () => {
 		cluster = new Cluster();
 		const a = cluster.device({ deviceId: "a", role: "manager", remoteDb: "mirror_s1" });
