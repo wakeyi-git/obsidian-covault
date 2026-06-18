@@ -186,6 +186,12 @@ export function createDocLifecycle(deps) {
 						log.warn(
 							`[seed] "${documentName}" restored ${fromYstate ? "ystate" : "SQLite"} differed from note — re-seeded from CouchDB note (v${note.version ?? "?"}, last device ${note.lastModifiedDeviceId ?? "?"})`,
 						);
+						// 재시드 결과를 durable 저장에 반영한다. 안 하면 저장본은 재시드 전 이력으로 남아, (편집이 없어
+						// onStoreDocument가 안 불리는 한) 다음 재로드마다 같은 내용을 매번 '새 ID'로 재시드해 — 재접속
+						// 클라이언트가 이전 재시드본과 독립 병합 → "XYZXYZ"로 누적된다. 갱신하면 다음 재로드가 같은
+						// 이력을 복원해 재시드 자체가 사라진다(differs=false).
+						sqlite.put(documentName, Buffer.from(Y.encodeStateAsUpdate(document)));
+						await persistYState(document, room, claims, note.contentHash ?? sha256Hex(note.content));
 					} else if (differs) {
 						sqliteAhead.add(documentName);
 					}
@@ -210,6 +216,13 @@ export function createDocLifecycle(deps) {
 						`[seed] "${documentName}" seeded from CouchDB note (${note.content.length} chars${current.length > 0 ? `, replaced ${current.length} stale` : ""})`,
 					);
 				}
+				// ⭐ 시드 이력을 **즉시** durable 영속한다. 시드는 onLoadDocument 안에서 일어나 onStoreDocument를
+				// 발화시키지 않으므로(편집이 한 번도 없으면 store가 영영 안 불린다), 이걸 안 하면 방이 unload된 뒤
+				// 재접속이 같은 내용을 '새 이력'으로 다시 시드해 — 직전 시드 이력(H1)을 그대로 든 클라이언트와 독립
+				// 병합 → 노트 전체 중복(현장 재발: 편집 없이 열어둔 노트가 절전-재접속으로 ABCABC). 시드 시점에
+				// SQLite·ystate를 써두면 재로드가 같은 H1을 복원해 재시드가 일어나지 않는다.
+				sqlite.put(documentName, Buffer.from(Y.encodeStateAsUpdate(document)));
+				await persistYState(document, room, claims, note.contentHash ?? sha256Hex(note.content));
 			}
 		} catch (e) {
 			// 시드/검증 실패 시 빈 문서로 열면 스냅샷이 기존 내용을 비울 수 있다 → fail-closed로 연결 거부.

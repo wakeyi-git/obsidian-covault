@@ -363,6 +363,47 @@ describe("unload — SQLite Yjs 상태 보존(이력 유지)", () => {
 		expect(server2.getText("content").toString()).toBe("ABC");
 	});
 
+	it("⭐ 편집 없이 시드만 된 노트도 시드 시점에 영속 → unload 후 재접속이 재시드하지 않음(중복 없음)", async () => {
+		const env = makeEnv({ note: note("ABC") });
+		const { lifecycle, sqliteRows } = env;
+		// 세션 1: 시드 H1="ABC"(편집 없음 → onStoreDocument 미발화). 시드 시점 영속이 없으면 SQLite·ystate가 비어
+		// 재접속이 재시드 → 중복. 이제 loadDocument가 시드 직후 SQLite·ystate를 쓴다.
+		const server1 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		expect(server1.getText("content").toString()).toBe("ABC");
+		expect(sqliteRows.has(NAME)).toBe(true); // 시드 시점에 SQLite 영속
+		expect(env.getYState()).not.toBeNull(); // 시드 시점에 ystate 영속
+		const client = new Y.Doc();
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server1)); // 클라이언트가 H1 보유
+
+		// 편집 없이 unload(피어 0) → 재접속.
+		lifecycle.handleUnload(NAME, ROOM.dbPath);
+		const server2 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server2, documentName: NAME, room: ROOM, claims: CLAIMS });
+		Y.applyUpdate(server2, Y.encodeStateAsUpdate(client));
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server2));
+		expect(client.getText("content").toString()).toBe("ABC"); // 재시드 없음 → "ABCABC" 아님
+		expect(server2.getText("content").toString()).toBe("ABC");
+	});
+
+	it("⭐ 편집 없이 시드만 된 노트 + SQLite까지 유실 → 시드 때 쓴 ystate로 복원(중복 없음)", async () => {
+		const env = makeEnv({ note: note("ABC") });
+		const { lifecycle, sqliteRows } = env;
+		const server1 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		const client = new Y.Doc();
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server1));
+		lifecycle.handleUnload(NAME, ROOM.dbPath);
+		sqliteRows.clear(); // 재배포로 SQLite 유실 — 시드 때 쓴 ystate만 남음
+
+		const server2 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server2, documentName: NAME, room: ROOM, claims: CLAIMS });
+		Y.applyUpdate(server2, Y.encodeStateAsUpdate(client));
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server2));
+		expect(client.getText("content").toString()).toBe("ABC");
+		expect(server2.getText("content").toString()).toBe("ABC");
+	});
+
 	it("SQLite 없음 + ystate 없음 + note 있음 → 최초 텍스트 시드(이력 없는 안전 케이스)", async () => {
 		const { lifecycle } = makeEnv({ note: note("처음 보는 노트") });
 		const document = new Y.Doc();
@@ -391,6 +432,34 @@ describe("unload — SQLite Yjs 상태 보존(이력 유지)", () => {
 		Y.applyUpdate(client, Y.encodeStateAsUpdate(server2));
 		expect(client.getText("content").toString()).toBe("XYZ");
 		expect(server2.getText("content").toString()).toBe("XYZ");
+	});
+
+	it("외부 편집 재시드 후 반복 재로드(편집 없음) → 재시드본 영속으로 매번 새 ID 재시드 안 함(XYZXYZ 누적 없음)", async () => {
+		const env = makeEnv({ note: note("ABC") });
+		const { lifecycle, sqliteRows } = env;
+		const server1 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server1, documentName: NAME, room: ROOM, claims: CLAIMS });
+		const client = new Y.Doc();
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server1));
+		lifecycle.handleUnload(NAME, ROOM.dbPath);
+
+		env.setNote(note("XYZ")); // 세션 사이 파일 동기화 외부 편집
+
+		// 재로드 1: 재시드 "XYZ" + 재시드본을 SQLite·ystate에 영속.
+		const server2 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server2, documentName: NAME, room: ROOM, claims: CLAIMS });
+		Y.applyUpdate(server2, Y.encodeStateAsUpdate(client));
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server2));
+		lifecycle.handleUnload(NAME, ROOM.dbPath);
+
+		// 재로드 2(여전히 편집 없음): 영속된 재시드본을 복원 → differs=false → 재시드 없음. 새 ID XYZ가 또 생기지 않는다.
+		sqliteRows.clear(); // SQLite 유실까지 겹쳐도 ystate(재시드본)로 복원
+		const server3 = new Y.Doc();
+		await lifecycle.loadDocument({ document: server3, documentName: NAME, room: ROOM, claims: CLAIMS });
+		Y.applyUpdate(server3, Y.encodeStateAsUpdate(client));
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server3));
+		expect(client.getText("content").toString()).toBe("XYZ"); // "XYZXYZ" 아님
+		expect(server3.getText("content").toString()).toBe("XYZ");
 	});
 
 	it("세션 사이 외부 편집으로 재시드돼도, 보존된 이력 위 delete+insert라 재접속 클라이언트가 중복 없이 새 내용으로 수렴", async () => {

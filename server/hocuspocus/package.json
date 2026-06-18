@@ -1,7 +1,7 @@
 {
 	"name": "covault-realtime-server",
 	"private": true,
-	"version": "0.128.6",
+	"version": "0.128.7",
 	"type": "module",
 	"scripts": {
 		"start": "node server.js"
