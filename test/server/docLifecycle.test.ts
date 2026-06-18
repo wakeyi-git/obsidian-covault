@@ -2,7 +2,7 @@
 // 지적한 분기 매트릭스를 mock CouchDB·인메모리 SQLite로 검증한다(평가 중기 — 서버 훅 테스트).
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
-import { createDocLifecycle, sha256Hex, RT_DEVICE_ID } from "../../server/hocuspocus/docLifecycle.js";
+import { createDocLifecycle, sha256Hex, RT_DEVICE_ID, applyTextDiff } from "../../server/hocuspocus/docLifecycle.js";
 
 const CLAIMS = { d: "share_g1", c: "ws", m: "m1", r: "member" };
 const ROOM = { dbPath: "모둠활동/토론.md", spaceId: "g1" };
@@ -485,5 +485,71 @@ describe("unload — SQLite Yjs 상태 보존(이력 유지)", () => {
 		Y.applyUpdate(client, Y.encodeStateAsUpdate(server2));
 		expect(client.getText("content").toString()).toBe("XYZ");
 		expect(server2.getText("content").toString()).toBe("XYZ");
+	});
+});
+
+describe("applyTextDiff — 최소 diff(공통 prefix/suffix 보존)", () => {
+	const text = (d: Y.Doc) => d.getText("content").toString();
+
+	it("내용을 target으로 변환한다: 빈 문서 삽입·중간 편집·삭제·중복 제거", () => {
+		const empty = new Y.Doc();
+		applyTextDiff(empty, empty.getText("content"), "ABC");
+		expect(text(empty)).toBe("ABC");
+
+		const mid = new Y.Doc();
+		mid.getText("content").insert(0, "ABC");
+		applyTextDiff(mid, mid.getText("content"), "AXC");
+		expect(text(mid)).toBe("AXC");
+
+		const dbl = new Y.Doc();
+		dbl.getText("content").insert(0, "ABCABC"); // 박제된 2배 → 단일로 치유
+		applyTextDiff(dbl, dbl.getText("content"), "ABC");
+		expect(text(dbl)).toBe("ABC");
+
+		const same = new Y.Doc();
+		same.getText("content").insert(0, "ABC");
+		applyTextDiff(same, same.getText("content"), "ABC"); // 같으면 무동작
+		expect(text(same)).toBe("ABC");
+	});
+
+	it("변하지 않은 영역의 item을 보존한다 — RelativePosition 유지(wholesale은 깨짐)", () => {
+		// diff: prefix 'He' item이 보존되어 앵커가 같은 글자(index 2)를 계속 가리킨다.
+		const a = new Y.Doc();
+		const ya = a.getText("content");
+		ya.insert(0, "Hello world");
+		const relA = Y.createRelativePositionFromTypeIndex(ya, 2); // "He|llo world"
+		applyTextDiff(a, ya, "Hello BRAVE world"); // 중간 삽입
+		expect(Y.createAbsolutePositionFromRelativePosition(relA, a)?.index).toBe(2);
+
+		// wholesale: 전체 삭제+재삽입 → 원래 item이 사라져 앵커가 밀린다.
+		const b = new Y.Doc();
+		const yb = b.getText("content");
+		yb.insert(0, "Hello world");
+		const relB = Y.createRelativePositionFromTypeIndex(yb, 2);
+		b.transact(() => {
+			yb.delete(0, yb.length);
+			yb.insert(0, "Hello BRAVE world");
+		});
+		expect(Y.createAbsolutePositionFromRelativePosition(relB, b)?.index).not.toBe(2);
+	});
+
+	it("수렴 중 다른 클라이언트의 동시 편집(미변경 영역)을 보존하며 중복 없이 합쳐진다", () => {
+		const base = new Y.Doc();
+		base.getText("content").insert(0, "Hello world");
+		const u = Y.encodeStateAsUpdate(base);
+		const server = new Y.Doc();
+		Y.applyUpdate(server, u);
+		const client = new Y.Doc();
+		Y.applyUpdate(client, u); // 같은 베이스에서 출발한 두 복제본
+
+		client.getText("content").insert(11, "!"); // 클라이언트: 끝(미변경 영역)에 동시 편집
+		applyTextDiff(server, server.getText("content"), "Hello BRAVE world"); // 서버: 외부 편집 수렴
+
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server)); // 양방향 병합
+		Y.applyUpdate(server, Y.encodeStateAsUpdate(client));
+
+		// prefix/suffix item 보존 덕에 클라이언트의 '!'가 살아남고, 가운데 'BRAVE '만 합쳐진다(중복 없음).
+		expect(text(server)).toBe("Hello BRAVE world!");
+		expect(text(client)).toBe("Hello BRAVE world!");
 	});
 });

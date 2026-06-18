@@ -18,6 +18,31 @@ export function sha256Hex(s) {
 	return crypto.createHash("sha256").update(s, "utf8").digest("hex");
 }
 
+/**
+ * Y.Text를 target 내용으로 **최소 diff 적용**한다 — 공통 prefix/suffix는 그대로 두고 가운데 바뀐 구간만 delete+insert.
+ *
+ * wholesale `delete(0,len)+insert(0,target)`은 전체 글자를 새 item ID로 다시 심어, 옛 이력을 든 stale 클라이언트가
+ * 재접속·병합하면 같은 글자가 독립 삽입으로 합쳐져 노트가 통째로 중복(ABCABC)됐다(Hocuspocus 공식: 기존 문서에 텍스트
+ * 재삽입 금지 — 새 history 발생). prefix/suffix item을 보존하면 변하지 않은 부분은 **같은 ID**라 stale 병합이 중복 없이
+ * 수렴하고, 바뀐 구간만 새 item이 된다. 오프셋은 UTF-16 code unit(Y.Text와 동일). 내용이 같으면 무동작.
+ */
+export function applyTextDiff(document, ytext, target) {
+	const cur = ytext.toString();
+	if (cur === target) return;
+	let p = 0;
+	const maxP = Math.min(cur.length, target.length);
+	while (p < maxP && cur.charCodeAt(p) === target.charCodeAt(p)) p++;
+	let s = 0;
+	const maxS = Math.min(cur.length - p, target.length - p);
+	while (s < maxS && cur.charCodeAt(cur.length - 1 - s) === target.charCodeAt(target.length - 1 - s)) s++;
+	const delLen = cur.length - p - s;
+	const ins = target.slice(p, target.length - s);
+	document.transact(() => {
+		if (delLen > 0) ytext.delete(p, delLen);
+		if (ins.length > 0) ytext.insert(p, ins);
+	});
+}
+
 /** CouchDB 스냅샷/시드 대상: 마크다운 문서만. .excalidraw.md는 클라이언트가 세션 종료 시 저장한다. */
 export function isSnapshotTarget(dbPath) {
 	const lower = dbPath.toLowerCase();
@@ -179,10 +204,7 @@ export function createDocLifecycle(deps) {
 					const current = ytext.toString();
 					const differs = sha256Hex(current) !== (note.contentHash ?? sha256Hex(note.content));
 					if (differs && (fromYstate || note.lastModifiedDeviceId !== RT_DEVICE_ID)) {
-						document.transact(() => {
-							ytext.delete(0, current.length);
-							ytext.insert(0, note.content);
-						});
+						applyTextDiff(document, ytext, note.content); // 최소 diff(공통 prefix/suffix 보존) — stale 클라이언트 병합 중복 방지
 						log.warn(
 							`[seed] "${documentName}" restored ${fromYstate ? "ystate" : "SQLite"} differed from note — re-seeded from CouchDB note (v${note.version ?? "?"}, last device ${note.lastModifiedDeviceId ?? "?"})`,
 						);
@@ -208,10 +230,7 @@ export function createDocLifecycle(deps) {
 				const ytext = document.getText("content");
 				const current = ytext.toString();
 				if (current !== note.content) {
-					document.transact(() => {
-						if (current.length > 0) ytext.delete(0, current.length);
-						ytext.insert(0, note.content);
-					});
+					applyTextDiff(document, ytext, note.content); // 최소 diff — 빈 문서면 단순 삽입, 잔존 내용이 있으면 prefix/suffix 보존 교체
 					log.log(
 						`[seed] "${documentName}" seeded from CouchDB note (${note.content.length} chars${current.length > 0 ? `, replaced ${current.length} stale` : ""})`,
 					);
