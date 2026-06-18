@@ -148,6 +148,10 @@ export interface RealtimeHost {
 	setFileRealtimeParticipants(path: string, memberIds: string[] | null): Promise<void>;
 	/** 공유 파일 읽기 전용 정책 토글(교사). 켜면 구성원은 실시간 세션 활성 파일만 편집 가능. */
 	setSharedReadOnly(on: boolean): Promise<void>;
+	/** 파일이 개인 mirror(1:1) 공간 파일인가 — 1:1 라이브 지도 토글 카드 판단. */
+	isMirrorFile(path: string): boolean;
+	/** mirror(1:1) 파일의 실시간 옵트인 토글(교사). on=라이브 지도 시작(학생 자동 합류), off=종료. */
+	setMirrorRealtime(path: string, on: boolean): Promise<boolean>;
 }
 
 /** 과제(배포·제출·채점). */

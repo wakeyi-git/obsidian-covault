@@ -53,23 +53,63 @@ export class ParticipantController {
 	}
 
 	/**
-	 * 파일별 실시간 참여 가능 여부(게이트). 교사·개인 mirror(1:1)는 항상 허용.
-	 * 공유 공간 파일은 '참여자 지정 문서'가 허용 명단 — 없으면 읽기전용=아무도/해제=전원.
+	 * 파일별 실시간 참여 가능 여부(게이트).
+	 * - 개인 mirror(교사↔구성원 1:1): **옵트인(rtpart 지정)이 있을 때만** 실시간. 없으면 파일 동기화만 한다 —
+	 *   mirror 폴더 전체가 자동 실시간이 되어 텍스트↔CRDT 재조정으로 노트가 중복 누적되던 문제를 차단(교사·학생 동일).
+	 * - 공유/홈룸: 교사 전원 허용, 구성원은 참여자 지정 문서가 허용 명단(없으면 읽기전용=아무도/해제=전원).
 	 */
 	async canEditRealtime(path: string): Promise<boolean> {
 		const s = this.d.settings();
-		if (s.role === "manager") return true; // 교사는 모든 세션 참관/편집 가능
 		const sync = this.d.findSyncOwning(path);
-		if (!sync) return true;
-		if (sync.ctx.remoteDb === s.remoteDb) return true; // 개인 mirror(교사 1:1)는 게이팅 없음
+		if (!sync) return true; // 동기화 대상 아님(로컬 전용) — 게이팅 없음
 		const dbPath = sync.ctx.toDbPath(path);
 		if (!dbPath) return true;
+
+		if (this.d.realtime().isMirrorPath(path)) {
+			const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath)).catch(() => null);
+			if (!doc || doc.deleted || !Array.isArray(doc.memberIds) || doc.memberIds.length === 0) return false; // 미옵트인
+			return s.role === "manager" || doc.memberIds.includes(s.userId); // 교사는 지정되면 참여, 학생은 명단에 있을 때만
+		}
+
+		if (s.role === "manager") return true; // 공유 파일: 교사는 모든 세션 참관/편집 가능
 		try {
 			const doc = await sync.ctx.pouch.get<RtPartDoc>(rtPartId(dbPath));
 			return memberAllowed(doc, s.userId, !!s.sharedReadOnly);
 		} catch {
 			return memberAllowed(null, s.userId, !!s.sharedReadOnly); // 지정 문서 없음 → 기본값
 		}
+	}
+
+	/** 파일이 개인 mirror(1:1) 공간 파일인가 — 패널이 1:1 토글 카드를 띄울지 판단. */
+	isMirrorFile(path: string): boolean {
+		return this.d.realtime().isMirrorPath(path);
+	}
+
+	/**
+	 * mirror(1:1) 파일의 실시간 옵트인 토글(교사). on=해당 구성원을 참여자로 지정해 라이브 지도 시작(학생 자동 합류),
+	 * off=지정 해제(즉시 종료). 공유 파일 참여자 지정과 같은 rtpart 경로를 쓴다.
+	 */
+	async setMirrorRealtime(path: string, on: boolean): Promise<boolean> {
+		const s = this.d.settings();
+		if (s.role !== "manager") return false;
+		const memberId = this.d.realtime().mirrorMemberIdFor(path);
+		if (!memberId) {
+			this.d.logger.warn(t("realtime.one_to_one_not_mirror"), true);
+			return false;
+		}
+		await this.setFileRealtimeParticipants(path, on ? [memberId] : null);
+		return true;
+	}
+
+	/**
+	 * mirror 1:1 세션을 이 기기의 마지막 참여자가 닫아 종료했을 때 호출(RealtimeManager.onMirrorClosedAlone).
+	 * 교사면 rtpart 옵트인을 해제해 1:1을 끝낸다(자동 만료, 유예 0). rtpart는 교사 전용 쓰기라 학생 측에선 무동작.
+	 */
+	async onMirrorSessionClosedAlone(path: string): Promise<void> {
+		const s = this.d.settings();
+		if (s.role !== "manager") return;
+		const cur = await this.getFileRealtimeParticipants(path);
+		if (cur && cur.length > 0) await this.setFileRealtimeParticipants(path, null);
 	}
 
 	/** 파일의 실시간 참여자 명단(null=전원/미지정). */

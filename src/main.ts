@@ -82,7 +82,6 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 		this.core = new CoreServices(this.app, this.settings, this.logger);
 		this.core.save = () => this.saveData(this.settings);
 		this.nav = new PanelNavigator(this.app); // 컨트롤러 deps(openLog 등)가 참조 — 최상단에서 생성
-
 		// 실시간 공동 편집(Yjs) — 공유 폴더 문서
 		this.realtime = new RealtimeManager(
 			this.app,
@@ -90,6 +89,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			() => this.core.sharedSpaces,
 			(p) => this.syncForLocalPath(p), // 주기적 스냅샷 쓰기 대상
 			(p) => this.participantCtl.canEditRealtime(p), // 파일별 참여자 게이팅
+			(p) => void this.participantCtl.onMirrorSessionClosedAlone(p), // mirror 1:1 자동 만료(닫힘·피어0 → rtpart 해제)
 		);
 		this.core.isRealtimeActive = (p) => this.realtime.isActive(p);
 		this.core.endRealtimeSession = (p) => this.realtime.endSessionForDelete(p);

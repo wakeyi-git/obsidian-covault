@@ -181,8 +181,9 @@ export class RealtimeSection implements PanelSection {
 		// 마크다운과 똑같이 참여자를 설정·관리하게 한다(교사). 활성 카드에 참여자 칩이 붙는다.
 		if (this.manager && activePath && !byPath.has(activePath)) {
 			const sp = this.host.settings.sharedSpaces;
-			const inSpace = sp.some((x) => x.folder && (activePath === x.folder || activePath.startsWith(x.folder + "/")));
-			if (inSpace) byPath.set(activePath, { path: activePath, open: false, participants: 0, memberIds: null });
+			const inShared = sp.some((x) => x.folder && (activePath === x.folder || activePath.startsWith(x.folder + "/")));
+			// 개인 mirror 파일도 카드로 띄워 '1:1 라이브 지도' 토글을 제공한다(평소엔 파일 동기화만, 옵트인 시 실시간).
+			if (inShared || this.host.isMirrorFile(activePath)) byPath.set(activePath, { path: activePath, open: false, participants: 0, memberIds: null });
 		}
 		const rows = [...byPath.values()].sort((a, b) => Number(b.open) - Number(a.open) || a.path.localeCompare(b.path));
 
@@ -216,6 +217,21 @@ export class RealtimeSection implements PanelSection {
 			const head = box.createDiv({ cls: "covault-cr-card-head" });
 			setIcon(head.createSpan({ cls: "covault-cr-card-icon" }), "radio");
 			head.createSpan({ cls: "covault-cr-card-title", text: r.path.split("/").pop() ?? r.path });
+			// 개인 mirror(1:1) 파일: '라이브 지도' 토글. 켜면 그 학생을 참여자로 지정해 세션 시작(학생 자동 합류),
+			// 끄면 즉시 종료. 평소 mirror 파일은 파일 동기화만(중복 누적 차단). 카드 열기와 분리(stopPropagation).
+			if (this.manager && this.host.isMirrorFile(r.path)) {
+				const on = !!r.memberIds?.length;
+				const label = on ? t("realtime.one_to_one_stop") : t("realtime.one_to_one_start");
+				const btn = head.createEl("button", { cls: "clickable-icon covault-rt-1to1btn" });
+				setIcon(btn, on ? "user-check" : "user-plus");
+				btn.toggleClass("is-on", on);
+				btn.setAttr("aria-label", label);
+				btn.title = label;
+				btn.onclick = (e) => {
+					e.stopPropagation();
+					void this.toggle1to1(r.path, !on);
+				};
+			}
 			// 그룹 대화: 참여자가 지정된 세션이면 표시. 교사는 일치하는 명명 그룹이 있으면 그 그룹 대화,
 			// 없으면 임시 그룹을 만들어(같은 명단의 임시 그룹은 재사용) 연다. 구성원은 그룹을 만들 수
 			// 없으므로 일치하는 그룹 대화방(동기화 수신분)이 이미 있을 때만 표시. 카드 열기와 분리.
@@ -282,6 +298,13 @@ export class RealtimeSection implements PanelSection {
 	private openFile(path: string): void {
 		const f = this.host.app.vault.getAbstractFileByPath(path);
 		if (f instanceof TFile) void this.host.app.workspace.getLeaf(false).openFile(f, { active: true });
+	}
+
+	/** mirror(1:1) 라이브 지도 토글(교사). 지정 변경을 즉시 카드에 반영. */
+	private async toggle1to1(path: string, on: boolean): Promise<void> {
+		await this.host.setMirrorRealtime(path, on);
+		this.cfgFetchedAt = 0; // 지정 변경 → 세션 카드 즉시 갱신
+		await this.renderSessions();
 	}
 
 	/** 활성 파일이 공유 공간에 있으면 파일별 실시간 참여자 선택 UI(교사). */

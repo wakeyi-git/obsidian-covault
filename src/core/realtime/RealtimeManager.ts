@@ -16,13 +16,10 @@ import { t } from "../../i18n";
 export type { SnapshotTarget } from "./realtimeTypes";
 
 /**
- * Yjs 실시간 공동 편집 관리(Hocuspocus). 기술문서 §19. 공유 폴더의 markdown(글자 단위) + Excalidraw(요소 단위) 적용.
- *
- * 열린 에디터를 훑어 공유 파일이면 세션(provider + Y.Doc)을 띄우고, kind별 바인딩·종료 스냅샷은
- * EditorBindingStrategy(md/excalidraw)에 위임한다(평가 P2-3b). provider/소켓 생성은 ProviderFactory로
- * 주입(P2-1). 모든 세션은 **WebSocket 연결 하나**를 공유한다(멀티플렉싱).
- * 문서 시드·주기 스냅샷은 서버(onLoadDocument/onStoreDocument)가 담당하고, 세션 종료 시
- * vault 쓰기 + CouchDB 업로드(서버 미연동 환경 폴백)만 클라이언트가 수행한다.
+ * Yjs 실시간 공동 편집 관리(Hocuspocus). 기술문서 §19. 공유 폴더 markdown(글자) + Excalidraw(요소) 적용.
+ * 열린 에디터를 훑어 공유 파일이면 세션(provider+Y.Doc)을 띄우고, kind별 바인딩·종료 스냅샷은 EditorBindingStrategy에
+ * 위임(P2-3b). provider/소켓 생성은 ProviderFactory 주입(P2-1), 모든 세션이 WebSocket 연결 하나를 공유(멀티플렉싱).
+ * 시드·주기 스냅샷은 서버가 담당, 세션 종료 시 vault 쓰기+CouchDB 업로드(폴백)만 클라이언트가 수행.
  */
 export class RealtimeManager {
 	private sessions = new Map<string, Session>();
@@ -45,6 +42,8 @@ export class RealtimeManager {
 		private getSyncForPath: (localPath: string) => SnapshotTarget | undefined = () => undefined,
 		/** 이 파일의 라이브 세션에 참여 가능한가(파일별 참여자 게이팅). main이 주입(기본 전원 허용). */
 		private canEditRealtime: (localPath: string) => Promise<boolean> = async () => true,
+		/** mirror(1:1) 세션을 이 기기의 마지막 참여자가 노트를 닫아 종료할 때(피어0) 호출 — 교사가 rtpart 옵트인 해제(자동 만료). */
+		private onMirrorClosedAlone: (localPath: string) => void = () => {},
 		/** provider/소켓 생성 seam(평가 P2-1). 기본=실제 Hocuspocus, 테스트는 fake 주입. */
 		private providerFactory: ProviderFactory = new HocuspocusProviderFactory(),
 	) {}
@@ -191,9 +190,9 @@ export class RealtimeManager {
 			}
 		}
 
-		// 더는 열려 있지 않은 세션 종료
+		// 더는 열려 있지 않은 세션 종료(노트 닫힘) — mirror 1:1 자동 만료가 발화하는 유일한 경로.
 		for (const path of [...this.sessions.keys()]) {
-			if (!targets.has(path)) void this.endSession(path);
+			if (!targets.has(path)) void this.endSession(path, true, "closed");
 		}
 		// 닫힌 파일의 참여 캐시 정리(재오픈 시 최신 지정 반영).
 		for (const p of [...this.participantOk.keys()]) if (!targets.has(p)) this.participantOk.delete(p);
@@ -372,10 +371,7 @@ export class RealtimeManager {
 		this.syncOpenEditors(); // 이제 바인딩
 	}
 
-	/**
-	 * Excalidraw API가 아직 마운트 안 됐을 때 짧게 재시도(~300ms×15 ≈ 4.5s). 준비되는 즉시 syncOpenEditors가
-	 * 재바인딩한다. 소진하면 경로당 1회만 경고(폭주 방지). 중복 예약은 pending 집합으로 막는다.
-	 */
+	/** Excalidraw API 미마운트 시 짧게 재시도(~300ms×15). 준비 즉시 syncOpenEditors가 재바인딩, 소진 시 경로당 1회 경고. */
 	private scheduleExcalidrawRebind(path: string): void {
 		if (this.disposed || this.excalidrawRebindPending.has(path)) return;
 		const attempts = (this.excalidrawRebindAttempts.get(path) ?? 0) + 1;
@@ -394,9 +390,8 @@ export class RealtimeManager {
 	}
 
 	/**
-	 * 서버가 이 문서의 연결을 거부/종료했을 때: 세션을 정리하고 지수 백오프(2s→최대 60s) 후 재평가한다.
-	 * silent=true(정상 재인가 — 참여자 지정/해제로 서버가 연결을 재설정)는 로그만 남기고,
-	 * 진짜 인증 거부는 첫 실패만 알림(Notice) — 지속 거부 시 알림 폭주로 설정 변경조차 못 하게 되는 것을 막는다.
+	 * 서버가 이 문서 연결을 거부/종료했을 때: 세션 정리 후 지수 백오프(2s→60s) 재평가. silent=true(정상 재인가)는
+	 * 로그만, 진짜 인증 거부는 첫 실패만 알림(지속 거부 시 알림 폭주로 설정 변경조차 막히는 것 방지).
 	 */
 	private noteServerRefusal(path: string, dbPath: string, reason: string, silent: boolean): void {
 		const st = nextRetryState(this.retryState.get(path), Date.now());
@@ -486,26 +481,21 @@ export class RealtimeManager {
 		return lower.endsWith(".excalidraw") || lower.endsWith(".excalidraw.md");
 	}
 
-	/**
-	 * 실시간 지원 excalidraw 형식: 마크다운(.md)인 엑스칼리드로. 이 검사는 이미 excalidraw 뷰에 열린
-	 * 파일에만 적용되므로, .excalidraw.md 뿐 아니라 이름이 .md로 바뀐 엑스칼리드로(예: 파일이름.md)도 지원한다.
-	 * .md는 스냅샷이 markdown 업로드 경로를 타 전파되며, 순수 .excalidraw(비-markdown)만 제외한다.
-	 */
+	/** 실시간 지원 excalidraw: .md인 엑스칼리드로(이미 excalidraw 뷰에 열린 파일만 검사). 순수 .excalidraw(비-md)만 제외. */
 	private isSupportedExcalidraw(p: string): boolean {
 		return p.toLowerCase().endsWith(".md");
 	}
 
-	/**
-	 * 세션을 종료 영속(스냅샷) 없이 닫는다 — 원격(교사) 삭제 적용 직전에 호출.
-	 * 종료 스냅샷이 tombstone 위에 내용을 다시 올려 삭제를 무효화하는 것을 막는다.
-	 */
+	/** 세션을 종료 스냅샷 없이 닫는다 — 원격(교사) 삭제 적용 직전(종료 스냅샷이 tombstone 위에 내용을 되올리는 것 방지). */
 	async endSessionForDelete(path: string): Promise<void> {
 		await this.endSession(path, false);
 	}
 
-	private async endSession(path: string, persist = true): Promise<void> {
+	private async endSession(path: string, persist = true, reason?: "closed"): Promise<void> {
 		const session = this.sessions.get(path);
 		if (!session) return;
+		// mirror 1:1 자동 만료: 노트 닫힘으로 종료하는데 이 기기가 마지막 참여자(피어≤1=나뿐)면 끝낸다(setLocalState(null) 전 캡처).
+		const expireMirror = reason === "closed" && this.presenceFor(path) <= 1 && this.isMirrorPath(path);
 		this.sessions.delete(path);
 		// Excalidraw 재시도 상태 정리(파일이 닫혔으니 재오픈 시 새로 카운트).
 		this.excalidrawRebindAttempts.delete(path);
@@ -531,6 +521,8 @@ export class RealtimeManager {
 		session.ydoc.destroy();
 		// 마지막 세션이었다면 빈 소켓을 닫는다(재연결 루프/유휴 연결 방지, URL 변경 반영).
 		this.teardownSocketIfIdle();
+		// 자동 만료 통지(교사 클라이언트가 rtpart 해제). 세션 정리를 모두 끝낸 뒤 발화한다.
+		if (expireMirror) this.onMirrorClosedAlone(path);
 	}
 
 	/** folder 기준 상대경로(dbPath). 순수 로직은 room.ts. */
@@ -543,18 +535,26 @@ export class RealtimeManager {
 		return roomName(this.settings.workspaceId, space.id, localPath, space.folder);
 	}
 
-	/**
-	 * 파일 경로가 속한 공간(있으면). 보관/충돌/제외 폴더 아래 파일은 실시간 대상이 아니다.
-	 * 겹치면 가장 구체적인(folder가 가장 긴) 공간을 택한다 — mirror(folder="")가 하위 공유 폴더를 가리지 않게.
-	 */
-	private spaceFor(localPath: string): { id: string; folder: string; token?: string } | null {
+	/** 파일이 속한 공간(없으면 null). 보관/충돌/제외 폴더 제외, 겹치면 가장 구체적인(folder 최장) 공간 택. */
+	private spaceFor(localPath: string): { id: string; folder: string; token?: string; kind?: "share" | "homeroom" | "mirror" } | null {
 		return pickSpace(this.getSpaces(), localPath, (folder) => this.isExcludedFromRealtime(localPath, folder));
 	}
 
 	/**
-	 * 보관(_삭제됨)·충돌(_충돌)·제외 폴더 아래 파일인지(실시간 제외).
-	 * 보관본이 별도 room으로 실시간 세션을 띄워 협업이 갈라지는 것을 막는다([MirrorContext.isExcluded]와 동일 규칙).
+	 * 파일이 개인 mirror(교사↔구성원 1:1) 공간 소속인가. mirror 폴더 전체가 자동 실시간이 되어 텍스트↔CRDT
+	 * 재조정으로 노트가 중복 누적되던 문제를 막기 위해, mirror 파일은 rtpart 옵트인이 있을 때만 세션을 띄운다.
 	 */
+	isMirrorPath(localPath: string): boolean {
+		return this.spaceFor(localPath)?.kind === "mirror";
+	}
+
+	/** 파일이 속한 mirror 공간의 memberId(spaceId=mirror-<id>). mirror 아니면 null — 1:1 토글이 참여자로 지정. */
+	mirrorMemberIdFor(localPath: string): string | null {
+		const sp = this.spaceFor(localPath);
+		return sp?.kind === "mirror" && sp.id.startsWith("mirror-") ? sp.id.slice("mirror-".length) : null;
+	}
+
+	/** 보관(_삭제됨)·충돌(_충돌)·제외 폴더 아래 파일인지(실시간 제외 — [MirrorContext.isExcluded]와 동일 규칙). */
 	private isExcludedFromRealtime(localPath: string, folder: string): boolean {
 		const s = this.settings;
 		const rel = this.relUnder(localPath, folder);
@@ -568,10 +568,7 @@ export class RealtimeManager {
 		return false;
 	}
 
-	/**
-	 * 모든 세션을 깨끗이 종료(awareness 제거)한 뒤 다시 맞춘다.
-	 * 설정 적용/공유 공간 재배포로 mode가 재시작될 때 호출 → 유령(이전 위치) 커서가 남지 않게 한다.
-	 */
+	/** 모든 세션을 깨끗이 종료(awareness 제거) 후 재정렬. 설정 적용/재배포로 mode 재시작 시 호출(유령 커서 방지). */
 	async refresh(): Promise<void> {
 		for (const path of [...this.sessions.keys()]) await this.endSession(path);
 		this.participantOk.clear();
