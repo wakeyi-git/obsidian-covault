@@ -103,7 +103,6 @@
 		"tpl_assignment_body": "Write your work here.",
 		"dashboard": "Dashboard",
 		"homeroom_not_set_manager": "No home space yet. In settings, toggle a shared space as the home space to use notices, timetable, and routines.",
-		"homeroom_connecting": "Connecting to the home shared space…",
 		"homeroom_not_set_member": "Waiting for the home space from your manager.",
 		"open_settings_homeroom": "Set home space in settings",
 		"refresh": "Refresh",

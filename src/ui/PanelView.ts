@@ -101,8 +101,14 @@ export class CoVaultPanelView extends ItemView {
 		this.attachEdgeScroll(this.tabBar);
 		// 마지막 본 탭 복원(옵션). 저장된 탭이 현재 표시 목록에 있을 때만 — 숨김/역할변경이면 폴백.
 		const s = this.host.settings;
+		let restored = false;
 		if (s.rememberLastTab && s.lastActiveTab && this.tabs().includes(s.lastActiveTab as PanelTab)) {
 			this.activeTab = s.lastActiveTab as PanelTab;
+			restored = true;
+		}
+		// 홈 공간 미지정이면 대시보드는 비어 있으므로 실시간 탭으로 시작(기억된 탭이 없을 때만).
+		if (!restored && !this.host.homeroomConfigured() && this.tabs().includes("realtime")) {
+			this.activeTab = "realtime";
 		}
 		if (!this.tabs().includes(this.activeTab)) this.activeTab = this.tabs()[0] ?? "dashboard";
 		this.renderTabBar();

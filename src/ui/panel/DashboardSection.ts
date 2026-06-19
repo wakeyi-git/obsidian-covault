@@ -129,11 +129,9 @@ export class DashboardSection implements PanelSection {
 		// 상단 제목은 두지 않는다 — 탭 바가 이미 위치를 알려주므로 중복(다른 탭과 동일 원칙).
 
 		if (!ready) {
-			// 지정은 되어 있는데 동기화 링크가 아직 없는 경우(볼트 시작 직후 등) — "지정하세요" 안내가
-			// 깜빡이지 않게 연결 중 문구만 표시. 모드 시작 완료 시 classroom.refresh()가 다시 그린다.
-			if (this.host.homeroomConfigured()) {
-				c.createDiv({ cls: "covault-cr-muted", text: t("dashboard.homeroom_connecting") });
-			} else {
+			// 지정은 되어 있는데 동기화 링크가 아직 없는 경우(볼트 시작 직후 등) — 안내 문구 없이 조용히
+			// 처리한다. 모드 시작 완료 시 classroom.refresh()가 다시 그려 모듈 카드가 채워진다.
+			if (!this.host.homeroomConfigured()) {
 				const box = c.createDiv({ cls: "covault-cr-notice" });
 				box.createDiv({
 					cls: "covault-cr-notice-text",
