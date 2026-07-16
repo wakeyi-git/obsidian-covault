@@ -552,4 +552,35 @@ describe("applyTextDiff — 최소 diff(공통 prefix/suffix 보존)", () => {
 		expect(text(server)).toBe("Hello BRAVE world!");
 		expect(text(client)).toBe("Hello BRAVE world!");
 	});
+
+	it("서로 떨어진 두 군데 변경에서도 사이의 미변경 구간 item을 보존한다(fast-diff 정밀화)", () => {
+		// 초기 prefix/suffix 단일 구간 방식은 첫 변경~마지막 변경 사이를 통째로 교체해
+		// 가운데 미변경 구간의 앵커가 깨졌다. 실 diff는 변경된 두 구간만 새 item이 된다.
+		const a = new Y.Doc();
+		const ya = a.getText("content");
+		ya.insert(0, "aaa MIDDLE zzz");
+		const rel = Y.createRelativePositionFromTypeIndex(ya, 7); // "aaa MID|DLE zzz"
+		applyTextDiff(a, ya, "bbb MIDDLE yyy"); // 앞뒤 두 군데만 변경, MIDDLE은 그대로
+		expect(text(a)).toBe("bbb MIDDLE yyy");
+		expect(Y.createAbsolutePositionFromRelativePosition(rel, a)?.index).toBe(7);
+	});
+
+	it("떨어진 두 군데 수렴과 그 사이 구간의 동시 편집이 중복 없이 병합된다", () => {
+		const base = new Y.Doc();
+		base.getText("content").insert(0, "aaa MIDDLE zzz");
+		const u = Y.encodeStateAsUpdate(base);
+		const server = new Y.Doc();
+		Y.applyUpdate(server, u);
+		const client = new Y.Doc();
+		Y.applyUpdate(client, u);
+
+		client.getText("content").insert(10, "!"); // "aaa MIDDLE!" — 두 변경 사이(미변경 구간)에 동시 편집
+		applyTextDiff(server, server.getText("content"), "bbb MIDDLE yyy"); // 서버: 앞뒤 두 군데 수렴
+
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server));
+		Y.applyUpdate(server, Y.encodeStateAsUpdate(client));
+
+		expect(text(server)).toBe("bbb MIDDLE! yyy");
+		expect(text(client)).toBe("bbb MIDDLE! yyy");
+	});
 });

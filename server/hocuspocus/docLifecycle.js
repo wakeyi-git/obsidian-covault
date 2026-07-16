@@ -5,6 +5,7 @@
  */
 import * as Y from "yjs";
 import crypto from "crypto";
+import fastDiff from "fast-diff";
 
 /** 서버 스냅샷의 deviceId — note가 이 값이 아니면 마지막 변경은 클라이언트(파일 동기화)에서 왔다. */
 export const RT_DEVICE_ID = "covault-rt-server";
@@ -19,27 +20,33 @@ export function sha256Hex(s) {
 }
 
 /**
- * Y.Text를 target 내용으로 **최소 diff 적용**한다 — 공통 prefix/suffix는 그대로 두고 가운데 바뀐 구간만 delete+insert.
+ * Y.Text를 target 내용으로 **최소 diff 적용**한다 — 변하지 않은 구간의 item은 그대로 두고 바뀐 구간만 delete+insert.
  *
  * wholesale `delete(0,len)+insert(0,target)`은 전체 글자를 새 item ID로 다시 심어, 옛 이력을 든 stale 클라이언트가
  * 재접속·병합하면 같은 글자가 독립 삽입으로 합쳐져 노트가 통째로 중복(ABCABC)됐다(Hocuspocus 공식: 기존 문서에 텍스트
- * 재삽입 금지 — 새 history 발생). prefix/suffix item을 보존하면 변하지 않은 부분은 **같은 ID**라 stale 병합이 중복 없이
- * 수렴하고, 바뀐 구간만 새 item이 된다. 오프셋은 UTF-16 code unit(Y.Text와 동일). 내용이 같으면 무동작.
+ * 재삽입 금지 — 새 history 발생). 변하지 않은 item을 보존하면 그 부분은 **같은 ID**라 stale 병합이 중복 없이
+ * 수렴하고, 바뀐 구간만 새 item이 된다.
+ *
+ * diff는 fast-diff(Myers 계열) — 초기의 공통 prefix/suffix 단일 구간 방식은 서로 떨어진 두 군데가 바뀌면
+ * 그 사이의 안 바뀐 구간까지 통째로 교체해(새 item ID) RelativePosition·stale 병합 보존율이 낮았다.
+ * 오프셋은 UTF-16 code unit(fast-diff·Y.Text 동일 단위). 내용이 같으면 무동작.
  */
 export function applyTextDiff(document, ytext, target) {
 	const cur = ytext.toString();
 	if (cur === target) return;
-	let p = 0;
-	const maxP = Math.min(cur.length, target.length);
-	while (p < maxP && cur.charCodeAt(p) === target.charCodeAt(p)) p++;
-	let s = 0;
-	const maxS = Math.min(cur.length - p, target.length - p);
-	while (s < maxS && cur.charCodeAt(cur.length - 1 - s) === target.charCodeAt(target.length - 1 - s)) s++;
-	const delLen = cur.length - p - s;
-	const ins = target.slice(p, target.length - s);
+	const ops = fastDiff(cur, target);
 	document.transact(() => {
-		if (delLen > 0) ytext.delete(p, delLen);
-		if (ins.length > 0) ytext.insert(p, ins);
+		let pos = 0;
+		for (const [kind, text] of ops) {
+			if (kind === fastDiff.EQUAL) {
+				pos += text.length;
+			} else if (kind === fastDiff.DELETE) {
+				ytext.delete(pos, text.length);
+			} else {
+				ytext.insert(pos, text);
+				pos += text.length;
+			}
+		}
 	});
 }
 

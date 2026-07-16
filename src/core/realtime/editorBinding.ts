@@ -1,6 +1,6 @@
-import { Compartment, EditorState, Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { yCollab } from "y-codemirror.next";
+import { Compartment, EditorState, Extension, Prec, Transaction } from "@codemirror/state";
+import { EditorView, keymap } from "@codemirror/view";
+import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 
@@ -26,17 +26,25 @@ export function setEditorReadOnly(view: EditorView, readOnly: boolean): void {
 }
 
 /** 해당 뷰에 Y.Text ↔ 에디터 실시간 바인딩 부착. */
-export function bindView(view: EditorView, ytext: Y.Text, awareness: Awareness): void {
+export function bindView(view: EditorView, ytext: Y.Text, awareness: Awareness, undoManager: Y.UndoManager): void {
 	// yCollab(y-codemirror.next)은 바인딩 시 에디터의 기존 내용을 Y.Text 현재 상태로 자동 교체하지 않는다.
 	// 그래서 세션 도중 늦게 참여한 사람은 (디스크에서 읽은) 오래된 내용이 남고 이후 델타만 받아 최신본이 안 보인다.
 	// 바인딩 직전에 에디터를 Y.Text 현재 상태로 맞춘다(Excalidraw가 updateScene으로 하는 것과 동일).
 	// yCollab이 아직 비활성이라 이 교체는 Y.Text로 역전파되지 않는다. 빈 Y.Text로 기존 내용을 지우지는 않는다.
+	// addToHistory:false — 이 교체가 CM 히스토리에 남으면 참여 직후 Ctrl+Z가 에디터를 디스크의
+	// 낡은 내용으로 되돌리고, 그 차이가 로컬 편집으로 Y.Text에 전파되어 모두의 최신 작업을 지운다.
 	const yContent = ytext.toString();
 	const cur = view.state.doc.toString();
 	if (yContent.length > 0 && yContent !== cur) {
-		view.dispatch({ changes: { from: 0, to: cur.length, insert: yContent } });
+		view.dispatch({
+			changes: { from: 0, to: cur.length, insert: yContent },
+			annotations: Transaction.addToHistory.of(false),
+		});
 	}
-	const ext: Extension = yCollab(ytext, awareness);
+	// undo/redo를 Yjs UndoManager로 라우팅(Prec.highest — Obsidian 내장 CM 히스토리 키맵보다 우선).
+	// 내장 히스토리는 원격 참가자의 변경까지 기록하므로, 그대로 두면 Ctrl+Z가 남의 입력을 지운다.
+	// UndoManager는 로컬 origin만 추적(y-undomanager가 syncConf를 addTrackedOrigin)하므로 안전하다.
+	const ext: Extension = [Prec.highest(keymap.of(yUndoManagerKeymap)), yCollab(ytext, awareness, { undoManager })];
 	view.dispatch({ effects: rtCompartment.reconfigure(ext) });
 	// 커서 이름 라벨(.cm-ySelectionInfo) 스타일은 styles.css에서 전역으로 Excalidraw 스타일·항상표시로
 	// 통일한다 — 에디터 재렌더로 스코프 클래스가 사라져 hover 시 기본(serif·white) 스타일로 튀던 문제를 막는다.

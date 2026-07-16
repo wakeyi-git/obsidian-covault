@@ -12,6 +12,8 @@ export interface Session {
 	kind: "md" | "excalidraw";
 	ydoc: Y.Doc;
 	ytext?: Y.Text; // md
+	/** md: 세션당 하나의 Yjs UndoManager — 리바인드에도 undo 스택이 이어지고 뷰마다 새로 만들어 누수되지 않는다. */
+	yundo?: Y.UndoManager;
 	yElements?: Y.Array<Y.Map<any>>; // excalidraw 요소
 	yAssets?: Y.Map<any>; // excalidraw 이미지 asset
 	provider: RealtimeProvider;

@@ -25,13 +25,17 @@ export class MarkdownStrategy implements EditorBindingStrategy {
 
 	initSession(ydoc: Y.Doc): Partial<Session> {
 		// Y.Text 키 "content"는 서버(server/hocuspocus/server.js)의 시드/스냅샷 키와 일치해야 한다.
-		return { ytext: ydoc.getText("content"), mdPresence: new Map() };
+		const ytext = ydoc.getText("content");
+		// 세션당 하나의 UndoManager — Ctrl+Z가 Obsidian 내장 히스토리 대신 이걸 타야
+		// 원격 참가자의 입력을 되돌리지 않는다(로컬 origin만 추적, bindView의 키맵과 한 쌍).
+		return { ytext, yundo: new Y.UndoManager(ytext), mdPresence: new Map() };
 	}
 
 	bind(session: Session, target: unknown, ctx: StrategyContext): boolean {
 		const views = target as MarkdownView[];
 		const ytext = session.ytext;
-		if (!ytext) return true;
+		const yundo = session.yundo;
+		if (!ytext || !yundo) return true;
 		for (const view of views) {
 			const cm = (view.editor as unknown as { cm?: EditorView }).cm;
 			if (!cm) {
@@ -47,9 +51,12 @@ export class MarkdownStrategy implements EditorBindingStrategy {
 				const localContent = cm.state.doc.toString();
 				const yContent = ytext.toString();
 				if (shouldPreserveLocalEdit(yContent, localContent)) {
-					void ctx.getSyncForPath(session.file)?.preserveLocalEdit(session.file, localContent).catch(() => {});
+					void ctx.getSyncForPath(session.file)
+						?.preserveLocalEdit(session.file, localContent)
+						.then(() => ctx.logger.info(t("realtime.local_edit_preserved_history", { path: session.file }), true))
+						.catch(() => {});
 				}
-				bindView(cm, ytext, session.awareness);
+				bindView(cm, ytext, session.awareness, yundo);
 				session.bound.add(cm);
 				// 뷰 우하단에 참가자 칩(Excalidraw와 동일) — 포인터 없이도 편집자 이름 상시 표시.
 				const host = (view as unknown as { contentEl?: HTMLElement }).contentEl;
@@ -75,9 +82,23 @@ export class MarkdownStrategy implements EditorBindingStrategy {
 			for (const chips of session.mdPresence.values()) chips.destroy();
 			session.mdPresence.clear();
 		}
+		session.yundo?.destroy();
 	}
 
 	async snapshot(session: Session, path: string, ctx: StrategyContext): Promise<void> {
+		// 다른 참가자가 남아 있으면 종료 영속을 통째로 생략한다 — 세션은 계속되고 지금 쓰는 내용은 곧
+		// 낡는다. 특히 vault에 쓰면 세션 해제 직후라 LocalWatcher가 정상 채널로 업로드해 서버의 진행 중
+		// 스냅샷과 rev 경쟁(충돌 버전 노이즈)을 만든다. 내 vault는 서버 스냅샷이 복제로 도착하면 수렴하고,
+		// 마지막 참가자의 종료 스냅샷이 최종 보장이다. (excalidraw는 서버가 저장하지 않으므로 전략이 다르다.)
+		const aw = session.awareness;
+		let others = 0;
+		aw.getStates().forEach((_state, clientId: number) => {
+			if (clientId !== aw.clientID) others++;
+		});
+		if (others > 0) {
+			ctx.logger.info(t("realtime.snapshot_skipped_active_peers", { count: String(others), path }));
+			return;
+		}
 		// 종료 영속: Y.Text → vault(변경 시) + CouchDB 업로드.
 		// 서버(onStoreDocument)가 세션 중에도 CouchDB 스냅샷을 저장하지만, vault 파일은 서버가 쓸 수 없고
 		// 서버가 CouchDB 미연동(폴백 모드)일 수도 있으므로 종료 시 클라이언트가 한 번 더 보장한다

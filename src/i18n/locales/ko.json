@@ -77,6 +77,8 @@
 		"realtime_editor_cm6_not_accessible_open": "실시간: 에디터(CM6) 접근 불가 — {file} (읽기 모드면 편집 모드로 여세요)",
 		"realtime_binding_failed": "실시간 바인딩 실패: {file} — {error}",
 		"skipping_realtime_snapshot_preventing_overwrite": "실시간 스냅샷 생략(빈 내용 덮어쓰기 방지): {path}",
+		"snapshot_skipped_active_peers": "실시간 스냅샷 생략(다른 참가자 {count}명이 계속 편집 중 — 서버가 저장을 이어감): {path}",
+		"local_edit_preserved_history": "실시간 세션 참여 전의 로컬 편집을 버전 히스토리에 보존했습니다: {path}",
 		"realtime_snapshot_saved": "실시간 스냅샷 저장: {path}",
 		"realtime_unsupported_excalidraw_realtime_support": "실시간 미지원: {path} — Excalidraw 실시간은 .excalidraw.md 형식만 지원합니다(저장이 전파되지 않음).",
 		"realtime_snapshot_not_saved_may_not": "실시간 스냅샷 미저장({reason}): {path} — 비실시간 멤버에 전파되지 않을 수 있습니다.",

@@ -77,6 +77,8 @@
 		"realtime_editor_cm6_not_accessible_open": "Realtime: editor (CM6) not accessible — {file} (open in edit mode if in reading mode)",
 		"realtime_binding_failed": "Realtime binding failed: {file} — {error}",
 		"skipping_realtime_snapshot_preventing_overwrite": "Skipping realtime snapshot (preventing overwrite with empty content): {path}",
+		"snapshot_skipped_active_peers": "Skipping realtime snapshot ({count} participant(s) still editing — the server keeps saving): {path}",
+		"local_edit_preserved_history": "Edits made before joining the live session were preserved to version history: {path}",
 		"realtime_snapshot_saved": "Realtime snapshot saved: {path}",
 		"realtime_unsupported_excalidraw_realtime_support": "Realtime unsupported: {path} — Excalidraw realtime supports only the .excalidraw.md format (saves won't propagate).",
 		"realtime_snapshot_not_saved_may_not": "Realtime snapshot not saved ({reason}): {path} — may not propagate to non-realtime members.",

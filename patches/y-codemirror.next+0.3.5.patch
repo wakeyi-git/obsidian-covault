@@ -1,0 +1,30 @@
+diff --git a/node_modules/y-codemirror.next/dist/y-codemirror.cjs b/node_modules/y-codemirror.next/dist/y-codemirror.cjs
+index dddcf16..906f598 100644
+--- a/node_modules/y-codemirror.next/dist/y-codemirror.cjs
++++ b/node_modules/y-codemirror.next/dist/y-codemirror.cjs
+@@ -184,7 +184,9 @@ class YSyncPluginValue {
+             pos += d.retain;
+           }
+         }
+-        view.dispatch({ changes, annotations: [ySyncAnnotation.of(this.conf)] });
++        // CoVault patch: remote changes must not enter CM history — otherwise the editor's
++        // native undo (Obsidian Ctrl+Z / mobile toolbar) reverts other participants' edits.
++        view.dispatch({ changes, annotations: [ySyncAnnotation.of(this.conf), cmState.Transaction.addToHistory.of(false)] });
+       }
+     };
+     this._ytext = this.conf.ytext;
+diff --git a/node_modules/y-codemirror.next/src/y-sync.js b/node_modules/y-codemirror.next/src/y-sync.js
+index d633174..52775cf 100644
+--- a/node_modules/y-codemirror.next/src/y-sync.js
++++ b/node_modules/y-codemirror.next/src/y-sync.js
+@@ -120,7 +120,9 @@ class YSyncPluginValue {
+             pos += d.retain
+           }
+         }
+-        view.dispatch({ changes, annotations: [ySyncAnnotation.of(this.conf)] })
++        // CoVault patch: remote changes must not enter CM history — otherwise the editor's
++        // native undo (Obsidian Ctrl+Z / mobile toolbar) reverts other participants' edits.
++        view.dispatch({ changes, annotations: [ySyncAnnotation.of(this.conf), cmState.Transaction.addToHistory.of(false)] })
+       }
+     }
+     this._ytext = this.conf.ytext

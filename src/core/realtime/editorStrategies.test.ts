@@ -46,7 +46,9 @@ function mdSession(yContent: string, file = "shared/a.md"): Session {
 	const ydoc = new Y.Doc();
 	const ytext = ydoc.getText("content");
 	if (yContent) ytext.insert(0, yContent);
-	return { file, kind: "md", ydoc, ytext, provider: {} as never, awareness: {} as never, ready: true, bound: new Set() };
+	// awareness 페이크: snapshot의 잔류 참가자 검사(getStates)가 "나 혼자"로 판정하도록 빈 맵을 준다.
+	const awareness = { clientID: 1, getStates: () => new Map() } as never;
+	return { file, kind: "md", ydoc, ytext, provider: {} as never, awareness, ready: true, bound: new Set() };
 }
 
 describe("shouldPreserveLocalEdit (평가 R-A)", () => {
