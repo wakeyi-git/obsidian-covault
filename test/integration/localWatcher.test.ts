@@ -4,7 +4,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Cluster } from "../harness/env";
 import { LocalWatcher } from "../../src/core/sync/LocalWatcher";
-import { noteId, rtPartId } from "../../src/core/model/types";
+import { assetId, noteId, rtPartId } from "../../src/core/model/types";
+import { TFolder } from "obsidian";
 
 const settle = (ms = 60): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -65,6 +66,37 @@ describe("LocalWatcher 이벤트 → 업로드/tombstone (P1-1)", () => {
 		expect(oldDoc?.deleted).toBe(true);
 		expect(newDoc?.content).toBe("내용");
 		expect(newDoc?.deleted).toBeFalsy();
+	});
+
+	it("폴더 rename 이벤트 1건만으로 하위 노트·첨부 전체를 옛 prefix tombstone + 새 prefix 업로드", async () => {
+		const d = startWatcher();
+		await d.vault.createFolder("옛폴더");
+		await d.vault.createFolder("옛폴더/하위");
+		await d.vault.create("옛폴더/메모.md", "내용");
+		await d.vault.createBinary("옛폴더/하위/그림.png", new Uint8Array([1, 2, 3]).buffer);
+		await settle();
+
+		const folder = d.vault.getAbstractFileByPath("옛폴더");
+		expect(folder).toBeInstanceOf(TFolder);
+		d.vault.rename(folder!, "새폴더");
+		await settle(100);
+
+		expect((await d.ctx.pouch.get<any>(noteId("옛폴더/메모.md")))?.deleted).toBe(true);
+		expect((await d.ctx.pouch.get<any>(assetId("옛폴더/하위/그림.png")))?.deleted).toBe(true);
+		expect((await d.ctx.pouch.get<any>(noteId("새폴더/메모.md")))?.content).toBe("내용");
+		expect((await d.ctx.pouch.get<any>(assetId("새폴더/하위/그림.png")))?.deleted).toBeFalsy();
+	});
+
+	it("폴더 생성 직후 debounce 전에 rename해도 옛 pending을 정리하고 새 경로를 업로드", async () => {
+		const d = startWatcher();
+		await d.vault.createFolder("빠른옛폴더");
+		await d.vault.create("빠른옛폴더/메모.md", "내용");
+		const folder = d.vault.getAbstractFileByPath("빠른옛폴더");
+		d.vault.rename(folder!, "빠른새폴더");
+		await settle(100);
+		expect(await d.ctx.pouch.get<any>(noteId("빠른옛폴더/메모.md"))).toBeNull();
+		expect((await d.ctx.pouch.get<any>(noteId("빠른새폴더/메모.md")))?.content).toBe("내용");
+		expect(d.ctx.isPending("빠른옛폴더/메모.md")).toBe(false);
 	});
 
 	it("stop() 후에는 이벤트를 무시한다(리스너 해제)", async () => {
@@ -159,5 +191,20 @@ describe("읽기전용 공유 공간 삭제 게이팅", () => {
 		expect(d.ctx.getFile("공유노트.md")).not.toBeNull(); // 복원됨
 		const doc = await d.ctx.pouch.get<any>(noteId("공유노트.md"));
 		expect(doc?.deleted).toBeFalsy(); // 참여자여도 삭제(tombstone) 안 됨
+	});
+
+	it("폴더 rename은 폴더 전체를 원래 경로로 되돌리고 DB에는 쓰지 않는다", async () => {
+		const d = startReadOnlyMember();
+		await d.vault.createFolder("공유폴더");
+		await d.vault.create("공유폴더/노트.md", "정본");
+		await settle();
+		d.settings.sharedReadOnly = true;
+		const folder = d.vault.getAbstractFileByPath("공유폴더");
+		d.vault.rename(folder!, "바꾼폴더");
+		await settle();
+		expect(d.vault.has("공유폴더/노트.md")).toBe(true);
+		expect(d.vault.has("바꾼폴더/노트.md")).toBe(false);
+		expect((await d.ctx.pouch.get<any>(noteId("공유폴더/노트.md")))?.deleted).toBeFalsy();
+		expect(await d.ctx.pouch.get<any>(noteId("바꾼폴더/노트.md"))).toBeNull();
 	});
 });

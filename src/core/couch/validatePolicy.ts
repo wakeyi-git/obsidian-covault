@@ -29,8 +29,9 @@ import { sha256 } from "../hash/hash";
  *  ystate를 주입하면 실시간 세션 시드를 오염시킬 수 있으므로 svc(없으면 admin만)만 쓰게 한다.
  */
 
-/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포). v7 = rtrequest(1:1 라이브 지도 요청) 본인 쓰기 허용. */
-export const VALIDATE_DOC_VERSION = 7;
+/** validate 배포 버전. 규칙이 바뀌면 올린다(지문에 포함되어 자동 재배포).
+ * v8 = plugindeploy 교사 전용 + response 소유권/역할 위조 차단. */
+export const VALIDATE_DOC_VERSION = 8;
 
 /** onDenied가 식별하는 거부 사유 문자열(서버↔클라이언트 프로토콜 — 변경 금지). */
 export const READONLY_FORBIDDEN_REASON = "covault:shared-read-only";
@@ -98,7 +99,7 @@ export function buildValidateSource(policy: ValidatePolicy): string {
 		"  function cn(x) { return (POLICY.acct && POLICY.acct[x]) || x; }\n" +
 		"  var me = cn(userCtx && userCtx.name);\n" +
 		"  var t = newDoc.type || (oldDoc && oldDoc.type);\n" +
-		"  var teacherOnly = ['notice','timetable','routine','assignment','chatgroup','rtpart','rtcontrol','roster','shares','rtconfig'];\n" +
+		"  var teacherOnly = ['notice','timetable','routine','assignment','chatgroup','rtpart','rtcontrol','roster','shares','rtconfig','plugindeploy'];\n" +
 		"  if (teacherOnly.indexOf(t) >= 0) throw({ forbidden: 'teacher only' });\n" +
 		// ystate: 실시간 서버가 영속하는 CRDT 상태 사이드카 — 서비스 계정만 쓴다(구성원 위조 차단). svc 미설정이면
 		// 서버는 admin 자격으로 쓰므로(_admin 우회) 여기서 막혀도 무방하고, 비-admin 구성원은 전부 거부된다.
@@ -114,8 +115,8 @@ export function buildValidateSource(policy: ValidatePolicy): string {
 		"    return true;\n" +
 		"  }\n" +
 		"  if (t === 'response') {\n" +
-		"    var owner = newDoc._deleted ? (oldDoc && oldDoc.byUser) : newDoc.byUser;\n" +
-		"    if (owner && cn(owner) !== me) throw({ forbidden: 'own doc only' });\n" +
+		"    if (!ownedByMe('byUser')) throw({ forbidden: 'own doc only' });\n" +
+		"    if (!newDoc._deleted && newDoc.byRole !== 'member') throw({ forbidden: 'member role only' });\n" +
 		"  }\n" +
 		// message/feedback: 작성자 본인만, 그리고 신규/수정 시 manager 역할 위조 금지(P1-1).
 		"  if (t === 'message') {\n" +

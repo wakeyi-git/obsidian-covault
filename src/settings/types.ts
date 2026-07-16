@@ -170,7 +170,7 @@ export interface CoVaultSettings {
 	/** 첨부파일(비markdown) 동기화 여부. 기술문서 §8.2 / §24.6. */
 	syncAssets: boolean;
 
-	/** 첨부파일 최대 크기(MB). 초과 시 동기화 생략(모바일 보호). 0=무제한. */
+	/** 첨부파일 최대 크기(MB). 초과 시 동기화 생략(모바일 보호). 0=사용자 무제한(내부 안전 상한 128MB). */
 	maxAttachmentMB: number;
 
 	/** 편집 중 업로드 debounce(ms). 기술문서 §11.3. */

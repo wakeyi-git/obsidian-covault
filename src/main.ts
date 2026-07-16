@@ -6,6 +6,7 @@ import { CoVaultSettingTab, SettingsHost } from "./settings/SettingsTab";
 import { Logger } from "./core/log/Logger";
 import { CoreServices } from "./core/CoreServices";
 import { CoVaultMode } from "./modes/CoVaultMode";
+import { ModeLifecycle } from "./modes/ModeLifecycle";
 import { MemberMode } from "./modes/member/MemberMode";
 import { ManagerMode } from "./modes/manager/ManagerMode";
 import { TFile } from "obsidian";
@@ -13,7 +14,7 @@ import { RoleSetupModal } from "./ui/RoleSetupModal";
 import { VersionHistoryModal } from "./ui/VersionHistoryModal";
 import { SetupWizardModal } from "./ui/SetupWizardModal";
 import { RealtimeManager } from "./core/realtime/RealtimeManager";
-import { getCouchPassword, migratePlaintextTokens } from "./core/secret";
+import { clearSettingsSecrets, getCouchPassword, migratePlaintextTokens } from "./core/secret";
 import { realtimeEditorExtension } from "./core/realtime/editorBinding";
 import { FeedbackStore } from "./core/feedback/FeedbackStore";
 import { ClassroomStore } from "./core/classroom/ClassroomStore";
@@ -54,7 +55,8 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	settings!: CoVaultSettings;
 	logger = new Logger();
 	private core!: CoreServices;
-	private mode: CoVaultMode | null = null;
+	private readonly modeLifecycle = new ModeLifecycle<CoVaultMode>();
+	private get mode(): CoVaultMode | null { return this.modeLifecycle.current; }
 	private realtime!: RealtimeManager;
 	private rtStatus!: HTMLElement;
 	private feedback!: FeedbackStore;
@@ -203,10 +205,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			couchPassword: () => this.couchPassword(),
 			saveSettings: () => this.saveSettings(),
 			openLog: () => this.nav.openLog(),
-			stopMode: async () => {
-				await this.mode?.stop();
-				this.mode = null;
-			},
+			stopMode: () => this.stopMode(),
 			startMode: () => this.startMode(),
 			cancelPendingApply: () => {
 				if (this.applyTimer) {
@@ -236,10 +235,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			logger: this.logger,
 			settings: () => this.settings,
 			saveSettings: () => this.saveSettings(),
-			stopMode: async () => {
-				await this.mode?.stop();
-				this.mode = null;
-			},
+			stopMode: () => this.stopMode(),
 			startMode: () => this.startMode(),
 			destroyLocalCaches: () => this.serverResetCtl.destroyAllLocalCaches(),
 			openLog: () => this.nav.openLog(),
@@ -349,7 +345,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 		if (this.rtRequestTimer) window.clearTimeout(this.rtRequestTimer);
 		this.deploymentCtl?.dispose(); // 대기 중인 validate 재배포 타이머 정리
 		await this.realtime?.dispose();
-		await this.mode?.stop();
+		await this.stopMode();
 		await this.core?.flushPersist();
 		this.core?.dispose();
 	}
@@ -375,24 +371,29 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 		return role === "manager" ? new ManagerMode(this.core) : new MemberMode(this.core);
 	}
 
-	private async startMode(): Promise<void> {
+	private startMode(): Promise<void> {
 		this.core.settings = this.settings;
-		this.mode = this.createMode(this.settings.role);
-		await this.mode.start();
-		// 재배포/설정 적용 시 기존 세션을 깨끗이 종료(awareness 제거) 후 재구성 → 유령 커서 방지
-		await this.realtime?.refresh();
-		void this.participantCtl.backfillRtPartNames(); // 구버전 지정 문서에 이름 채우기(학생 카드에 이름 표시)
-		void this.classroomCtls.messageCtl.cleanupLegacyGroups(); // 0.100.x 파일별 그룹 문서 정리(드롭다운 유령 제거)
-		if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming(); // 시작 시 미처리 플러그인 배포 안내
-		if (this.settings.role === "manager") {
-			void this.deploymentCtl.redeployValidate(); // validate 버전 마이그레이션(1회, 실패 시 다음 시작 재시도)
-			void this.groupRequestCtl.syncRoster(); // 학급 명단 배포(구성원 그룹 신청 UI 선택지)
-			void this.groupRequestCtl.processPending(); // 오프라인 동안 쌓인 그룹 신청 캐치업
-			this.realtimeCtl.warnExpiringTokens(); // 토큰 만료 임박/경과 경고(재배포 유도)
-		}
-		// 모드 시작 완료 알림 — 패널이 모드보다 먼저 그려졌으면(워크스페이스 복원) homeroomReady=false로
-		// "학급 공동 공간 지정" 안내가 남는다. 준비 완료 시점에 한 번 갱신해 stale 화면을 지운다.
-		this.classroom.refresh();
+		return this.modeLifecycle.replace(() => this.createMode(this.settings.role), async (next) => {
+			await next.start();
+			// 재배포/설정 적용 시 기존 세션을 깨끗이 종료(awareness 제거) 후 재구성 → 유령 커서 방지
+			await this.realtime?.refresh();
+			void this.participantCtl.backfillRtPartNames(); // 구버전 지정 문서에 이름 채우기(학생 카드에 이름 표시)
+			void this.classroomCtls.messageCtl.cleanupLegacyGroups(); // 0.100.x 파일별 그룹 문서 정리(드롭다운 유령 제거)
+			if (this.settings.role === "member") void this.pluginDeployCtl.handleIncoming(); // 시작 시 미처리 플러그인 배포 안내
+			if (this.settings.role === "manager") {
+				void this.deploymentCtl.redeployValidate(); // validate 버전 마이그레이션(1회, 실패 시 다음 시작 재시도)
+				void this.groupRequestCtl.syncRoster(); // 학급 명단 배포(구성원 그룹 신청 UI 선택지)
+				void this.groupRequestCtl.processPending(); // 오프라인 동안 쌓인 그룹 신청 캐치업
+				this.realtimeCtl.warnExpiringTokens(); // 토큰 만료 임박/경과 경고(재배포 유도)
+			}
+			// 모드 시작 완료 알림 — 패널이 모드보다 먼저 그려졌으면(워크스페이스 복원) homeroomReady=false로
+			// "학급 공동 공간 지정" 안내가 남는다. 준비 완료 시점에 한 번 갱신해 stale 화면을 지운다.
+			this.classroom.refresh();
+		});
+	}
+
+	private stopMode(): Promise<void> {
+		return this.modeLifecycle.stop();
 	}
 
 	/** 최초 실행 역할 선택 모달 → 역할 잠금 + 모드 시작. 학생은 초대 코드로 바로 설정 가능. */
@@ -587,10 +588,12 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 			this.logger.error(t("command.failed_to_import_settings", { err: res.error }), true);
 			return { ok: false, error: res.error };
 		}
+		clearSettingsSecrets(this.app, this.settings);
+		clearSettingsSecrets(this.app, res.settings);
 		this.settings = res.settings;
 		this.core.settings = this.settings;
 		await this.saveSettings();
-		if (this.settings.setupComplete) await this.restartMode();
+		if (this.settings.setupComplete) await this.stopMode();
 		this.logger.ok(t("command.settings_imported_and_applied_re_enter"), true);
 		return { ok: true };
 	}
@@ -640,7 +643,6 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 	/** 연결/경로 설정 변경을 실행 중 엔진에 반영(재시작). */
 	async restartMode(): Promise<void> {
 		if (!this.settings.setupComplete) return;
-		await this.mode?.stop();
 		await this.startMode();
 		this.logger.ok(t("command.applied_settings_and_restarted_sync"), true);
 	}
@@ -714,10 +716,7 @@ export default class CoVaultPlugin extends Plugin implements SettingsHost {
 		this.settings.autoSync = !this.settings.autoSync;
 		await this.saveSettings();
 		this.logger.info(t("panel.auto_sync", { state: this.settings.autoSync ? t("common.on") : t("common.off") }), true);
-		if (this.settings.setupComplete) {
-			await this.mode?.stop();
-			await this.startMode();
-		}
+		if (this.settings.setupComplete) await this.restartMode();
 	}
 
 	// --- 백그라운드 동기화 일시정지 (모바일 배터리/네트워크 절감) ---

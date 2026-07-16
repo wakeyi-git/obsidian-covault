@@ -48,6 +48,18 @@ export class ClassroomStore {
 		return true;
 	}
 
+	/** 최신 rev에 도메인 변환을 재적용하는 충돌 안전 갱신. */
+	async update<T extends PouchDocBase>(
+		id: string,
+		mutate: (current: (T & { _rev: string }) | null) => T | null | Promise<T | null>,
+	): Promise<boolean> {
+		const p = this.homeroom();
+		if (!p) return false;
+		const result = await p.update(id, mutate);
+		if (result) this.notify();
+		return result !== null;
+	}
+
 	async get<T extends PouchDocBase>(id: string): Promise<T | null> {
 		const p = this.homeroom();
 		if (!p) return null;
@@ -69,6 +81,6 @@ export class ClassroomStore {
 
 	/** soft delete(tombstone) — deleted=true로 표시해 동기화. */
 	async softDelete<T extends PouchDocBase & { deleted?: boolean }>(doc: T): Promise<boolean> {
-		return this.put({ ...doc, deleted: true });
+		return this.update<T>(doc._id, (current) => (current ? { ...current, deleted: true } : null));
 	}
 }

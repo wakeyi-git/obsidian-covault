@@ -45,6 +45,14 @@ function fakePouch() {
 		async get<T extends PouchDocBase>(id: string) {
 			return (m.get(id) as T) ?? null;
 		},
+		async update<T extends PouchDocBase>(id: string, mutate: (current: (T & { _rev: string }) | null) => T | null | Promise<T | null>) {
+			const current = (m.get(id) as (T & { _rev: string })) ?? null;
+			const doc = await mutate(current);
+			if (!doc) return null;
+			const next = { ...doc, _rev: `${m.size + 1}` } as T & { _rev: string };
+			m.set(id, next);
+			return next;
+		},
 		async allDocsByPrefix<T extends PouchDocBase>(prefix: string) {
 			return [...m.values()].filter((d) => d._id.startsWith(prefix)) as T[];
 		},

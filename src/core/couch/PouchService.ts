@@ -2,6 +2,7 @@ import PouchDB from "pouchdb-browser";
 import { NoteDoc, AssetDoc, PouchDocBase } from "../model/types";
 import { createObsidianFetch } from "./obsidianFetch";
 import { isOverLimitAsset, effectiveMaxAttachmentMB } from "../sync/attachment";
+import { abToBase64, describePouchError } from "./pouchHelpers";
 
 /**
  * PouchDB 기반 동기화 서비스. 기술문서 §23.4 CouchClient 역할을 대체한다.
@@ -78,7 +79,7 @@ export class PouchService {
 			const info = await this.remote.info();
 			return { ok: true, info };
 		} catch (e: any) {
-			return { ok: false, error: describeError(e) };
+			return { ok: false, error: describePouchError(e) };
 		}
 	}
 
@@ -100,7 +101,7 @@ export class PouchService {
 			await this.remote.remove(id, res.rev).catch(() => undefined);
 			return { ok: true };
 		} catch (e: any) {
-			return { ok: false, status: e?.status, error: describeError(e) };
+			return { ok: false, status: e?.status, error: describePouchError(e) };
 		}
 	}
 
@@ -132,29 +133,45 @@ export class PouchService {
 		return (await this.localDb().get(id, { rev }).catch(() => null)) as unknown as T | null;
 	}
 
-	/** 로컬 upsert. 기존 _rev를 붙여 갱신, 409 시 1회 재시도. */
+	/** 로컬 문서 전체 교체. _rev 충돌은 덮어쓰지 않으며, 부분 갱신·동시 병합은 update()를 사용한다. */
 	async put<T extends PouchDocBase>(doc: T): Promise<T & { _rev: string }> {
 		const db = this.localDb();
-		const existing = await this.get<T>(doc._id);
-		const toPut = existing ? { ...doc, _rev: existing._rev } : { ...doc };
-		try {
-			const res = await db.put(toPut as any);
-			return { ...doc, _rev: res.rev };
-		} catch (e: any) {
-			if (e?.status === 409) {
-				const current = await this.get<T>(doc._id);
-				const res = await db.put({ ...doc, _rev: current?._rev } as any);
-				return { ...doc, _rev: res.rev };
-			}
-			throw e;
-		}
+		const existing = doc._rev ? null : await this.get<T>(doc._id);
+		const toPut = doc._rev || existing?._rev ? { ...doc, _rev: doc._rev ?? existing?._rev } : { ...doc };
+		const res = await db.put(toPut as any);
+		return { ...doc, _rev: res.rev };
 	}
 
 	/**
-	 * rev 검증 upsert(평가 L-1·L-3). put()의 409 재시도는 최신 rev 위에 무조건 덮어쓰는 LWW라,
-	 * 읽기→쓰기 사이에 끼어든 원격 변경(특히 tombstone)을 검증 없이 덮을 수 있다. 이 변형은
-	 * 호출측이 읽었던 rev(생성이면 undefined)로만 put하고, 그 사이 문서가 바뀌었으면 "conflict"를
-	 * 반환한다 — 호출측이 전제조건(부활 규칙·해시 동일 등)을 재검증하고 재시도한다.
+	 * 최신 문서를 읽고 변환한 결과를 기대 rev로 쓰는 CAS 갱신. 409면 최신 문서를 다시 읽어 변환을
+	 * 재적용하므로 서로 다른 필드/집합의 동시 변경을 잃지 않는다. null 반환은 안전한 no-op이다.
+	 */
+	async update<T extends PouchDocBase>(
+		id: string,
+		mutate: (current: (T & { _rev: string }) | null) => T | null | Promise<T | null>,
+		maxAttempts = 5,
+	): Promise<(T & { _rev: string }) | null> {
+		for (let attempt = 0; attempt < maxAttempts; attempt++) {
+			const current = await this.get<T>(id);
+			const next = await mutate(current as (T & { _rev: string }) | null);
+			if (next === null) return null;
+			if (next._id !== id) throw new Error(`CAS update changed document id: ${id} -> ${next._id}`);
+			const { _rev: _staleRev, ...body } = next;
+			try {
+				const res = await this.localDb().put({ ...body, ...(current?._rev ? { _rev: current._rev } : {}) } as any);
+				return { ...next, _rev: res.rev };
+			} catch (e: any) {
+				if (e?.status === 409) continue;
+				throw e;
+			}
+		}
+		throw new Error(`CAS update conflict did not converge: ${id}`);
+	}
+
+	/**
+	 * rev 검증 upsert(평가 L-1·L-3). put()은 전체 교체 충돌을 throw하지만, 이 변형은 호출측이 읽었던
+	 * rev(생성이면 undefined)로만 쓰고 그 사이 문서가 바뀌었으면 "conflict"를 값으로 반환한다.
+	 * 호출측은 부활 규칙·해시 동일 등의 전제조건을 재검증하고 안전하게 재시도할 수 있다.
 	 */
 	async putWithRev<T extends PouchDocBase>(doc: T, expectedRev: string | undefined): Promise<"ok" | "conflict"> {
 		const toPut = expectedRev ? { ...doc, _rev: expectedRev } : { ...doc, _rev: undefined };
@@ -298,7 +315,7 @@ export class PouchService {
 				onChange({ id: change.id, deleted: !!change.deleted, doc: change.doc as T, seq: change.seq });
 			})
 			.on("error", (e: any) => {
-				opts.onError?.(e instanceof Error ? e : new Error(describeError(e)));
+				opts.onError?.(e instanceof Error ? e : new Error(describePouchError(e)));
 			});
 		return { cancel: () => feed.cancel() };
 	}
@@ -440,7 +457,7 @@ export class PouchService {
 			.on("paused", (err: any) => handlers.onPaused?.(err))
 			.on("active", () => handlers.onActive?.())
 			.on("denied", (e: any) => handlers.onDenied?.(e))
-			.on("error", (e: any) => handlers.onError?.(e instanceof Error ? e : new Error(describeError(e)))) as any;
+			.on("error", (e: any) => handlers.onError?.(e instanceof Error ? e : new Error(describePouchError(e)))) as any;
 	}
 
 	/** 로컬 PouchDB(IndexedDB)를 완전 삭제. 원격을 비운 뒤 깨끗이 다시 받기 위함. */
@@ -479,22 +496,4 @@ export class PouchService {
 			this.local = null;
 		}
 	}
-}
-
-/** ArrayBuffer → base64 (청크 처리로 대용량 스택오버플로 방지). */
-function abToBase64(buf: ArrayBuffer): string {
-	const bytes = new Uint8Array(buf);
-	const chunk = 0x8000;
-	let binary = "";
-	for (let i = 0; i < bytes.length; i += chunk) {
-		binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-	}
-	return btoa(binary);
-}
-
-function describeError(e: any): string {
-	if (!e) return "unknown error";
-	const status = e.status ? `${e.status} ` : "";
-	const name = e.name ? `${e.name}: ` : "";
-	return `${status}${name}${e.message ?? e.reason ?? String(e)}`;
 }

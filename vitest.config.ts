@@ -11,6 +11,9 @@ export default defineConfig({
 			// 정규식으로 정확히 일치시켜 깊은 경로(pouchdb-browser/lib/...)는 건드리지 않는다.
 			{ find: /^obsidian$/, replacement: path.resolve(root, "test/harness/obsidian.ts") },
 			{ find: /^pouchdb-browser$/, replacement: path.resolve(root, "test/harness/pouchdb-memory.ts") },
+			// server/hocuspocus/node_modules가 설치된 상태에서도 서버 모듈과 테스트가 Yjs 한 사본을 공유해야 한다.
+			// 두 사본이 섞이면 instanceof/구조체 등록이 갈라져 update 적용이 무시되고 CRDT 테스트가 거짓 실패한다.
+			{ find: /^yjs$/, replacement: path.resolve(root, "node_modules/yjs/dist/yjs.mjs") },
 		],
 	},
 	test: {

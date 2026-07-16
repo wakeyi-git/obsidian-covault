@@ -161,8 +161,9 @@ and your edit would be overwritten, your version is kept as `_conflicts/<file>.M
 
 ### Attachments
 Non-markdown files like images and PDFs are also synced (CouchDB attachments). Control them with the *Sync attachments*
-toggle and *Max attachment size (MB)* in settings (the limit is checked when uploading from a device; attachments
-already in the DB are still downloaded). Attachment conflicts also appear in the conflict list and can be resolved
+toggle and *Max attachment size (MB)* in settings. The effective limit is enforced before both upload and download and
+at PouchDB replication, so oversized attachments already in either local or remote DB are skipped instead of buffered
+into memory. Choosing unlimited still keeps a 128 MB internal safety ceiling. Attachment conflicts also appear in the conflict list and can be resolved
 (keep local / apply remote / keep both). There is no binary content diff — the file name, size, and MIME type are
 shown and the remote copy is preserved in the conflicts folder.
 

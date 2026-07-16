@@ -25,8 +25,8 @@ export class RoutineController {
 	async reorderRoutines(orderedUids: string[]): Promise<void> {
 		if (this.d.settings().role !== "manager") return;
 		for (let i = 0; i < orderedUids.length; i++) {
-			const doc = await this.d.classroom.get<RoutineDoc>(routineId(orderedUids[i]));
-			if (doc && doc.order !== i) await this.d.classroom.put({ ...doc, order: i });
+			const id = routineId(orderedUids[i]);
+			await this.d.classroom.update<RoutineDoc>(id, (doc) => (doc && !doc.deleted && doc.order !== i ? { ...doc, order: i } : null));
 		}
 	}
 
@@ -71,8 +71,6 @@ export class RoutineController {
 			this.d.logger.warn(t("command.available_in_manager_mode_only"), true);
 			return false;
 		}
-		const existing = await this.d.classroom.get<RoutineDoc>(routineId(uid));
-		if (!existing) return false;
 		const used = new Set<string>();
 		const items = input.items.map((it, idx) => {
 			const id = it.id && !used.has(it.id) ? it.id : `g${Date.now().toString(36)}${idx}`;
@@ -84,12 +82,13 @@ export class RoutineController {
 				weekdays: it.recurrence === "weekly" ? it.weekdays : undefined,
 			};
 		});
-		return this.d.classroom.put({ ...existing, title: input.title, items });
+		return this.d.classroom.update<RoutineDoc>(routineId(uid), (existing) =>
+			existing && !existing.deleted ? { ...existing, title: input.title, items } : null,
+		);
 	}
 
 	async deleteRoutine(uid: string): Promise<void> {
-		const doc = await this.d.classroom.get<RoutineDoc>(routineId(uid));
-		if (doc) await this.d.classroom.softDelete(doc);
+		await this.d.classroom.update<RoutineDoc>(routineId(uid), (doc) => (doc && !doc.deleted ? { ...doc, deleted: true } : null));
 	}
 
 	async myRoutineState(uid: string, day: string): Promise<RoutineStateDoc | null> {
@@ -102,23 +101,22 @@ export class RoutineController {
 		const sync = this.d.studentMirrorSync();
 		if (!sync) return false;
 		const id = routineStateId(uid, this.d.settings().userId, day);
-		const cur = await sync.ctx.pouch.get<RoutineStateDoc>(id);
-		const set = new Set(cur?.checked ?? []);
-		if (checked) set.add(itemId);
-		else set.delete(itemId);
-		const doc: RoutineStateDoc = {
-			_id: id,
-			_rev: cur?._rev,
-			type: "routine-state",
-			schemaVersion: 1,
-			workspaceId: this.d.settings().workspaceId,
-			routineUid: uid,
-			memberId: this.d.settings().userId,
-			day,
-			checked: [...set],
-			updatedAtMs: Date.now(),
-		};
-		await sync.ctx.pouch.put(doc);
+		await sync.ctx.pouch.update<RoutineStateDoc>(id, (cur) => {
+			const set = new Set(cur?.checked ?? []);
+			if (checked) set.add(itemId);
+			else set.delete(itemId);
+			return {
+				_id: id,
+				type: "routine-state",
+				schemaVersion: 1,
+				workspaceId: this.d.settings().workspaceId,
+				routineUid: uid,
+				memberId: this.d.settings().userId,
+				day,
+				checked: [...set],
+				updatedAtMs: Date.now(),
+			};
+		});
 		return true;
 	}
 

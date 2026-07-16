@@ -111,9 +111,41 @@ export function getYjsSecret(app: App, fallback: string | undefined): string {
 	return getSecretValue(app, YJS_SECRET_ID, fallback);
 }
 
+/** Yjs HMAC 시크릿 저장. Secret Storage 실패 시 입력을 잃지 않고 평문 fallback으로 보존·경고한다. */
+export function persistYjsSecret(
+	app: App,
+	settings: { yjsSecret?: string; yjsSecretSet?: boolean },
+	secret: string,
+): boolean {
+	if (setSecretValue(app, YJS_SECRET_ID, secret)) {
+		settings.yjsSecretSet = !!secret;
+		settings.yjsSecret = undefined;
+		return true;
+	}
+	settings.yjsSecretSet = false;
+	settings.yjsSecret = secret || undefined;
+	if (secret) warnPlaintextFallbackOnce();
+	return false;
+}
+
 /** 실시간 서버 CouchDB 서비스 계정 비밀번호 조회(교사). 평문 폴백 없음(Secret Storage 전용). */
 export function getRtServicePassword(app: App): string {
 	return getSecretValue(app, RT_SERVICE_PASSWORD_ID, undefined);
+}
+
+/** 서비스 계정 비밀번호는 평문 fallback을 두지 않는다. 실패하면 marker를 세우지 않고 명시적으로 알린다. */
+export function persistRtServicePassword(
+	app: App,
+	settings: { rtServicePasswordSet?: boolean },
+	secret: string,
+): boolean {
+	if (setSecretValue(app, RT_SERVICE_PASSWORD_ID, secret)) {
+		settings.rtServicePasswordSet = !!secret;
+		return true;
+	}
+	settings.rtServicePasswordSet = false;
+	if (secret) new Notice(t("settings.rt_service_password_not_saved"));
+	return false;
 }
 
 /**
@@ -124,9 +156,10 @@ let warnedPlaintextFallback = false;
 
 export function persistCouchPassword(app: App, settings: { password?: string; passwordSet?: boolean }, pw: string): void {
 	if (setSecretValue(app, COUCH_PASSWORD_ID, pw)) {
-		settings.passwordSet = true;
+		settings.passwordSet = !!pw;
 		settings.password = "";
 	} else {
+		settings.passwordSet = false;
 		settings.password = pw;
 		// Secret Storage 미지원(구버전/일부 모바일) — 비밀번호가 data.json에 평문으로 남는다.
 		// 조용히 넘어가면 사용자가 노출 사실을 모른다 → 세션당 1회 경고.
@@ -168,6 +201,24 @@ export function persistBearerToken(app: App, id: string, token: string): boolean
 /** 토큰 회수. ""를 저장하면 getSecretValue가 빈 값으로 보고 무시한다(removeSecret API 의존 없음). */
 export function clearBearerToken(app: App, id: string): void {
 	setSecretValue(app, id, "");
+}
+
+/** 설정 백업 가져오기 전후의 고정·구성원·공간 Secret Storage 값을 모두 비운다(백업은 비밀값 미포함). */
+export function clearSettingsSecrets(
+	app: App,
+	settings: {
+		members?: Array<{ memberId: string }>;
+		sharedSpaces?: Array<{ id: string }>;
+	},
+): void {
+	for (const id of [COUCH_PASSWORD_ID, YJS_SECRET_ID, RT_SERVICE_PASSWORD_ID]) setSecretValue(app, id, "");
+	for (const member of settings.members ?? []) {
+		if (!member.memberId) continue;
+		for (const id of [memberPasswordId(member.memberId), memberMirrorTokenId(member.memberId), managerMirrorTokenId(member.memberId)]) {
+			setSecretValue(app, id, "");
+		}
+	}
+	for (const space of settings.sharedSpaces ?? []) if (space.id) setSecretValue(app, spaceTokenId(space.id), "");
 }
 
 /** 토큰 조회(시크릿 우선, 평문 폴백). 없으면 undefined. */

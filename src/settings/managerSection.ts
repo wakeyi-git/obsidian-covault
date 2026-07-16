@@ -7,7 +7,7 @@ import { MemberBulkImportModal } from "../ui/MemberBulkImportModal";
 import { PathSuggest } from "../ui/PathSuggest";
 import { resolveMemberNames } from "../core/classroom/people";
 import { renderSharedCard, renderMemberCard } from "./managerCards";
-import { setSecretValue, getYjsSecret, getCouchPassword, persistCouchPassword, YJS_SECRET_ID, RT_SERVICE_PASSWORD_ID } from "../core/secret";
+import { getYjsSecret, getCouchPassword, persistCouchPassword, persistYjsSecret, persistRtServicePassword } from "../core/secret";
 import { noAutoCorrect, commitOnBlur } from "./settingsUi";
 import { t } from "../i18n";
 
@@ -245,9 +245,7 @@ export function renderManager(c: ManagerCtx, s: CoVaultSettings): void {
 		.addText((txt) => {
 			commitOnBlur(txt.setPlaceholder(t("settings.same_as_server_yjs_secret")).setValue(getYjsSecret(c.host.app, s.yjsSecret)), async (v) => {
 				const val = v.trim();
-				setSecretValue(c.host.app, YJS_SECRET_ID, val);
-				s.yjsSecretSet = !!val;
-				s.yjsSecret = undefined; // 평문 제거(secretStorage로 이전)
+				persistYjsSecret(c.host.app, s, val);
 				await c.host.saveSettings();
 			});
 			txt.inputEl.type = "password";
@@ -284,8 +282,7 @@ export function renderManager(c: ManagerCtx, s: CoVaultSettings): void {
 		.addText((txt) => {
 			commitOnBlur(txt.setPlaceholder(s.rtServicePasswordSet ? t("common.set") : ""), async (v) => {
 				const val = v.trim();
-				setSecretValue(c.host.app, RT_SERVICE_PASSWORD_ID, val);
-				s.rtServicePasswordSet = !!val;
+				persistRtServicePassword(c.host.app, s, val);
 				await c.host.saveSettings();
 			});
 			txt.inputEl.type = "password";

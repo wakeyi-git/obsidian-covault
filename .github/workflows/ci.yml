@@ -35,3 +35,29 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  realtime-server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/hocuspocus
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: server/hocuspocus/package-lock.json
+
+      - name: Install locked server dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Check server JavaScript syntax
+        run: |
+          for file in *.js *.mjs; do
+            node --check "$file"
+          done

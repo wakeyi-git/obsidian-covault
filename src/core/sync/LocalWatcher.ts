@@ -124,10 +124,76 @@ export class LocalWatcher {
 	 * applier가 archive로 일으킨 이동은 suppress로 걸러진다.
 	 */
 	private onRename(file: TAbstractFile, oldPath: string): void {
-		if (!(file instanceof TFile)) return; // 폴더 이름변경은 범위 밖
 		const newPath = file.path;
 		if (this.ctx.isStructuralSuppressed(oldPath) || this.ctx.isStructuralSuppressed(newPath)) return;
+		if (file instanceof TFolder) {
+			this.cancelScheduledUnder(oldPath);
+			void this.handleFolderRename(oldPath, newPath).catch((e) =>
+				this.logWriteFailure(
+					newPath,
+					e,
+					t("sync.rename_handling_failed", { from: oldPath, to: newPath, err: errMessage(e) }),
+				),
+			);
+			return;
+		}
+		if (!(file instanceof TFile)) return;
 		void this.handleRename(oldPath, newPath);
+	}
+
+	/** 폴더 이동 전에 예약된 옛 파일 업로드를 취소하고 pending 참조 카운트를 반환한다. */
+	private cancelScheduledUnder(folderPath: string): void {
+		const prefix = folderPath.replace(/\/+$/, "") + "/";
+		for (const [localPath, entry] of [...this.timers]) {
+			if (!localPath.startsWith(prefix)) continue;
+			clearTimeout(entry.timer);
+			this.ctx.clearPending(entry.dbPath);
+			this.timers.delete(localPath);
+		}
+	}
+
+	/**
+	 * 폴더 이름변경/이동: 옛 prefix의 라이브 문서는 모두 tombstone하고, 새 폴더 아래 실제 파일을 다시
+	 * 업로드한다. Obsidian이 내부 파일별 rename 이벤트를 내지 않는 플랫폼에서도 전체 하위 트리가 수렴한다.
+	 * 읽기전용 공유 공간은 폴더 자체를 원래 경로로 되돌려 사용자 변경을 원자적으로 취소한다.
+	 */
+	private async handleFolderRename(oldFolderPath: string, newFolderPath: string): Promise<void> {
+		if (this.ctx.isReadOnlyShared) {
+			const folder = this.ctx.app.vault.getAbstractFileByPath(newFolderPath);
+			if (folder instanceof TFolder) {
+				this.ctx.suppressStructural(oldFolderPath);
+				this.ctx.suppressStructural(newFolderPath);
+				await this.ctx.app.fileManager.renameFile(folder, oldFolderPath);
+				const displayPath = this.ctx.toDbPath(oldFolderPath) ?? this.ctx.toDbPath(newFolderPath) ?? oldFolderPath;
+				this.ctx.logger.warn(t("sync.readonly_change_reverted", { path: displayPath }), true);
+			}
+			return;
+		}
+
+		const oldFolderDb = this.ctx.toDbPath(oldFolderPath);
+		if (oldFolderDb != null && oldFolderDb !== "" && !this.ctx.isExcluded(oldFolderPath)) {
+			const prefix = oldFolderDb.replace(/\/+$/, "") + "/";
+			const notes = await this.ctx.pouch.allDocsByPrefix<NoteDoc>(noteId(prefix));
+			const assets = await this.ctx.pouch.allDocsByPrefix<AssetDoc>(assetId(prefix));
+			for (const doc of [...notes, ...assets]) {
+				if (!doc.deleted) await this.uploader.tombstonePath(doc.path);
+			}
+		}
+
+		const prefix = newFolderPath.replace(/\/+$/, "") + "/";
+		const files = this.ctx.app.vault.getFiles().filter((file) => file.path.startsWith(prefix));
+		await Promise.all(
+			files.map(async (file) => {
+				const dbPath = this.ctx.toDbPath(file.path);
+				if (dbPath == null || this.ctx.isExcluded(file.path)) return;
+				this.ctx.markPending(dbPath);
+				try {
+					await this.withUploadSlot(() => this.uploader.uploadPath(file.path));
+				} finally {
+					this.ctx.clearPending(dbPath);
+				}
+			}),
+		);
 	}
 
 	private async handleRename(oldPath: string, newPath: string): Promise<void> {

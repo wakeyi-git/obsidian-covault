@@ -18,6 +18,7 @@ import { sweepTombstones } from "./tombstoneRetention";
 import { isAuthError, logAuthDiagnostic } from "./authDiagnostic";
 import { scanVaultOrphans, remoteOrphanIds, tombstoneRemoteOrphans, tombstoneVaultOrphans, OrphanScan, RemoteOrphanScan } from "./orphanRepair";
 import { t } from "../../i18n";
+import { AsyncLifecycle } from "./AsyncLifecycle";
 
 /**
  * 하나의 member↔mirror 링크 동기화 엔진. 기술문서 §23.3.
@@ -56,7 +57,8 @@ export class MirrorSync {
 	private readonly watcher: LocalWatcher;
 	private readonly localApplier: LocalApplier;
 	private readonly fullSyncRunner: FullSync;
-	private started = false;
+	private readonly lifecycle = new AsyncLifecycle();
+	private get started(): boolean { return this.lifecycle.active; }
 	private pausedByHidden = false; // 백그라운드 일시정지로 replication을 멈춘 상태
 	private transferredSinceActive = false; // 직전 active 구간에서 실제 문서가 오갔는지(빈 재연결 로그 억제)
 	// --- 이벤트 구동 모드(통합 변경 감지, 평가 H-6) ---
@@ -153,9 +155,11 @@ export class MirrorSync {
 		return this.ctx.versions.restoreVersion(versionDocId, opts);
 	}
 
-	async start(): Promise<void> {
-		if (this.started) return;
-		this.started = true;
+	start(): Promise<void> {
+		return this.lifecycle.start((generation) => this.startInternal(generation));
+	}
+
+	private async startInternal(generation: number): Promise<void> {
 
 		if (!this.ctx.settings.autoSync) {
 			this.ctx.status.state = "disabled";
@@ -179,11 +183,14 @@ export class MirrorSync {
 		try {
 			await this.fullSyncRunner.runStartup();
 		} catch (e) {
-			this.ctx.logger.error(
-				t("sync.upload_reconciliation_on_startup_failed", { err: errMessage(e) }),
-				true,
-			);
+			if (this.lifecycle.isCurrent(generation)) {
+				this.ctx.logger.error(
+					t("sync.upload_reconciliation_on_startup_failed", { err: errMessage(e) }),
+					true,
+				);
+			}
 		}
+		if (!this.lifecycle.isCurrent(generation)) return;
 
 		// 로컬 DB 변경을 vault에 반영(원격에서 replication으로 들어온 것 포함)
 		this.localApplier.start();
@@ -370,8 +377,8 @@ export class MirrorSync {
 	}
 
 	async stop(): Promise<void> {
-		if (!this.started) return;
-		this.started = false;
+		const pendingStart = this.lifecycle.stop();
+		if (!pendingStart) return;
 		this.ctx.status.state = "disabled";
 		if (this.pushTimer) {
 			clearTimeout(this.pushTimer);
@@ -380,6 +387,7 @@ export class MirrorSync {
 		this.ctx.notifyLocalWrite = undefined;
 		this.watcher.stop();
 		this.localApplier.stop();
+		await pendingStart.catch(() => undefined);
 		await this.ctx.core.flushPersist();
 		await this.ctx.pouch.close();
 	}

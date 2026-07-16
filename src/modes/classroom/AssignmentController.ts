@@ -120,8 +120,9 @@ export class AssignmentController {
 			for (const memberId of def.targetMembers) {
 				const member = s.members.find((m) => m.memberId === memberId && m.provisioned);
 				if (!member) continue;
-				const cur = await this.d.memberSyncByRemoteDb(member.remoteDb)?.ctx.pouch.get<AssignmentStateDoc>(assignmentStateId(uid, memberId));
-				if (cur && !cur.deleted) await admin.putDoc(member.remoteDb, { ...cur, deleted: true });
+				await admin.updateDoc<AssignmentStateDoc>(member.remoteDb, assignmentStateId(uid, memberId), (cur) =>
+					cur && !cur.deleted ? { ...cur, deleted: true } : null,
+				);
 			}
 		}
 		this.d.requestApply();
@@ -165,28 +166,31 @@ export class AssignmentController {
 				await writeFileIfAbsent(this.d, `${assignmentWorkDir("mirror", member.localRoot, homeFolder, workLabel)}/${fileName}`, subst(member.memberId, member.memberName));
 				workPaths = [`${assignmentWorkDir("mirror", "", homeFolder, workLabel)}/${fileName}`];
 			}
-			const base: AssignmentStateDoc = existing && !existing.deleted ? existing : {
-				_id: assignmentStateId(def.uid, memberId),
-				type: "assignment-state",
-				schemaVersion: 1,
-				workspaceId: s.workspaceId,
-				assignmentUid: def.uid,
-				memberId,
-				title: def.title,
-				workPaths,
-				state: "assigned",
-				assignedAtMs: Date.now(),
-			};
-			const stateDoc: AssignmentStateDoc = {
-				...base,
-				title: def.title,
-				workPaths,
-				dueAt: def.dueAt,
-				maxPoints: def.rubric ? rubricMax(def.rubric) : def.points,
-				deleted: undefined,
-				archivedAtMs: def.archivedAtMs, // 정의 기준으로 보관 상태 재수렴(보관 시 미동기화였던 학생 보정)
-			};
-			const r = await admin.putDoc(member.remoteDb, stateDoc);
+			const id = assignmentStateId(def.uid, memberId);
+			const assignedAtMs = Date.now();
+			const r = await admin.updateDoc<AssignmentStateDoc>(member.remoteDb, id, (remoteCurrent) => {
+				const base: AssignmentStateDoc = remoteCurrent && !remoteCurrent.deleted ? remoteCurrent : {
+					_id: id,
+					type: "assignment-state",
+					schemaVersion: 1,
+					workspaceId: s.workspaceId,
+					assignmentUid: def.uid,
+					memberId,
+					title: def.title,
+					workPaths,
+					state: "assigned",
+					assignedAtMs,
+				};
+				return {
+					...base,
+					title: def.title,
+					workPaths: remoteCurrent && !remoteCurrent.deleted && remoteCurrent.workPaths?.length ? remoteCurrent.workPaths : workPaths,
+					dueAt: def.dueAt,
+					maxPoints: def.rubric ? rubricMax(def.rubric) : def.points,
+					deleted: undefined,
+					archivedAtMs: def.archivedAtMs,
+				};
+			});
 			if (!r.ok) this.d.logger.error(t("dashboard.assignment_distribute_failed", { id: memberId, err: r.error ?? "" }));
 			else count++;
 		}
@@ -225,8 +229,13 @@ export class AssignmentController {
 			const content = await readVaultText(this.d, p);
 			if (dbPath && content != null) await vs.snapshot(dbPath, content, "submit", 0);
 		}
-		const current = (await sync.ctx.pouch.get<AssignmentStateDoc>(stateDoc._id)) ?? stateDoc;
-		await sync.ctx.pouch.put({ ...current, state: "submitted", submittedAtMs: Date.now() });
+		const submittedAtMs = Date.now();
+		const updated = await sync.ctx.pouch.update<AssignmentStateDoc>(stateDoc._id, (current) => {
+			const base = current ?? stateDoc;
+			if (base.deleted || base.state === "returned") return null;
+			return { ...base, state: "submitted", submittedAtMs };
+		});
+		if (!updated) return false;
 		this.d.logger.ok(t("dashboard.assignment_submitted", { title: stateDoc.title }), true);
 		return true;
 	}
@@ -234,10 +243,11 @@ export class AssignmentController {
 	async unsubmitAssignment(stateDoc: AssignmentStateDoc): Promise<boolean> {
 		const sync = this.d.studentMirrorSync();
 		if (!sync) return false;
-		const current = await sync.ctx.pouch.get<AssignmentStateDoc>(stateDoc._id);
-		if (!current || current.state === "returned") return false;
-		await sync.ctx.pouch.put({ ...current, state: "assigned", submittedAtMs: undefined });
-		return true;
+		const updated = await sync.ctx.pouch.update<AssignmentStateDoc>(stateDoc._id, (current) => {
+			if (!current || current.deleted || current.state === "returned") return null;
+			return { ...current, state: "assigned", submittedAtMs: undefined };
+		});
+		return updated !== null;
 	}
 
 	/**
@@ -260,12 +270,14 @@ export class AssignmentController {
 		for (const memberId of def.targetMembers) {
 			const member = s.members.find((m) => m.memberId === memberId);
 			const sync = member ? this.d.memberSyncByRemoteDb(member.remoteDb) : null;
-			const cur = await sync?.ctx.pouch.get<AssignmentStateDoc>(assignmentStateId(uid, memberId));
-			if (!cur || cur.deleted) {
+			if (!sync) {
 				failed++;
 				continue;
 			}
-			await sync!.ctx.pouch.put({ ...cur, archivedAtMs });
+			const updated = await sync.ctx.pouch.update<AssignmentStateDoc>(assignmentStateId(uid, memberId), (cur) =>
+				cur && !cur.deleted ? { ...cur, archivedAtMs } : null,
+			);
+			if (!updated) failed++;
 		}
 		this.d.requestApply();
 		this.d.logger.ok(archived ? t("dashboard.assignment_archived", { title: def.title }) : t("dashboard.assignment_unarchived", { title: def.title }), true);
@@ -279,9 +291,11 @@ export class AssignmentController {
 		if (!member) return false;
 		const sync = this.d.memberSyncByRemoteDb(member.remoteDb);
 		if (!sync) return false;
-		const cur = await sync.ctx.pouch.get<AssignmentStateDoc>(assignmentStateId(uid, memberId));
-		if (!cur) return false;
-		await sync.ctx.pouch.put({ ...cur, grade, state: "returned", returnedAtMs: Date.now() });
+		const returnedAtMs = Date.now();
+		const updated = await sync.ctx.pouch.update<AssignmentStateDoc>(assignmentStateId(uid, memberId), (cur) =>
+			cur && !cur.deleted ? { ...cur, grade, state: "returned", returnedAtMs } : null,
+		);
+		if (!updated) return false;
 		this.d.requestApply();
 		this.d.logger.ok(t("dashboard.assignment_returned", { name: member.memberName || memberId }), true);
 		return true;

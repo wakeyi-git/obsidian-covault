@@ -28,8 +28,8 @@ describe("validate v2 규칙 회귀 (정책과 무관하게 유지)", () => {
 		}
 	});
 
-	it("구성원은 교사 전용 타입(게시물 메타 + 인가·명단 + shares/rtconfig)을 쓸 수 없다", () => {
-		for (const type of ["notice", "timetable", "routine", "assignment", "chatgroup", "rtpart", "rtcontrol", "roster", "shares", "rtconfig"]) {
+	it("구성원은 교사 전용 타입(게시물 메타 + 인가·명단 + shares/rtconfig/plugindeploy)을 쓸 수 없다", () => {
+		for (const type of ["notice", "timetable", "routine", "assignment", "chatgroup", "rtpart", "rtcontrol", "roster", "shares", "rtconfig", "plugindeploy"]) {
 			expect(() => validate({ type }, null, member)).toThrow();
 		}
 	});
@@ -61,9 +61,16 @@ describe("validate v2 규칙 회귀 (정책과 무관하게 유지)", () => {
 		expect(() => validate({ type: "rtrequest", byUsername: "student_a", dbPath: "x.md" }, null, admin)).not.toThrow();
 	});
 
-	it("response는 본인 것만", () => {
-		expect(() => validate({ type: "response", byUser: "student_a" }, null, member)).not.toThrow();
-		expect(() => validate({ type: "response", byUser: "student_b" }, null, member)).toThrow();
+	it("response는 본인(member 역할) 것만 — 소유자 변경·역할 위조·누락을 거부", () => {
+		const own = { type: "response", byUser: "student_a", byRole: "member" };
+		expect(() => validate(own, null, member)).not.toThrow();
+		expect(() => validate({ type: "response", byUser: "student_b", byRole: "member" }, null, member)).toThrow();
+		expect(() => validate({ type: "response", byUser: "student_a", byRole: "manager" }, null, member)).toThrow();
+		expect(() => validate({ type: "response", byRole: "member" }, null, member)).toThrow();
+		const others = { type: "response", byUser: "student_b", byRole: "member" };
+		expect(() => validate({ ...others, byUser: "student_a" }, others, member)).toThrow();
+		expect(() => validate({ _deleted: true }, others, member)).toThrow();
+		expect(() => validate({ _deleted: true }, own, member)).not.toThrow();
 	});
 
 	it("ystate(실시간 CRDT 상태)는 서비스 계정만 쓴다(구성원 위조 거부, admin 우회)", () => {
@@ -151,7 +158,7 @@ describe("validate v3 — 읽기전용 강제 (H-5)", () => {
 	it("message/feedback/response는 읽기전용과 무관하게 본인 명의면 허용", () => {
 		expect(() => validate({ type: "message", _id: "m1", byUser: "student_b", byRole: "member" }, null, other)).not.toThrow();
 		expect(() => validate({ type: "feedback", _id: "f1", createdBy: "student_b", createdByRole: "member" }, null, other)).not.toThrow();
-		expect(() => validate({ type: "response", byUser: "student_b" }, null, other)).not.toThrow();
+		expect(() => validate({ type: "response", byUser: "student_b", byRole: "member" }, null, other)).not.toThrow();
 	});
 
 	it("admin은 읽기전용에서도 우회", () => {
@@ -211,9 +218,9 @@ describe("validate v4 — 기기별 계정(acct 정규화, 평가 S-2)", () => {
 	});
 
 	it("response 소유 검사: byUser(memberId) 문서를 같은 구성원의 다른 기기에서 갱신 가능", () => {
-		expect(() => validate({ type: "response", byUser: "m1" }, null, device)).not.toThrow();
-		expect(() => validate({ type: "response", byUser: "m1" }, null, member)).not.toThrow();
-		expect(() => validate({ type: "response", byUser: "m1" }, null, other)).toThrow();
+		expect(() => validate({ type: "response", byUser: "m1", byRole: "member" }, null, device)).not.toThrow();
+		expect(() => validate({ type: "response", byUser: "m1", byRole: "member" }, null, member)).not.toThrow();
+		expect(() => validate({ type: "response", byUser: "m1", byRole: "member" }, null, other)).toThrow();
 	});
 
 	it("grouprequest: 기기 A(기본 계정)가 만든 신청을 기기 B에서 soft-취소 가능 — 타인은 불가", () => {

@@ -1,6 +1,14 @@
 import { App, Platform } from "obsidian";
 import { PluginDeployDoc, PluginDeployFile } from "../model/types";
-import { DEPLOYABLE_PLUGIN_FILES, SETTINGS_FILE, REQUIRED_FILES, isDeployableFileName } from "./pluginPolicy";
+import {
+	DEPLOYABLE_PLUGIN_FILES,
+	SETTINGS_FILE,
+	REQUIRED_FILES,
+	isDeployableFileName,
+	isSafePluginId,
+	SELF_PLUGIN_ID,
+	validatePluginDeployDoc,
+} from "./pluginPolicy";
 import { b64ToUtf8, utf8ToB64 } from "../util/b64";
 
 /**
@@ -60,9 +68,6 @@ export function deployRunnableHere(doc: PluginDeployDoc): boolean {
 	return !(Platform.isMobile && deployedPluginIsDesktopOnly(doc));
 }
 
-/** 현재 사용자 식별(자기 자신 배포 제외) — CoVault 본체. */
-export const SELF_PLUGIN_ID = "covault";
-
 export interface InstalledPlugin {
 	id: string;
 	name: string;
@@ -86,6 +91,7 @@ export function listInstalledCommunityPlugins(app: App): InstalledPlugin[] {
  * manifest.json·main.js가 없으면 throw(배포 불가). includeSettings면 data.json도 포함.
  */
 export async function readInstalledPlugin(app: App, pluginId: string, includeSettings: boolean): Promise<PluginDeployFile[]> {
+	if (!isSafePluginId(pluginId) || pluginId === SELF_PLUGIN_ID) throw new Error("unsafe plugin id");
 	const a = adapter(app);
 	const dir = `.obsidian/plugins/${pluginId}`;
 	const out: PluginDeployFile[] = [];
@@ -112,6 +118,8 @@ export async function installDeployedPlugin(
 	doc: PluginDeployDoc,
 	opts: { enable: boolean; forceSettings: boolean },
 ): Promise<void> {
+	const invalid = await validatePluginDeployDoc(doc);
+	if (invalid) throw new Error(`invalid plugin deployment: ${invalid}`);
 	const a = adapter(app);
 	const dir = `.obsidian/plugins/${doc.pluginId}`;
 	if (!(await a.exists(dir))) await a.mkdir(dir);

@@ -3,7 +3,7 @@ import { Logger } from "../core/log/Logger";
 import { CoVaultSettings } from "../settings/types";
 import { ClassroomStore } from "../core/classroom/ClassroomStore";
 import { PluginDeployDoc, PLUGINDEPLOY_ID_PREFIX, pluginDeployId } from "../core/model/types";
-import { deployContentHash, shouldOfferInstall, SETTINGS_FILE } from "../core/plugindeploy/pluginPolicy";
+import { deployContentHash, shouldOfferInstall, SETTINGS_FILE, validatePluginDeployDoc } from "../core/plugindeploy/pluginPolicy";
 import {
 	listInstalledCommunityPlugins,
 	readInstalledPlugin,
@@ -111,6 +111,8 @@ export class PluginDeployController {
 	private handling = false;
 	/** 이번 세션에 이미 안내한 pluginId(같은 세션 반복 안내 방지 — '나중에'는 다음 실행에 재안내). */
 	private promptedThisSession = new Set<string>();
+	/** 오염 문서는 세션당 한 번만 기록해 변경 피드 로그 폭주를 막는다. */
+	private rejectedThisSession = new Set<string>();
 
 	/**
 	 * 학급에 올라온 새 배포를 수신 처리(구성원). onPluginDeployChange + 시작 시 호출.
@@ -124,6 +126,16 @@ export class PluginDeployController {
 			const handled = s.handledPluginDeploys ?? {};
 			const docs = await this.d.classroom.listByPrefix<PluginDeployDoc>(PLUGINDEPLOY_ID_PREFIX);
 			for (const doc of docs) {
+				if (doc.deleted) continue;
+				const invalid = await validatePluginDeployDoc(doc, s.workspaceId);
+				if (invalid) {
+					const key = typeof doc._id === "string" ? doc._id : invalid;
+					if (!this.rejectedThisSession.has(key)) {
+						this.rejectedThisSession.add(key);
+						this.d.logger.warn(t("plugindeploy.invalid_payload", { err: invalid }), true);
+					}
+					continue;
+				}
 				if (!shouldOfferInstall(doc, s.userId, handled[doc.pluginId])) continue;
 				if (this.promptedThisSession.has(doc.pluginId)) continue;
 				this.promptedThisSession.add(doc.pluginId);

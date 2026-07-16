@@ -63,3 +63,30 @@ describe("provisionMember의 _security 실패 롤백 (S-3)", () => {
 		expect(stub.calls.some((c) => c.method === "DELETE")).toBe(false);
 	});
 });
+
+describe("updateDoc CAS", () => {
+	it("409 뒤 최신 원격 문서에 변환을 재적용해 동시 필드 변경을 보존", async () => {
+		let current = { _id: "state:1", _rev: "1-a", a: 0, b: 0 };
+		let puts = 0;
+		const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+			if ((init?.method ?? "GET") === "GET") {
+				return { status: 200, text: async () => JSON.stringify(current) } as unknown as Response;
+			}
+			puts++;
+			const body = JSON.parse(String(init?.body));
+			if (puts === 1) {
+				current = { ...current, _rev: "2-b", b: 1 };
+				return { status: 409, text: async () => JSON.stringify({ error: "conflict" }) } as unknown as Response;
+			}
+			current = { ...body, _rev: "3-c" };
+			return { status: 201, text: async () => JSON.stringify({ ok: true, rev: "3-c" }) } as unknown as Response;
+		}) as typeof fetch;
+		const result = await admin({ fetch: fetchImpl }).updateDoc<typeof current>("mirror_m1", "state:1", (doc) => ({
+			...doc!,
+			a: doc!.a + 1,
+		}));
+		expect(result).toMatchObject({ ok: true, changed: true });
+		expect(puts).toBe(2);
+		expect(current).toMatchObject({ a: 1, b: 1, _rev: "3-c" });
+	});
+});

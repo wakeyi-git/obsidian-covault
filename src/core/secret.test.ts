@@ -12,6 +12,10 @@ import {
 	COUCH_PASSWORD_ID,
 	YJS_SECRET_ID,
 	RT_SERVICE_PASSWORD_ID,
+	persistYjsSecret,
+	persistRtServicePassword,
+	clearSettingsSecrets,
+	persistCouchPassword,
 } from "./secret";
 
 /** Obsidian setSecret이 허용하는 id 형식: 소문자 영숫자 + 하이픈(그 외엔 throw). */
@@ -92,5 +96,50 @@ describe("secret storage helpers", () => {
 		// 서로 덮어쓰지 않는다.
 		expect(getMemberPassword(app, "member_a", "")).toBe("pw_underscore");
 		expect(getMemberPassword(app, "member-a", "")).toBe("pw-hyphen");
+	});
+
+	it("Yjs 시크릿은 Secret Storage 성공 시 평문 제거, 실패 시 입력을 평문 fallback으로 보존", () => {
+		const secure = { yjsSecret: "old", yjsSecretSet: false };
+		expect(persistYjsSecret(fakeApp(), secure, "new-secret")).toBe(true);
+		expect(secure).toEqual({ yjsSecret: undefined, yjsSecretSet: true });
+
+		const fallback = { yjsSecret: undefined as string | undefined, yjsSecretSet: true };
+		expect(persistYjsSecret({} as any, fallback, "keep-me")).toBe(false);
+		expect(fallback).toEqual({ yjsSecret: "keep-me", yjsSecretSet: false });
+	});
+
+	it("CouchDB 비밀번호 marker도 실제 저장 성공/값 존재 여부와 일치", () => {
+		const secure = { password: "old", passwordSet: false };
+		persistCouchPassword(fakeApp(), secure, "pw");
+		expect(secure).toEqual({ password: "", passwordSet: true });
+		const fallback = { password: "old", passwordSet: true };
+		persistCouchPassword({} as any, fallback, "plain");
+		expect(fallback).toEqual({ password: "plain", passwordSet: false });
+	});
+
+	it("서비스 계정 비밀번호 저장 실패 시 저장됨 marker를 세우지 않는다", () => {
+		const secure = { rtServicePasswordSet: false };
+		expect(persistRtServicePassword(fakeApp(), secure, "pw")).toBe(true);
+		expect(secure.rtServicePasswordSet).toBe(true);
+		const failed = { rtServicePasswordSet: true };
+		expect(persistRtServicePassword({} as any, failed, "pw")).toBe(false);
+		expect(failed.rtServicePasswordSet).toBe(false);
+	});
+
+	it("설정 가져오기용 clear는 고정·구성원·공간 secret을 모두 비운다", () => {
+		const app = fakeApp();
+		for (const id of [
+			COUCH_PASSWORD_ID,
+			YJS_SECRET_ID,
+			RT_SERVICE_PASSWORD_ID,
+			memberPasswordId("m1"),
+			memberMirrorTokenId("m1"),
+			managerMirrorTokenId("m1"),
+			spaceTokenId("s1"),
+		]) {
+			setSecretValue(app, id, "secret");
+		}
+		clearSettingsSecrets(app, { members: [{ memberId: "m1" }], sharedSpaces: [{ id: "s1" }] });
+		expect(app.secretStorage.listSecrets().every((id: string) => app.secretStorage.getSecret(id) === "")).toBe(true);
 	});
 });

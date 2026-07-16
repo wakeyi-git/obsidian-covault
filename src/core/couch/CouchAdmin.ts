@@ -299,4 +299,43 @@ export class CouchAdmin {
 		}
 		return { ok: false, error: t("couch.failed_to_write_document_repeated_rev") };
 	}
+
+	/**
+	 * 원격 문서 CAS 갱신. 매 충돌마다 최신 본문에 변환을 다시 적용해 학생 상태처럼 여러 주체가
+	 * 서로 다른 필드를 갱신하는 문서의 변경 유실을 막는다. null은 쓰지 않는 성공(no-op)이다.
+	 */
+	async updateDoc<T extends { _id: string }>(
+		db: string,
+		id: string,
+		mutate: (current: T | null) => T | null | Promise<T | null>,
+	): Promise<{ ok: boolean; changed?: boolean; error?: string }> {
+		const path = `${encodeURIComponent(db)}/${encodeURIComponent(id)}`;
+		for (let attempt = 0; attempt < 5; attempt++) {
+			const existing = await this.req("GET", path);
+			if (existing.status >= 400 && existing.status !== 404) {
+				return {
+					ok: false,
+					error: t("couch.failed_to_write_document_http", {
+						status: existing.status,
+						reason: this.reasonOf(existing),
+					}),
+				};
+			}
+			const current = existing.status === 200 ? (existing.json as T) : null;
+			const next = await mutate(current);
+			if (next === null) return { ok: true, changed: false };
+			if (next._id !== id) return { ok: false, error: `CAS update changed document id: ${id} -> ${next._id}` };
+			const body: Record<string, unknown> = { ...next };
+			if (existing.status === 200 && existing.json?._rev) body._rev = existing.json._rev;
+			else delete body._rev;
+			const put = await this.req("PUT", path, body);
+			if (put.status < 300) return { ok: true, changed: true };
+			if (put.status === 409) continue;
+			return {
+				ok: false,
+				error: t("couch.failed_to_write_document_http", { status: put.status, reason: this.reasonOf(put) }),
+			};
+		}
+		return { ok: false, error: t("couch.failed_to_write_document_repeated_rev") };
+	}
 }
